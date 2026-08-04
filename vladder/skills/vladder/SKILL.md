@@ -7,7 +7,7 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 This skill targets vLadder `1.0.0rc5`, grammar `vladder-v1`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v2`. Use vLadder as a proof-gated workflow: semantic
+`bounded-cpp-regions-v4`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
@@ -84,14 +84,26 @@ production compilation database and run:
 
 ```bash
 vladder cpp inspect --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-inspect
+vladder cpp isolate --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-isolation
+vladder cpp synthesize --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-synthesis
 vladder cpp optimize --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-out
+vladder cpp audit --manifest cpp-regions.yaml --materialize-isolation --out-dir vladder-cpp-audit
 ```
 
-Use `--symbol` to select an overload or concrete template specialization. Automatic C++ support
-is restricted to `noexcept` pointer, span, and borrowed vector views in one bounded loop,
-including state-independent methods. Read [cpp-regions.md](references/cpp-regions.md). Never call
-an isolated-kernel Alive2 result proof of RAII, object ownership, exceptions, concurrency,
-Vulkan/OpenUSD behavior, or another external protocol.
+Use `--symbol` to select an overload or concrete template specialization. Read
+`closure.disposition` and the independent semantic-capture, isolation, candidate-generation,
+local-proof, benchmark, source-rewrite, and protocol-equivalence capabilities. The v4 frontend
+can emit whole local-function proof units and noinline lambda capsules for eligible nested loops,
+then produce guarded schedule candidates without editing the repository. It must not rank or
+apply a noncanonical C++ candidate without an application workload adapter.
+
+Treat `protocol_scopes` as claim boundaries, not global blockers. Generic ingestion cannot prove
+RAII/destructor, allocator ownership, exceptions, concurrency/memory ordering, Vulkan/OpenUSD,
+callbacks, syscalls, or other external protocols whose state is absent from local IR. Continue
+with independently closed local regions, attribution, lifetime/placement analysis, or explicit
+domain contracts. Never call identity-capsule proof whole-wrapper equivalence, and never call a
+source scheduling contract an Alive2 proof of the physical candidate. Read
+[cpp-regions.md](references/cpp-regions.md).
 
 ### 3. Select Realization Lifetime And Placement
 
@@ -152,10 +164,15 @@ Read [verification.md](references/verification.md). Inspect:
 - `benchmark.csv`: all passing, rejected, tied, and regressing candidates
 - `optimized.patch`: present only for a promotable non-baseline winner
 
-For C++ also inspect `cpp-support.json`, `adapter-contract.json`, `adapter-extents.smt2`,
-`provenance.json`, and `cpp-optimization.json`. `kernel_isolated_adapter_proved` is not a proved
-transformed candidate. Require `kernel_proved_adapter_bounded` plus a passing regenerated source
-before considering the local rewrite.
+For C++ inspect `cpp-support.json`, `typed-abi.json`, `compiled-effects.json`, `subregions.json`,
+`cpp-information-flow.json`, `proof-envelope.json`, and `closure`. Materialized closure runs also
+emit `cpp-closure.json`, identity proof units, candidate source hashes, Z3 schedule obligations,
+and explicit benchmark requirements. Canonical runs also emit
+`adapter-contract.json`, `adapter-extents.smt2`, `provenance.json`, and
+`cpp-optimization.json`. Never use `supported` alone: inspect every capability's `ready` and
+`actual` fields. A proved local unit is not a proved owning wrapper. `kernel_isolated_adapter_proved` is not a proved transformed candidate.
+Require `kernel_proved_adapter_bounded` plus a passing regenerated source before considering the
+local rewrite.
 
 Reject a result when the optimized region is not load-bearing, the confidence interval includes
 the minimum effect, the benchmark changes workload semantics, or the proof excludes production

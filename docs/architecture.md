@@ -74,6 +74,35 @@ The information-flow graph records operation identity, dependency, type, shape, 
 sets, lifetime, ordering, numerical class, hardware facts, and provenance. Specialized graphs add
 state ownership, layouts, quantization blocks, resource pressure, or token/sequence lanes.
 
+## Bounded C++ Closure Frontend
+
+`bounded-cpp-regions-v4` treats semantic capture, local closure, proof, candidate generation,
+benchmarking, source realization, and protocol equivalence as separate facts.
+It selects a concrete definition with Clang and the production compilation database, preserves
+source-level ownership and exception hazards, and recursively summarizes definition-visible LLVM
+callees. The resulting typed ABI, effect summary, helper closure, source subregions, and
+information-flow graph are build-specific evidence.
+
+The support lattice is:
+
+1. `canonical_source_transform`: automatic source extraction, local proof, measurement, and C++
+   regeneration are implemented.
+2. `whole_function_local_ir`: the complete compiled function has modeled boundaries and local
+   effects and can be emitted as a proof unit; a nonidentity rewrite requires a matching grammar.
+3. `bounded_state_transition`: local compiled effects exist, but correctness also depends on an
+   explicit object-state projection and invariant.
+4. `extractable_subregions`: useful loops are identified inside an owning or external wrapper;
+   eligible regions are compiled as noinline lambda proof capsules and can receive bounded source
+   schedule candidates.
+5. `external_protocol`: the function remains outside local LLVM refinement and needs a declared
+   semantic adapter.
+
+For tiers 2 through 4, vLadder can emit compositional proof units and, where a grammar matches,
+candidate source without applying it. The capability vector distinguishes predicted from actual
+evidence. Categorical protocol scopes name exception/destructor, ownership, concurrency, and
+external API claims that local IR cannot generically close, while preserving local optimization,
+hardware attribution, lifetime/placement search, and explicit domain-adapter workflows.
+
 ## Search
 
 Local expression and loop regions use enumeration or saturation with canonicalization and

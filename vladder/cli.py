@@ -13,9 +13,10 @@ from textwrap import dedent
 import time
 import yaml
 
+from . import __version__
 from .candidates import Candidate, generate_candidates
 from .automatic import inspect_automatic_region
-from .cpp_regions import inspect_cpp_region, optimize_cpp_region
+from .cpp_regions import inspect_cpp_matrix, inspect_cpp_region, isolate_cpp_region, optimize_cpp_region
 from .capabilities import load_registry
 from .diagnostics import doctor_report
 from .extractor import extract_function
@@ -796,10 +797,16 @@ def automatic_region_command(args: argparse.Namespace) -> int:
 
 
 def cpp_region_command(args: argparse.Namespace) -> int:
+    if args.cpp_command == "audit":
+        report = inspect_cpp_matrix(
+            Path(args.manifest), Path(args.out_dir), materialize_isolation=args.materialize_isolation
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
     source = Path(args.source).resolve()
     compilation_database = Path(args.compile_commands).resolve()
     out_dir = Path(args.out_dir).resolve()
-    if args.cpp_command in {"inspect", "isolate"}:
+    if args.cpp_command == "inspect":
         report = inspect_cpp_region(
             source,
             args.function,
@@ -810,6 +817,20 @@ def cpp_region_command(args: argparse.Namespace) -> int:
         )
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report.get("status") == "supported" else 2
+    if args.cpp_command in {"isolate", "synthesize"}:
+        return_code, report = isolate_cpp_region(
+            source,
+            args.function,
+            compilation_database,
+            out_dir,
+            symbol=args.symbol,
+            command_index=args.command_index,
+        )
+        if args.cpp_command == "synthesize":
+            report["requested_operation"] = "synthesize"
+            write_json(out_dir / "cpp-support.json", report)
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return return_code
     return_code, report = optimize_cpp_region(
         source,
         args.function,
@@ -875,6 +896,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="vladder",
         description="Verified hardware-aware information-flow superoptimizer for bounded C/C++ regions",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
     doctor = sub.add_parser("doctor", help="validate compilers, solvers, validators, and performance tools")
     doctor.add_argument("--strict", action="store_true", help="require Alive2 and perf in addition to the core toolchain")
@@ -934,9 +956,18 @@ def build_parser() -> argparse.ArgumentParser:
     region_optimize.set_defaults(func=automatic_region_command)
     cpp = sub.add_parser("cpp", help="extract, isolate, prove, and optimize a bounded C++ kernel")
     cpp_sub = cpp.add_subparsers(dest="cpp_command", required=True)
+    cpp_audit = cpp_sub.add_parser("audit", help="inspect a manifest of C++ regions without optimization or source changes")
+    cpp_audit.add_argument("--manifest", required=True)
+    cpp_audit.add_argument("--out-dir", default="vladder-cpp-audit")
+    cpp_audit.add_argument(
+        "--materialize-isolation", action="store_true",
+        help="compile and prove predicted local proof units without applying source changes",
+    )
+    cpp_audit.set_defaults(func=cpp_region_command)
     for action, help_text, default_out in (
         ("inspect", "classify a concrete C++ definition and emit adapter requirements", "vladder-cpp-inspect"),
         ("isolate", "extract production IR, isolate the kernel, prove its adapter, and regenerate C++", "vladder-cpp-isolation"),
+        ("synthesize", "materialize proved bounded C++ source candidates without applying them", "vladder-cpp-synthesis"),
         ("optimize", "run the strict C kernel optimizer and regenerate a proved C++ realization", "vladder-cpp-out"),
     ):
         command = cpp_sub.add_parser(action, help=help_text)

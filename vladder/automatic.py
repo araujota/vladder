@@ -100,7 +100,7 @@ def inspect_automatic_region(source: Path, function: str, out_dir: Path | None =
             "language-adapter",
             "the C frontend accepts C source only; use the compilation-database-aware C++ frontend",
             "a compile_commands-backed bounded C++ definition",
-            "vladder cpp inspect|isolate|optimize, then a project-specific adapter if required",
+            "vladder cpp inspect|isolate|synthesize|optimize, then a project-specific adapter if required",
         ))
     try:
         extracted = extract_function(text, function)

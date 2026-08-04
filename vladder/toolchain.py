@@ -14,6 +14,7 @@ class Toolchain:
     compiler_kind: str
     llvm_mca: str | None
     alive_tv: str | None
+    cbmc: str | None
     perf: str | None
     objdump: str | None
     nm: str | None
@@ -37,6 +38,7 @@ def discover_toolchain() -> Toolchain:
         compiler_kind=kind,
         llvm_mca=llvm_mca,
         alive_tv=shutil.which("alive-tv"),
+        cbmc=shutil.which("cbmc"),
         perf=shutil.which("perf"),
         objdump=shutil.which("objdump"),
         nm=shutil.which("nm"),

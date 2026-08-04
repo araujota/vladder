@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from collections import Counter
 import hashlib
 import json
 from pathlib import Path
@@ -10,12 +11,22 @@ import sys
 from typing import Any, Iterable
 
 from .automatic import inspect_automatic_region
+from .cpp_semantics import (
+    analyze_ir_effects,
+    build_cpp_information_flow,
+    classify_support_tier,
+    describe_abi,
+    discover_subregions,
+    helper_closure,
+    source_semantics,
+)
+from .cpp_closure import aggregate_closure_capabilities, classify_cpp_closure, materialize_cpp_closure
 from .extractor import ExtractedFunction, extract_function
 from .report import write_json
 from .toolchain import compiler_version, discover_toolchain, run
 
 
-CPP_SUPPORT_VERSION = "bounded-cpp-regions-v2"
+CPP_SUPPORT_VERSION = "bounded-cpp-regions-v4"
 
 
 @dataclass(frozen=True)
@@ -253,67 +264,6 @@ def _source_range(node: dict[str, Any], source_text: str) -> tuple[int, int]:
     return start, finish
 
 
-def _call_names(node: dict[str, Any]) -> list[str]:
-    names: list[str] = []
-    for child in _walk(node):
-        if child.get("kind") == "MemberExpr" and child.get("name"):
-            names.append(str(child["name"]))
-        referenced = child.get("referencedDecl")
-        if isinstance(referenced, dict) and referenced.get("name"):
-            names.append(str(referenced["name"]))
-    return names
-
-
-def _semantic_adapters(node: dict[str, Any], function_source: str) -> list[CppAdapterRequirement]:
-    kinds = {str(item.get("kind")) for item in _walk(node)}
-    adapters: list[CppAdapterRequirement] = []
-    function_type = str(node.get("type", {}).get("qualType", ""))
-    if "noexcept" not in function_type:
-        adapters.append(CppAdapterRequirement(
-            "exception-adapter", "selected function is not declared noexcept", "a no-throw isolated boundary", "exception and destructor protocol adapter"
-        ))
-    if kinds & {"CXXThrowExpr", "CXXTryStmt", "CXXCatchStmt"} or re.search(r"\b(?:throw|try|catch)\b", function_source):
-        adapters.append(CppAdapterRequirement(
-            "exception-adapter", "throwing or exception-handling behavior occurs in the target", "a no-throw kernel boundary", "exception protocol adapter"
-        ))
-    owning_constructions = [
-        item for item in _walk(node)
-        if item.get("kind") in {"CXXConstructExpr", "CXXTemporaryObjectExpr"}
-        and not any(token in str(item.get("type", {}).get("qualType", "")) for token in ("std::span", "float", "double", "int", "size_t"))
-    ]
-    if kinds & {"CXXNewExpr", "CXXDeleteExpr"} or owning_constructions or re.search(r"\b(?:new|delete|make_unique|make_shared|unique_ptr|shared_ptr)\b", function_source):
-        adapters.append(CppAdapterRequirement(
-            "ownership-lifetime-adapter", "owning allocation or RAII state occurs in the target", "a non-owning bounded kernel", "ownership, destructor, and lifetime adapter"
-        ))
-    if "CXXThisExpr" in kinds:
-        adapters.append(CppAdapterRequirement(
-            "object-state-adapter", "the target reads or writes through this", "a state-independent method or explicit state projection", "class invariant and ownership adapter"
-        ))
-    if re.search(r"\b(?:atomic\w*|memory_order\w*|mutex|lock_guard|unique_lock|condition_variable|volatile)\b", function_source):
-        adapters.append(CppAdapterRequirement(
-            "memory-order-adapter", "atomic, volatile, or synchronization semantics occur in the target", "an explicit C++ memory-order contract", "concurrency protocol adapter"
-        ))
-    if kinds & {"GCCAsmStmt", "MSAsmStmt", "CoroutineBodyStmt", "CoawaitExpr", "CoyieldExpr"}:
-        adapters.append(CppAdapterRequirement(
-            "control-runtime-adapter", "inline assembly or coroutine runtime behavior occurs in the target", "a synchronous structured kernel", "runtime semantic adapter"
-        ))
-    allowed_calls = {"operator[]", "size", "data"}
-    calls: set[str] = set()
-    for item in _walk(node):
-        if item.get("kind") in {"CallExpr", "CXXMemberCallExpr", "CXXOperatorCallExpr"}:
-            names = _call_names(item)
-            calls.add(names[0] if names else "<indirect>")
-    unmodeled = sorted(calls - allowed_calls)
-    if unmodeled:
-        adapters.append(CppAdapterRequirement(
-            "external-call-adapter", f"target contains unmodeled calls: {unmodeled}", "pure modeled calls or inlined information flow", "ExternalCall, Vulkan, OpenUSD, or library semantic adapter"
-        ))
-    unique: dict[str, CppAdapterRequirement] = {}
-    for adapter in adapters:
-        unique.setdefault(adapter.kind, adapter)
-    return list(unique.values())
-
-
 def _parameters(node: dict[str, Any]) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     for child in node.get("inner", []):
@@ -420,6 +370,7 @@ def _emit_cpp_ir(command: CompilationCommand, source: Path, symbol: str, out_dir
     tc = discover_toolchain()
     raw = out_dir / "target.production.ll"
     analysis_raw = out_dir / "target.analysis.ll"
+    effects_raw = out_dir / "target.effects.ll"
     normalized = out_dir / "target.normalized.ll"
     production_flags = list(command.semantic_arguments)
     production_result = run(
@@ -440,6 +391,16 @@ def _emit_cpp_ir(command: CompilationCommand, source: Path, symbol: str, out_dir
         raise CppFrontendError(
             "compiler-adapter", f"analysis C++ LLVM IR emission failed: {(analysis_result.stdout + analysis_result.stderr)[-2000:]}",
             "Clang analysis IR for the production command", "compiler flag adapter",
+        )
+    effect_flags = [*command.semantic_arguments, "-O2", "-fno-vectorize", "-fno-slp-vectorize", "-fno-unroll-loops"]
+    effect_result = run(
+        [tc.compiler, *effect_flags, "-S", "-emit-llvm", str(source), "-o", str(effects_raw)],
+        cwd=Path(command.directory), timeout=180,
+    )
+    if effect_result.returncode != 0:
+        raise CppFrontendError(
+            "compiler-adapter", f"effect-analysis C++ LLVM IR emission failed: {(effect_result.stdout + effect_result.stderr)[-2000:]}",
+            "optimized Clang LLVM IR for effect closure", "compiler flag adapter",
         )
     retention_mode = "production-ir"
     try:
@@ -468,6 +429,9 @@ def _emit_cpp_ir(command: CompilationCommand, source: Path, symbol: str, out_dir
         "analysis_ir": str(analysis_raw),
         "analysis_ir_sha256": _sha256(analysis_raw.read_bytes()),
         "analysis_flags": analysis_flags,
+        "effect_ir": str(effects_raw),
+        "effect_ir_sha256": _sha256(effects_raw.read_bytes()),
+        "effect_flags": effect_flags,
         "normalized_ir": str(normalized),
         "normalized_ir_sha256": _sha256(normalized.read_bytes()),
         "symbol_retention_mode": retention_mode,
@@ -496,6 +460,149 @@ def _prove_span_adapter(out_dir: Path) -> dict[str, Any]:
         "scope": "adapter extent and loop-index mapping only; not C++ ownership, publication, exceptions, or external protocols",
         "smt2": str(smt_path),
     }
+
+
+def _prove_typed_abi(abi: dict[str, Any], out_dir: Path) -> dict[str, Any]:
+    smt_path = out_dir / "typed-abi.smt2"
+    span_count = sum(item["category"] == "span" for item in abi["parameters"])
+    if span_count == 0:
+        smt_path.write_text("; No span extent bridge is present; lowered ABI evidence is recorded separately.\n")
+        return {
+            "status": "NOT_APPLICABLE",
+            "method": "typed-abi-classification",
+            "property": "no source span requires a pointer/extent bridge",
+            "smt2": str(smt_path),
+        }
+    try:
+        import z3
+    except ImportError:
+        smt_path.write_text("; z3 unavailable\n")
+        return {"status": "UNAVAILABLE", "method": "z3", "smt2": str(smt_path)}
+    solver = z3.Solver()
+    failures = []
+    for index in range(span_count):
+        source_size = z3.Int(f"source_span_size_{index}")
+        lowered_size = z3.Int(f"lowered_extent_{index}")
+        solver.add(source_size >= 0, lowered_size == source_size)
+        failures.append(lowered_size != source_size)
+    solver.add(z3.Or(*failures))
+    result = solver.check()
+    smt_path.write_text("; Counterexample query for C++ span to pointer/extent identity\n" + solver.to_smt2())
+    return {
+        "status": "PROVED" if result == z3.unsat else "FAILED",
+        "method": "z3-int",
+        "result": str(result),
+        "property": "each lowered extent equals its source std::span extent",
+        "scope": "shape bridge only; storage validity, aggregate layout, aliasing, and function semantics are separate obligations",
+        "smt2": str(smt_path),
+    }
+
+
+def _proof_plan(
+    abi: dict[str, Any], tier: dict[str, Any], effects: dict[str, Any], source: dict[str, Any],
+    subregions: list[dict[str, Any]], out_dir: Path,
+) -> dict[str, Any]:
+    typed_abi = _prove_typed_abi(abi, out_dir)
+    plan = {
+        "schema_version": "vladder-cpp-proof-envelope-v2",
+        "support_tier": tier["tier"],
+        "transformation_ready": tier["transformation_ready"],
+        "typed_abi": typed_abi,
+        "obligations": {
+            "alive2": "required for each local LLVM transformation; interprocedural and owning protocol claims excluded",
+            "z3": ["view extent mapping", "declared alias and integer bounds", "state projection relation when applicable"],
+            "cbmc": ["bounded aggregate adapter", "container size/capacity", "exception and object invariant harness when applicable"],
+            "differential": ["full observable result", "error/status paths", "boundary dimensions and adversarial values"],
+            "project": ["production compiler", "sanitizers", "owning lifecycle and external protocol tests"],
+        },
+        "compiler_facts": {
+            "nounwind": effects["nounwind"],
+            "nofree": effects["nofree"],
+            "nosync": effects["nosync"],
+            "memory_effect": effects["memory_effect"],
+            "build_specific": True,
+        },
+        "required_before_source_rewrite": [],
+        "excluded_claims": [
+            "arbitrary C++ equivalence", "allocator equivalence", "destructor protocol equivalence",
+            "concurrency equivalence", "external API equivalence", "whole-function proof from a subregion proof",
+        ],
+    }
+    if abi["return"]["category"] == "aggregate_value":
+        plan["required_before_source_rewrite"].append("prove source aggregate fields against the compiler-lowered output-storage ABI")
+    if source["object_state"]:
+        plan["required_before_source_rewrite"].append("declare and prove an explicit object-state projection and invariant")
+    if tier["tier"] == "extractable_subregions":
+        plan["required_before_source_rewrite"].append("extract matching source and LLVM regions with live-in/live-out equivalence")
+    has_local_lowerer = any(
+        item.get("extractable_candidate")
+        and (tier["tier"] == "bounded_state_transition" or "object_state" not in item.get("hard_hazards", []))
+        for item in subregions
+    )
+    if not tier["transformation_ready"] and not has_local_lowerer:
+        plan["required_before_source_rewrite"].append("register a deterministic source lowerer for this region class")
+    path = out_dir / "proof-envelope.json"
+    write_json(path, plan)
+    plan["artifact"] = str(path)
+    return plan
+
+
+def _effect_adapters(
+    source: dict[str, Any], effects: dict[str, Any], abi: dict[str, Any], tier: dict[str, Any],
+    subregions: list[dict[str, Any]],
+) -> list[CppAdapterRequirement]:
+    adapters: list[CppAdapterRequirement] = []
+    if source["explicit_throw"] or effects["unwind_operations"] or not effects["nounwind"]:
+        adapters.append(CppAdapterRequirement(
+            "exception-adapter", "compiled target can unwind or contains explicit exception behavior",
+            "a no-unwind local region or modeled exception contract", "exception and destructor protocol adapter",
+        ))
+    if source["explicit_allocation"] or effects["allocation_calls"] or effects["deallocation_calls"]:
+        adapters.append(CppAdapterRequirement(
+            "ownership-lifetime-adapter", "compiled target retains allocation, deallocation, or explicit ownership operations",
+            "a bounded non-owning region or allocator model", "ownership, capacity, and lifetime adapter",
+        ))
+    if source["object_state"]:
+        adapters.append(CppAdapterRequirement(
+            "object-state-adapter", "the target reads or writes through this",
+            "an explicit finite state projection", "class invariant and ownership adapter",
+        ))
+    if source["memory_order_syntax"] or effects["synchronization_operations"] or effects["volatile_operations"]:
+        adapters.append(CppAdapterRequirement(
+            "memory-order-adapter", "the target retains atomic, synchronization, or volatile behavior",
+            "an explicit C++ memory-order contract", "concurrency protocol adapter",
+        ))
+    if source["runtime_control"]:
+        adapters.append(CppAdapterRequirement(
+            "control-runtime-adapter", "inline assembly or coroutine runtime behavior occurs in the target",
+            "a synchronous structured region", "runtime semantic adapter",
+        ))
+    if effects["external_calls"] or effects["indirect_calls"]:
+        detail = effects["external_calls"] or ["<indirect>"]
+        adapters.append(CppAdapterRequirement(
+            "external-call-adapter", f"effect IR retains unmodeled calls: {detail}",
+            "inlined information flow or modeled call summaries", "external API or callable semantic adapter",
+        ))
+    if not abi["modeled"]:
+        adapters.append(CppAdapterRequirement(
+            "abi-adapter", "one or more source boundaries lack a typed bounded ABI model",
+            "scalar, pointer, span, borrowed vector, structured reference, callable contract, or lowered aggregate",
+            "type layout, ownership, or callable adapter",
+        ))
+    has_local_lowerer = any(
+        item.get("extractable_candidate")
+        and (tier["tier"] == "bounded_state_transition" or "object_state" not in item.get("hard_hazards", []))
+        for item in subregions
+    )
+    if tier["accepted"] and not tier["transformation_ready"] and not has_local_lowerer:
+        adapters.append(CppAdapterRequirement(
+            "source-lowering-adapter", f"support tier {tier['tier']} has no executable source transformation lowerer",
+            "a deterministic region-class lowerer plus compositional proof bridge", "implement the named bounded C++ lowerer",
+        ))
+    unique: dict[str, CppAdapterRequirement] = {}
+    for adapter in adapters:
+        unique.setdefault(adapter.kind, adapter)
+    return list(unique.values())
 
 
 def _replacement_body(abi: str, mapping: dict[str, str], helper_name: str) -> str:
@@ -571,6 +678,8 @@ def inspect_cpp_region(
     report: dict[str, Any] = {
         "status": "adapter_required",
         "supported": False,
+        "accepted": False,
+        "transformation_ready": False,
         "support_version": CPP_SUPPORT_VERSION,
         "language": "c++",
         "source": str(source),
@@ -594,6 +703,7 @@ def inspect_cpp_region(
         node, selection_adapters = _select_function(documents, function, symbol)
         if selection_adapters:
             report["adapters"] = [asdict(item) for item in selection_adapters]
+            report["closure"] = classify_cpp_closure(report)
             write_json(out_dir / "cpp-support.json", report)
             return report
         assert node is not None
@@ -603,7 +713,7 @@ def inspect_cpp_region(
         write_json(selected_ast, node)
         report["artifacts"]["selected_ast"] = str(selected_ast)
         parameters = _parameters(node)
-        abi = _abi_class(parameters)
+        legacy_abi = _abi_class(parameters)
         report["selection"] = {
             "kind": node.get("kind"),
             "name": node.get("name"),
@@ -613,41 +723,109 @@ def inspect_cpp_region(
             "source_range": list(selected_range),
             "function_sha256": _sha256(function_source),
         }
-        adapters = _semantic_adapters(node, function_source)
-        if abi is None:
-            adapters.append(CppAdapterRequirement(
-                "abi-adapter",
-                "selected C++ definition is outside the pointer-view and dynamic std::span<float> support classes",
-                "(float*, const float*, size_t) or (std::span<float>, std::span<const float>)",
-                "container, ownership, or operator contract adapter",
-            ))
         if not node.get("mangledName"):
-            adapters.append(CppAdapterRequirement(
+            report["adapters"] = [asdict(CppAdapterRequirement(
                 "template-instantiation-adapter", "selected template has no concrete emitted symbol", "one explicit concrete instantiation or specialization", "template realization adapter"
-            ))
-        if adapters:
-            report["adapters"] = [asdict(item) for item in adapters]
+            ))]
+            report["closure"] = classify_cpp_closure(report)
             write_json(out_dir / "cpp-support.json", report)
             return report
-        assert abi is not None
         production_ir = _emit_cpp_ir(command, source, str(node["mangledName"]), out_dir)
         report["production_ir"] = production_ir
-        kernel_source, _, mapping = _canonical_kernel(function_source, node, abi)
-        kernel_path = out_dir / "isolated-kernel.c"
-        kernel_path.write_text(kernel_source)
-        report["artifacts"]["isolated_kernel"] = str(kernel_path)
-        kernel_support = inspect_automatic_region(kernel_path, "transform", out_dir / "kernel-analysis")
-        report["kernel_support"] = kernel_support.to_dict()
-        if not kernel_support.supported:
-            report["adapters"] = [asdict(CppAdapterRequirement(
-                "kernel-shape-adapter",
-                kernel_support.adapters[0].reason if kernel_support.adapters else "isolated kernel is outside the bounded support matrix",
-                "one bounded-regions-v1 compatible loop",
-                "operator or project-specific kernel adapter",
-            ))]
+        effect_module = Path(production_ir["effect_ir"])
+        effect_source = "optimized-effect-ir"
+        try:
+            effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(node["mangledName"]))
+        except ValueError:
+            effect_module = Path(production_ir["analysis_ir"])
+            effect_source = "analysis-ir-symbol-retention"
+            try:
+                effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(node["mangledName"]))
+            except ValueError:
+                effect_module = Path(production_ir["raw_ir"])
+                effect_source = "production-ir-interprocedural-closure"
+                effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(node["mangledName"]))
+        effects["source"] = effect_source
+        source_info = source_semantics(node, function_source)
+        abi = describe_abi(str(node.get("type", {}).get("qualType", "")), parameters, effects["signature"])
+        subregions = discover_subregions(node, source_text)
+        closure = helper_closure(source_info["calls"], effects)
+        information_flow = build_cpp_information_flow(abi, source_info, effects, subregions)
+        report.update({
+            "typed_abi": abi,
+            "compiled_effects": effects,
+            "source_semantics": source_info,
+            "helper_closure": closure,
+            "subregions": subregions,
+            "information_flow": information_flow,
+        })
+        effects_path = out_dir / "compiled-effects.json"
+        abi_path = out_dir / "typed-abi.json"
+        subregions_path = out_dir / "subregions.json"
+        information_flow_path = out_dir / "cpp-information-flow.json"
+        write_json(effects_path, effects)
+        write_json(abi_path, abi)
+        write_json(subregions_path, {"schema_version": "vladder-cpp-subregions-v1", "regions": subregions})
+        write_json(information_flow_path, information_flow)
+        report["artifacts"].update({
+            "compiled_effects": str(effects_path), "typed_abi": str(abi_path), "subregions": str(subregions_path),
+            "information_flow": str(information_flow_path),
+        })
+
+        kernel_source: str | None = None
+        mapping: dict[str, str] = {}
+        kernel_path: Path | None = None
+        kernel_support = None
+        canonical_eligible = (
+            legacy_abi is not None and effects["local_effects"] and not source_info["object_state"]
+            and not source_info["explicit_throw"] and not source_info["explicit_allocation"]
+            and not source_info["memory_order_syntax"] and not source_info["runtime_control"]
+        )
+        if canonical_eligible:
+            try:
+                kernel_source, _, mapping = _canonical_kernel(function_source, node, legacy_abi)
+                kernel_path = out_dir / "isolated-kernel.c"
+                kernel_path.write_text(kernel_source)
+                report["artifacts"]["isolated_kernel"] = str(kernel_path)
+                kernel_support = inspect_automatic_region(kernel_path, "transform", out_dir / "kernel-analysis")
+                report["kernel_support"] = kernel_support.to_dict()
+            except ValueError as error:
+                report["canonical_extraction"] = {"status": "not_applicable", "reason": str(error)}
+        canonical_transform = bool(kernel_support and kernel_support.supported)
+        tier = classify_support_tier(
+            canonical_transform=canonical_transform, abi=abi, source=source_info, effects=effects, subregions=subregions
+        )
+        report["support_tier"] = tier["tier"]
+        report["accepted"] = tier["accepted"]
+        report["transformation_ready"] = tier["transformation_ready"]
+        adapters = _effect_adapters(source_info, effects, abi, tier, subregions)
+        report["adapters"] = [asdict(item) for item in adapters]
+        proof_plan = _proof_plan(abi, tier, effects, source_info, subregions, out_dir)
+        report["proof_envelope"] = proof_plan
+        report["artifacts"]["proof_envelope"] = proof_plan["artifact"]
+        report["closure"] = classify_cpp_closure(report)
+
+        if not canonical_transform:
+            report.update({
+                "status": "supported" if tier["accepted"] else "adapter_required",
+                "supported": tier["accepted"],
+                "proof_classification": (
+                    "local_ir_effects_captured" if tier["tier"] == "whole_function_local_ir" else
+                    "bounded_state_projection_required" if tier["tier"] == "bounded_state_transition" else
+                    "subregion_boundaries_identified" if tier["tier"] == "extractable_subregions" else
+                    "external_protocol_adapter_required"
+                ),
+                "claim_boundary": (
+                    "compiled effects and typed boundaries are captured; no transformed candidate or source equivalence is claimed"
+                    if tier["accepted"] else
+                    "the complete function retains effects outside local LLVM refinement"
+                ),
+            })
             write_json(out_dir / "cpp-support.json", report)
             return report
-        adapter_proof = _prove_span_adapter(out_dir) if abi in {"span-view", "vector-view"} else {
+
+        assert legacy_abi is not None and kernel_source is not None and kernel_path is not None
+        adapter_proof = _prove_span_adapter(out_dir) if legacy_abi in {"span-view", "vector-view"} else {
             "status": "PROVED",
             "method": "identity-abi",
             "property": "the isolated kernel retains the original pointer and extent parameters",
@@ -655,8 +833,8 @@ def inspect_cpp_region(
         }
         contract = {
             "schema_version": "vladder-cpp-adapter-contract-v1",
-            "abi_class": abi,
-            "preconditions": ["dst and src denote valid ranges for n elements"] if abi == "pointer-view" else [
+            "abi_class": legacy_abi,
+            "preconditions": ["dst and src denote valid ranges for n elements"] if legacy_abi == "pointer-view" else [
                 "dst.size() >= src.size()", "both views and their storage remain alive and stable for the call", "baseline alias behavior is preserved"
             ],
             "postconditions": ["the wrapper invokes the proved kernel exactly once", "n equals the source extent"],
@@ -666,7 +844,7 @@ def inspect_cpp_region(
         contract_path = out_dir / "adapter-contract.json"
         write_json(contract_path, contract)
         generated, replacement_body, context = _regenerate_cpp(
-            source_text, selected_range, function_source, node, abi, mapping, kernel_source
+            source_text, selected_range, function_source, node, legacy_abi, mapping, kernel_source
         )
         generated_path = out_dir / "regenerated.cpp"
         body_path = out_dir / "replacement-body.inc"
@@ -703,7 +881,8 @@ def inspect_cpp_region(
         write_json(provenance_path, provenance)
         report["artifacts"]["provenance"] = str(provenance_path)
         report.update({
-            "status": "supported", "supported": True, "abi_class": abi,
+            "status": "supported", "supported": True, "accepted": True, "transformation_ready": True,
+            "abi_class": legacy_abi, "support_tier": "canonical_source_transform", "adapters": [],
             "proof_classification": "kernel_isolated_adapter_proved",
             "exactness": "E1-ordered",
             "proof_layers": [
@@ -715,14 +894,60 @@ def inspect_cpp_region(
             ],
             "claim_boundary": "local kernel refinement plus bounded adapter obligations; owning C++ and external protocols are not proved",
         })
+        report["closure"] = classify_cpp_closure(report)
+        for capability in ("isolation", "candidate_generation", "local_proof", "benchmark", "source_rewrite"):
+            report["closure"]["capabilities"][capability]["actual"] = True
     except (CppFrontendError, ValueError, OSError, json.JSONDecodeError) as error:
         if isinstance(error, CppFrontendError):
             adapter = error.requirement
         else:
             adapter = CppAdapterRequirement("cpp-extraction-adapter", str(error), "one supported bounded C++ definition", "specialized C++ adapter")
         report["adapters"] = [asdict(adapter)]
+        report["closure"] = classify_cpp_closure(report)
     write_json(out_dir / "cpp-support.json", report)
     return report
+
+
+def isolate_cpp_region(
+    source: Path,
+    function: str,
+    compilation_database: Path,
+    out_dir: Path,
+    *,
+    symbol: str | None = None,
+    command_index: int | None = None,
+) -> tuple[int, dict[str, Any]]:
+    report = inspect_cpp_region(
+        source, function, compilation_database, out_dir, symbol=symbol, command_index=command_index
+    )
+    closure = report.get("closure", {})
+    if report.get("support_tier") == "canonical_source_transform":
+        report["operation_status"] = "isolated"
+        report["requested_operation"] = "isolate"
+        write_json(out_dir / "cpp-support.json", report)
+        return 0, report
+    if not closure.get("capabilities", {}).get("isolation", {}).get("ready"):
+        report["operation_status"] = "no_automatic_proof_unit"
+        report["requested_operation"] = "isolate"
+        write_json(out_dir / "cpp-support.json", report)
+        return 2, report
+    command = load_compilation_command(source, compilation_database, command_index)
+    materialized = materialize_cpp_closure(
+        report,
+        source.resolve(),
+        list(command.semantic_arguments),
+        Path(command.directory),
+        out_dir / "closure",
+    )
+    report["closure"] = materialized
+    report["artifacts"]["closure"] = materialized["artifact"]
+    report["requested_operation"] = "isolate"
+    report["operation_status"] = (
+        "isolated" if materialized.get("capabilities", {}).get("isolation", {}).get("actual")
+        else "isolation_failed"
+    )
+    write_json(out_dir / "cpp-support.json", report)
+    return (0 if report["operation_status"] == "isolated" else 2), report
 
 
 def regenerate_cpp_with_kernel(cpp_report: Path, kernel_source: Path, output: Path) -> dict[str, Any]:
@@ -773,9 +998,31 @@ def optimize_cpp_region(
 ) -> tuple[int, dict[str, Any]]:
     out_dir = out_dir.resolve()
     isolation_dir = out_dir / "isolation"
-    report = inspect_cpp_region(source, function, compilation_database, isolation_dir, symbol=symbol, command_index=command_index)
+    isolation_code, report = isolate_cpp_region(
+        source, function, compilation_database, isolation_dir, symbol=symbol, command_index=command_index
+    )
     result: dict[str, Any] = {"status": "adapter_required", "isolation": report}
-    if report.get("status") != "supported":
+    if isolation_code != 0:
+        write_json(out_dir / "cpp-optimization.json", result)
+        return 2, result
+    if report.get("support_tier") != "canonical_source_transform":
+        closure = report.get("closure", {})
+        candidates = closure.get("candidates", [])
+        has_candidates = bool(closure.get("capabilities", {}).get("candidate_generation", {}).get("actual"))
+        result = {
+            "status": "benchmark_adapter_required" if has_candidates else "no_admitted_transform",
+            "isolation": report,
+            "support_tier": report.get("support_tier"),
+            "proof_classification": report.get("proof_classification"),
+            "candidate_count": len(candidates),
+            "reason": (
+                "proved source candidates exist, but a representative C++ workload and observable-result adapter are required before ranking"
+                if has_candidates else
+                "a local proof unit was emitted, but the bounded grammar has no nonidentity transform for this region shape"
+            ),
+            "claim_boundary": closure.get("claim_boundary"),
+            "source_changes_performed": False,
+        }
         write_json(out_dir / "cpp-optimization.json", result)
         return 2, result
     kernel_dir = out_dir / "kernel-optimization"
@@ -807,3 +1054,97 @@ def optimize_cpp_region(
             return_code = 1
     write_json(out_dir / "cpp-optimization.json", result)
     return return_code, result
+
+
+def inspect_cpp_matrix(manifest: Path, out_dir: Path, *, materialize_isolation: bool = False) -> dict[str, Any]:
+    import yaml
+
+    manifest = manifest.resolve()
+    out_dir = out_dir.resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw = yaml.safe_load(manifest.read_text())
+    if not isinstance(raw, dict) or not isinstance(raw.get("regions"), list):
+        raise ValueError("C++ audit manifest requires a regions list")
+    base = manifest.parent
+    default_database = raw.get("compile_commands")
+    reports: list[dict[str, Any]] = []
+    tier_counts: Counter[str] = Counter()
+    status_counts: Counter[str] = Counter()
+    adapter_counts: Counter[str] = Counter()
+    accepted = 0
+    transform_ready = 0
+    closures: list[dict[str, Any]] = []
+    for index, item in enumerate(raw["regions"]):
+        if not isinstance(item, dict) or not item.get("source") or not item.get("function"):
+            raise ValueError(f"region {index} requires source and function")
+        region_id = str(item.get("id", f"region-{index:03d}"))
+        safe_id = re.sub(r"[^A-Za-z0-9_.-]+", "-", region_id).strip("-") or f"region-{index:03d}"
+        source = Path(str(item["source"]))
+        source = source if source.is_absolute() else base / source
+        database_value = item.get("compile_commands", default_database)
+        if not database_value:
+            raise ValueError(f"region {region_id} has no compile_commands path")
+        database = Path(str(database_value))
+        database = database if database.is_absolute() else base / database
+        arguments = {
+            "symbol": str(item["symbol"]) if item.get("symbol") else None,
+            "command_index": int(item["command_index"]) if item.get("command_index") is not None else None,
+        }
+        if materialize_isolation:
+            _, report = isolate_cpp_region(
+                source, str(item["function"]), database, out_dir / safe_id, **arguments
+            )
+        else:
+            report = inspect_cpp_region(
+                source, str(item["function"]), database, out_dir / safe_id, **arguments
+            )
+        closure = report.get("closure", classify_cpp_closure(report))
+        closures.append(closure)
+        summary = {
+            "id": region_id,
+            "source": str(source.resolve()),
+            "function": str(item["function"]),
+            "status": report.get("status"),
+            "accepted": bool(report.get("accepted")),
+            "transformation_ready": bool(report.get("transformation_ready")),
+            "support_tier": report.get("support_tier", "unselected"),
+            "proof_classification": report.get("proof_classification"),
+            "adapter_kinds": [adapter["kind"] for adapter in report.get("adapters", [])],
+            "closure_disposition": closure.get("disposition"),
+            "capabilities": {
+                name: {
+                    "ready": bool(value.get("ready")),
+                    "actual": bool(value.get("actual")),
+                }
+                for name, value in closure.get("capabilities", {}).items()
+            },
+            "categorical_protocol_scopes": [
+                scope.get("category") for scope in closure.get("protocol_scopes", [])
+                if scope.get("categorical_for_generic_ingestion")
+            ],
+            "report": str((out_dir / safe_id / "cpp-support.json").resolve()),
+        }
+        reports.append(summary)
+        tier_counts[summary["support_tier"]] += 1
+        status_counts[str(summary["status"])] += 1
+        adapter_counts.update(summary["adapter_kinds"])
+        accepted += int(summary["accepted"])
+        transform_ready += int(summary["transformation_ready"])
+    result = {
+        "schema_version": "vladder-cpp-audit-v2",
+        "support_version": CPP_SUPPORT_VERSION,
+        "manifest": str(manifest),
+        "region_count": len(reports),
+        "accepted_count": accepted,
+        "transformation_ready_count": transform_ready,
+        "support_tiers": dict(sorted(tier_counts.items())),
+        "statuses": dict(sorted(status_counts.items())),
+        "adapter_kinds": dict(sorted(adapter_counts.items())),
+        "closure_capabilities": aggregate_closure_capabilities(closures),
+        "regions": reports,
+        "optimization_performed": False,
+        "isolation_materialized": materialize_isolation,
+        "source_changes_performed": False,
+    }
+    write_json(out_dir / "cpp-audit.json", result)
+    return result

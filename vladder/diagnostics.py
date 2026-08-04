@@ -39,6 +39,7 @@ def doctor_report(strict: bool = False) -> dict[str, Any]:
         DependencyStatus("llvm-mca", True, bool(tc.llvm_mca), tc.llvm_mca, tool_version(tc.llvm_mca)),
         DependencyStatus("z3", True, bool(z3_path), z3_path, _command_version(z3_path, ("-version",))),
         DependencyStatus("alive-tv", strict, bool(tc.alive_tv), tc.alive_tv, tool_version(tc.alive_tv)),
+        DependencyStatus("cbmc", False, bool(tc.cbmc), tc.cbmc, tool_version(tc.cbmc)),
         DependencyStatus("perf", strict, bool(tc.perf), tc.perf, _command_version(tc.perf, ("--version",))),
         DependencyStatus("objdump", True, bool(tc.objdump), tc.objdump, _command_version(tc.objdump)),
     ]

@@ -2,6 +2,42 @@
 
 All notable changes to vLadder are documented here.
 
+## Unreleased
+
+### Added
+
+- `bounded-cpp-regions-v4` capability vectors separating semantic capture, actual isolation,
+  candidate generation, local proof, benchmark readiness, source emission, and whole-protocol
+  equivalence.
+- Whole local-function identity proof units and source-preserving noinline lambda capsules for
+  eligible loops nested in owning or externally interacting C++ functions.
+- Guarded Clang unroll-hint candidates with deterministic placement and hashes, Z3 schedule
+  obligations, explicit physical-candidate Alive2 boundaries, and fail-closed workload adapters.
+- `vladder cpp synthesize` and materialized C++ audit mode with capability and categorical protocol
+  aggregates and source-integrity evidence.
+- `bounded-cpp-regions-v3` semantic decomposition for typed spans including byte spans, borrowed
+  structured views, structured references and compiler-lowered aggregate results.
+- Recursive definition-visible LLVM effect summaries combined with source-authoritative ownership,
+  exception, object-state, synchronization, and runtime-control hazards.
+- Five explicit C++ support tiers separating automatic source transformation from whole-function
+  local IR, bounded state transitions, extractable subregions, and external protocols.
+- Deterministic C++ information-flow graphs, helper-closure and subregion inventories,
+  compositional proof envelopes, and inspection-only `vladder cpp audit` manifests.
+
+### Boundaries
+
+- Arbitrary C++ ingestion remains impossible where RAII/destructor, allocator ownership,
+  exceptions, concurrency/memory order, callbacks, syscalls, Vulkan/OpenUSD, or another external
+  protocol is not closed in local IR. Reports scope that blocked claim without disabling eligible
+  local regions or other vLadder workflows.
+- A source scheduling contract and identity proof build do not constitute Alive2 refinement of
+  the physically unrolled candidate or evidence of a performance win.
+- v3's broader C++ acceptance provided decomposition and proof planning; v4 adds local proof-unit
+  materialization and bounded schedule-source emission while retaining separate benchmark and
+  protocol gates.
+- Owning containers, RAII, allocation, exceptions, synchronization, callbacks, and external APIs
+  retain explicit proof and source-lowering obligations.
+
 ## 1.0.0rc5 - 2026-08-04
 
 ### Added

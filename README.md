@@ -30,9 +30,9 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-`1.0.0rc4` is the current published Linux candidate. `1.0.0rc5` is the source release candidate
-that adds
-`bounded-cpp-regions-v2` while retaining the `bounded-regions-v1` C frontend. The C frontend fully
+The package version remains `1.0.0rc5` while the source tree validates the C++ closure matrix,
+`bounded-cpp-regions-v4`; it retains the
+`bounded-regions-v1` C frontend. The C frontend fully
 automates extraction, LLVM-derived classification, transformation, C source regeneration,
 formal refinement, differential execution, hardware benchmarking, and proof-gated patch
 promotion for canonical functions with this ABI:
@@ -45,16 +45,20 @@ Automatically admitted C classes are pointwise maps, guarded pointwise maps, ste
 scans, ordered recurrences, and constant-stride modulo-n indirect reads.
 
 The C++ frontend consumes the selected translation unit's exact `compile_commands.json` entry,
-uses Clang's semantic AST to select a concrete mangled definition, retains production LLVM IR,
-and isolates exact single-loop kernels from `noexcept` pointer, `std::span<float>`, and borrowed
-`std::vector<float>` views. State-independent methods and concrete template specializations are
-supported. It emits a canonical C kernel, Z3 adapter obligations, provenance, a replacement body,
-and a compilable regenerated C++ translation unit.
+uses Clang's semantic AST to select a concrete mangled definition, and combines source authority
+with recursively summarized production LLVM effects. It models scalar, pointer, byte or typed
+span, borrowed vector, structured-reference, and compiler-lowered aggregate-result boundaries.
+It also inventories loops, helper closures, object-state projections, ownership, exceptions,
+synchronization, and external calls, then emits a deterministic C++ information-flow graph.
 
-This is verified kernel isolation, not arbitrary-C++ equivalence. Object state, allocation, RAII
-and moves, exceptions/destructors, atomics and synchronization, virtual or indirect calls,
-Vulkan/OpenUSD calls, callbacks, and broader stateful protocols receive typed adapter requirements.
-Alive2 proves the isolated compiled kernel; it does not prove those owning protocols.
+Results expose independent capture, isolation, candidate-generation, local-proof, benchmark,
+source-rewrite, and protocol-equivalence capabilities. v4 can materialize whole local functions
+and eligible nested loops as proof units, and can emit bounded source schedule candidates for the
+latter. It still requires a workload adapter before ranking a noncanonical C++ candidate. Alive2
+can prove local LLVM rewrites; it does not prove RAII, allocation, object invariants, exception,
+concurrency, Vulkan/OpenUSD, callback, or other owning protocols. These categorical protocol
+limits do not block independently closed subregions or the attribution, lifetime, placement, and
+contract-bounded parts of vLadder.
 
 The package also contains specialist operator, pipeline, projection, quantized-kernel, and
 weight-traversal research adapters. Use `vladder grammar` and `vladder lower list` to distinguish
@@ -244,6 +248,17 @@ vladder cpp inspect \
   --compile-commands build \
   --out-dir vladder-cpp-inspect
 
+vladder cpp audit \
+  --manifest cpp-regions.yaml \
+  --materialize-isolation \
+  --out-dir vladder-cpp-audit
+
+vladder cpp synthesize \
+  --source src/owning_path.cpp \
+  --function OwningPath::run \
+  --compile-commands build \
+  --out-dir vladder-cpp-synthesis
+
 vladder cpp optimize \
   --source src/transform.cpp \
   --function transform \
@@ -252,12 +267,23 @@ vladder cpp optimize \
   --out-dir vladder-cpp-out
 ```
 
-Use `--symbol _Z...` when overloads or template instances share a source name, and
+Without `--materialize-isolation`, `cpp audit` only classifies. With it, vLadder compiles and
+proves predicted local units but still performs no optimization, benchmark, or source change. Use
+`--symbol _Z...` when overloads or template instances share a source name, and
 `--command-index N` when the compilation database contains multiple configurations for one file.
-The inspect/isolate report is classified `kernel_isolated_adapter_proved`; only a transformed
-candidate that passes strict Z3, memory, Alive2, differential, benchmark, and regenerated-C++
-checks is classified `kernel_proved_adapter_bounded`. See [C++ kernel
-extraction](docs/cpp-kernel-extraction.md) for the exact support and claim boundary.
+Inspect `closure.disposition`, each independent `closure.capabilities` entry, categorical
+`protocol_scopes`, `compiled-effects.json`, `typed-abi.json`, `subregions.json`,
+`cpp-information-flow.json`, and `proof-envelope.json`. `bounded-cpp-regions-v4` can emit whole
+local-function proof units and source-preserving lambda capsules for eligible loops inside owning
+C++ methods. Its bounded schedule grammar emits guarded Clang unroll candidates with identity and
+Z3 schedule evidence, but requires an application benchmark adapter before ranking or applying
+them. RAII, exceptions/destructors, allocation ownership, concurrency, callbacks, Vulkan/OpenUSD,
+and other external protocols remain explicitly outside generic whole-function proof. They do not
+block independently closed local regions or vLadder's attribution, lifetime, placement, and
+contract-bounded workflows. See [C++ kernel
+extraction](docs/cpp-kernel-extraction.md) for the exact support and claim boundary and the
+[NeuralFusion v4 acceptance benchmark](docs/neuralfusion-cpp-v4-acceptance.md) for production
+coverage evidence.
 
 Key outputs:
 

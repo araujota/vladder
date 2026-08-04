@@ -6,8 +6,15 @@ import subprocess
 import tempfile
 import unittest
 
-from vladder import CPP_SUPPORT_VERSION, CppRegionRequest, VelocityLadder
-from vladder.cpp_regions import inspect_cpp_region, load_compilation_command
+from vladder import CPP_SUPPORT_VERSION, CppAuditRequest, CppRegionRequest, VelocityLadder
+from vladder.cpp_regions import (
+    inspect_cpp_matrix,
+    inspect_cpp_region,
+    isolate_cpp_region,
+    load_compilation_command,
+    optimize_cpp_region,
+)
+from vladder.cpp_semantics import analyze_ir_effects
 from vladder.toolchain import discover_toolchain
 
 
@@ -15,8 +22,6 @@ ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "examples" / "cpp_regions"
 SUPPORTED = ("supported_pointer.cpp", "supported_span.cpp", "supported_vector.cpp", "supported_method.cpp", "supported_template.cpp")
 ADAPTERS = {
-    "adapter_ownership.cpp": "ownership-lifetime-adapter",
-    "adapter_exception.cpp": "exception-adapter",
     "adapter_external.cpp": "external-call-adapter",
     "adapter_atomic.cpp": "memory-order-adapter",
     "adapter_overload.cpp": "overload-selection-adapter",
@@ -40,6 +45,25 @@ def write_database(root: Path, files: tuple[str, ...] | None = None) -> Path:
 
 
 class CppRegionTests(unittest.TestCase):
+    def test_transitive_nonlocal_helper_effects_are_not_lost(self):
+        module = """
+@state = global i32 0
+define void @target(ptr %p) #0 {
+entry:
+  call void @helper(ptr %p)
+  ret void
+}
+define void @helper(ptr %p) #0 {
+entry:
+  store i32 1, ptr @state
+  ret void
+}
+attributes #0 = { nounwind nofree nosync }
+"""
+        effects = analyze_ir_effects(module, "target")
+        self.assertFalse(effects["local_effects"])
+        self.assertIn("helper", effects["external_calls"])
+
     def test_supported_matrix_emits_proved_adapter_and_regenerated_source(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -69,6 +93,154 @@ class CppRegionTests(unittest.TestCase):
                     self.assertIn(expected, [item["kind"] for item in report["adapters"]])
                     self.assertNotEqual(report["proof_classification"], "kernel_isolated_adapter_proved")
                     self.assertNotIn("regenerated_cpp", report["artifacts"])
+
+    def test_effect_aware_regions_accept_broader_typed_boundaries(self):
+        cases = {
+            "accepted_byte_parser.cpp": ("parse_word", "whole_function_local_ir"),
+            "accepted_inferred_nounwind.cpp": ("byte_checksum", "whole_function_local_ir"),
+            "accepted_struct_view.cpp": ("weighted_total", "whole_function_local_ir"),
+            "accepted_status_result.cpp": ("first_byte", "whole_function_local_ir"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, tuple(cases))
+            for name, (function, tier) in cases.items():
+                with self.subTest(name=name):
+                    report = inspect_cpp_region(FIXTURES / name, function, database, root / name)
+                    self.assertEqual(report["status"], "supported")
+                    self.assertTrue(report["accepted"])
+                    self.assertFalse(report["transformation_ready"])
+                    self.assertEqual(report["support_tier"], tier)
+                    self.assertTrue(report["typed_abi"]["modeled"])
+                    self.assertTrue(report["compiled_effects"]["local_effects"])
+                    self.assertNotIn("external-call-adapter", [item["kind"] for item in report["adapters"]])
+                    self.assertNotIn("ownership-lifetime-adapter", [item["kind"] for item in report["adapters"]])
+                    self.assertNotIn("exception-adapter", [item["kind"] for item in report["adapters"]])
+                    if report["subregions"]:
+                        self.assertNotIn("source-lowering-adapter", [item["kind"] for item in report["adapters"]])
+                        self.assertTrue(report["closure"]["capabilities"]["candidate_generation"]["ready"])
+                    else:
+                        self.assertIn("source-lowering-adapter", [item["kind"] for item in report["adapters"]])
+                    self.assertNotIn("regenerated_cpp", report["artifacts"])
+                    self.assertEqual(len(report["information_flow"]["graph_sha256"]), 64)
+                    self.assertTrue(Path(report["artifacts"]["information_flow"]).exists())
+                    if name == "accepted_byte_parser.cpp":
+                        self.assertEqual(report["helper_closure"]["disposition"]["read_be32"], "inlined_or_folded")
+
+    def test_owning_and_throwing_wrappers_expose_only_local_subregions(self):
+        cases = {
+            "accepted_owning_subregion.cpp": ("copy_words", "ownership-lifetime-adapter"),
+            "adapter_ownership.cpp": ("transform", "ownership-lifetime-adapter"),
+            "adapter_exception.cpp": ("transform", "exception-adapter"),
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, tuple(cases))
+            for name, (function, expected_adapter) in cases.items():
+                with self.subTest(name=name):
+                    report = inspect_cpp_region(FIXTURES / name, function, database, root / name)
+                    self.assertEqual(report["status"], "supported")
+                    self.assertEqual(report["support_tier"], "extractable_subregions")
+                    self.assertFalse(report["transformation_ready"])
+                    self.assertIn(expected_adapter, [item["kind"] for item in report["adapters"]])
+                    self.assertTrue(any(item["extractable_candidate"] for item in report["subregions"]))
+
+    def test_object_method_is_a_bounded_state_transition_not_a_local_equivalence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("accepted_state_transition.cpp",))
+            first = inspect_cpp_region(
+                FIXTURES / "accepted_state_transition.cpp", "add", database, root / "ambiguous"
+            )
+            symbol = first["candidate_symbols"][0]["symbol"]
+            report = inspect_cpp_region(
+                FIXTURES / "accepted_state_transition.cpp", "add", database, root / "selected", symbol=symbol
+            )
+            self.assertEqual(report["status"], "supported")
+            self.assertEqual(report["support_tier"], "bounded_state_transition")
+            self.assertFalse(report["transformation_ready"])
+            self.assertIn("object-state-adapter", [item["kind"] for item in report["adapters"]])
+            self.assertIn("declare and prove an explicit object-state projection and invariant", report["proof_envelope"]["required_before_source_rewrite"])
+
+    def test_local_function_becomes_a_proved_identity_unit_but_has_no_invented_transform(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("accepted_byte_parser.cpp",))
+            isolation = VelocityLadder().cpp_region(CppRegionRequest(
+                FIXTURES / "accepted_byte_parser.cpp", "parse_word", database, root / "isolate", action="isolate"
+            ))
+            self.assertEqual(isolation.return_code, 0)
+            self.assertEqual(isolation.report["operation_status"], "isolated")
+            self.assertTrue(isolation.report["closure"]["capabilities"]["local_proof"]["actual"])
+            self.assertFalse(isolation.report["closure"]["capabilities"]["candidate_generation"]["actual"])
+            code, report = optimize_cpp_region(
+                FIXTURES / "accepted_byte_parser.cpp", "parse_word", database, root / "out"
+            )
+            self.assertEqual(code, 2)
+            self.assertEqual(report["status"], "no_admitted_transform")
+            self.assertFalse((root / "out" / "kernel-optimization").exists())
+
+    def test_owning_wrapper_isolates_and_synthesizes_a_local_loop_without_applying_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("accepted_owning_subregion.cpp",))
+            code, report = isolate_cpp_region(
+                FIXTURES / "accepted_owning_subregion.cpp", "copy_words", database, root / "isolate"
+            )
+            self.assertEqual(code, 0)
+            closure = report["closure"]
+            self.assertEqual(closure["disposition"], "local_regions_only")
+            self.assertTrue(closure["capabilities"]["isolation"]["actual"])
+            self.assertEqual(closure["capabilities"]["candidate_generation"]["count"], 2)
+            self.assertFalse(closure["capabilities"]["benchmark"]["actual"])
+            self.assertFalse(closure["source_changes_performed"])
+            for candidate in closure["candidates"]:
+                self.assertEqual(candidate["proof"]["status"], "SOURCE_CONTRACT_PROVED")
+                self.assertEqual(candidate["proof"]["physical_candidate_alive2"]["status"], "NOT_RUN")
+                self.assertEqual(candidate["repository_syntax"]["status"], "pass")
+                self.assertEqual(candidate["benchmark"]["status"], "ADAPTER_REQUIRED")
+                self.assertFalse(candidate["application_performed"])
+
+    def test_escaping_control_is_a_verbose_local_isolation_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("adapter_escaping_loop.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "adapter_escaping_loop.cpp", "first_positive", database, root / "inspect"
+            )
+            self.assertFalse(report["closure"]["regions"][0]["eligible"])
+            self.assertIn("escaping_control", report["closure"]["regions"][0]["blockers"])
+            self.assertFalse(report["closure"]["global_workflow_blocked"])
+
+    def test_external_protocol_scope_does_not_hide_other_vladder_workflows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("adapter_protocol.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "adapter_protocol.cpp", "send_packet", database, root / "inspect"
+            )
+            closure = report["closure"]
+            self.assertEqual(closure["disposition"], "external_protocol_only")
+            self.assertFalse(closure["global_workflow_blocked"])
+            external = next(
+                item for item in closure["protocol_scopes"] if item["category"] == "external_api_or_callback"
+            )
+            self.assertTrue(external["categorical_for_generic_ingestion"])
+            self.assertIn("independently isolated local regions", external["does_not_block"])
+
+    def test_callback_loop_is_not_misclassified_as_a_closed_local_capsule(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("adapter_callback_loop.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "adapter_callback_loop.cpp", "visit_values", database, root / "inspect"
+            )
+            region = report["closure"]["regions"][0]
+            self.assertFalse(region["eligible"])
+            self.assertIn("external_call", region["blockers"])
+            detail = next(item for item in region["blocker_details"] if item["kind"] == "external_call")
+            self.assertFalse(detail["whole_function_blocked"])
+            self.assertIn("other independently closed subregions", detail["permitted_continuation"])
 
     def test_overload_can_be_selected_by_mangled_symbol(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -133,6 +305,46 @@ class CppRegionTests(unittest.TestCase):
             result = VelocityLadder().cpp_region(request)
             self.assertEqual(result.return_code, 0)
             self.assertEqual(result.report["status"], "supported")
+
+    def test_cpp_audit_manifest_aggregates_without_optimization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("accepted_byte_parser.cpp", "adapter_protocol.cpp"))
+            manifest = root / "audit.yaml"
+            manifest.write_text(
+                "compile_commands: " + str(database) + "\nregions:\n"
+                "  - id: parser\n    source: " + str(FIXTURES / "accepted_byte_parser.cpp") + "\n    function: parse_word\n"
+                "  - id: protocol\n    source: " + str(FIXTURES / "adapter_protocol.cpp") + "\n    function: send_packet\n"
+            )
+            report = inspect_cpp_matrix(manifest, root / "audit")
+            self.assertEqual(report["region_count"], 2)
+            self.assertEqual(report["accepted_count"], 1)
+            self.assertEqual(report["transformation_ready_count"], 0)
+            self.assertFalse(report["optimization_performed"])
+            self.assertFalse(report["source_changes_performed"])
+            self.assertFalse(report["isolation_materialized"])
+            request = CppAuditRequest(manifest, root / "api-audit")
+            api = VelocityLadder().cpp_audit(request)
+            self.assertEqual(api.return_code, 0)
+            self.assertEqual(api.report["region_count"], 2)
+
+    def test_cpp_audit_can_materialize_proof_units_without_source_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("accepted_byte_parser.cpp", "accepted_owning_subregion.cpp"))
+            manifest = root / "audit.yaml"
+            manifest.write_text(
+                "compile_commands: " + str(database) + "\nregions:\n"
+                "  - id: parser\n    source: " + str(FIXTURES / "accepted_byte_parser.cpp") + "\n    function: parse_word\n"
+                "  - id: owning\n    source: " + str(FIXTURES / "accepted_owning_subregion.cpp") + "\n    function: copy_words\n"
+            )
+            report = inspect_cpp_matrix(manifest, root / "audit", materialize_isolation=True)
+            self.assertTrue(report["isolation_materialized"])
+            self.assertFalse(report["source_changes_performed"])
+            capabilities = report["closure_capabilities"]["actual_capabilities"]
+            self.assertEqual(capabilities["isolation"], 2)
+            self.assertEqual(capabilities["local_proof"], 2)
+            self.assertEqual(capabilities["candidate_generation"], 1)
 
 
 if __name__ == "__main__":
