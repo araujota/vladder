@@ -122,6 +122,38 @@ class AutomaticRegionRequest:
 
 
 @dataclass(frozen=True)
+class CppRegionRequest:
+    source: Path
+    function: str
+    compilation_database: Path
+    output_directory: Path
+    action: str = "isolate"
+    symbol: str | None = None
+    command_index: int | None = None
+    minimum_speedup_pct: float = 1.0
+    benchmark: BenchmarkPolicy = field(default_factory=BenchmarkPolicy)
+
+    def argv(self) -> list[str]:
+        if self.action not in {"inspect", "isolate", "optimize"}:
+            raise ValueError(f"unsupported C++ region action: {self.action}")
+        args = [
+            "cpp", self.action, "--source", str(self.source), "--function", self.function,
+            "--compile-commands", str(self.compilation_database), "--out-dir", str(self.output_directory),
+        ]
+        if self.symbol:
+            args.extend(("--symbol", self.symbol))
+        if self.command_index is not None:
+            args.extend(("--command-index", str(self.command_index)))
+        if self.action == "optimize":
+            args.extend((
+                "--n", str(self.benchmark.element_count), "--reps", str(self.benchmark.repetitions),
+                "--inner", str(self.benchmark.inner_calls), "--cpu", str(self.benchmark.cpu),
+                "--min-speedup-pct", str(self.minimum_speedup_pct),
+            ))
+        return args
+
+
+@dataclass(frozen=True)
 class LifetimeRequest:
     manifest: Path
     trace: Path
@@ -166,6 +198,16 @@ class VelocityLadder:
         report_path = request.output_directory / "perf.json"
         if not report_path.exists():
             report_path = request.output_directory / "automatic-support.json"
+        report = json.loads(report_path.read_text()) if report_path.exists() else {}
+        return OptimizationResult(return_code, report_path, report)
+
+    def cpp_region(self, request: CppRegionRequest) -> OptimizationResult:
+        from .cli import main
+
+        request.output_directory.mkdir(parents=True, exist_ok=True)
+        return_code = main(request.argv())
+        report_name = "cpp-optimization.json" if request.action == "optimize" else "cpp-support.json"
+        report_path = request.output_directory / report_name
         report = json.loads(report_path.read_text()) if report_path.exists() else {}
         return OptimizationResult(return_code, report_path, report)
 

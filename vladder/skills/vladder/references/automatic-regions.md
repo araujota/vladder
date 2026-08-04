@@ -1,7 +1,8 @@
 # Automatic Bounded Regions
 
-`vladder region` is the fail-closed path for unattended extraction, source regeneration, proof,
+`vladder region` is the C fail-closed path for unattended extraction, source regeneration, proof,
 benchmarking, and optional promotion. Its support matrix is versioned as `bounded-regions-v1`.
+For C++, use `vladder cpp` and read [cpp-regions.md](cpp-regions.md).
 
 ## Automatically Supported Boundary
 
@@ -40,7 +41,8 @@ duplicated scan or recurrence loops. Proof reports state this distinction.
 `adapter_required` is a result, not a partial success. The report names the missing semantic
 boundary and the next workflow. Current adapter classes include:
 
-- `language-adapter`: isolate a restricted C++ region behind an `extern "C"` C semantic capsule.
+- `language-adapter`: use `vladder cpp` first; manually isolate only C++ outside
+  `bounded-cpp-regions-v2`.
 - `abi-adapter`: map project arguments, outputs, shapes, and state to an admitted contract.
 - `loop-shape-adapter`: identify a legal single-loop slice or use operator/pipeline extraction.
 - `external-call-adapter`: inline a pure call or provide its modeled semantics and side effects.

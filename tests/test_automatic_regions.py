@@ -64,7 +64,8 @@ class AutomaticRegionTests(unittest.TestCase):
             report = inspect_automatic_region(source, "transform", Path(directory) / "out")
             self.assertFalse(report.supported)
             self.assertEqual(report.adapters[0].kind, "language-adapter")
-            self.assertIn("extern-C", report.adapters[0].required_boundary)
+            self.assertIn("compile_commands", report.adapters[0].required_boundary)
+            self.assertIn("vladder cpp", report.adapters[0].next_workflow)
 
     def test_generated_ordered_source_and_proof_source_compile(self):
         source = FIXTURES / "supported_recurrence.c"

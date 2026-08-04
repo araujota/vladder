@@ -30,7 +30,9 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-`1.0.0rc4` is the release-ready Linux candidate. Its `bounded-regions-v1` frontend fully
+`1.0.0rc4` is the current published Linux candidate. `1.0.0rc5` is the source release candidate
+that adds
+`bounded-cpp-regions-v2` while retaining the `bounded-regions-v1` C frontend. The C frontend fully
 automates extraction, LLVM-derived classification, transformation, C source regeneration,
 formal refinement, differential execution, hardware benchmarking, and proof-gated patch
 promotion for canonical functions with this ABI:
@@ -39,11 +41,20 @@ promotion for canonical functions with this ABI:
 void transform(float *dst, const float *src, size_t n);
 ```
 
-Automatically admitted classes are pointwise maps, guarded pointwise maps, stencils, ordered
-scans, ordered recurrences, and constant-stride modulo-n indirect reads. Restricted C++,
-noncanonical ABIs, multi-loop regions, external calls, nonlocal control flow, atomics, and broader
-stateful or concurrent regions receive typed adapter requirements rather than an optimization
-claim.
+Automatically admitted C classes are pointwise maps, guarded pointwise maps, stencils, ordered
+scans, ordered recurrences, and constant-stride modulo-n indirect reads.
+
+The C++ frontend consumes the selected translation unit's exact `compile_commands.json` entry,
+uses Clang's semantic AST to select a concrete mangled definition, retains production LLVM IR,
+and isolates exact single-loop kernels from `noexcept` pointer, `std::span<float>`, and borrowed
+`std::vector<float>` views. State-independent methods and concrete template specializations are
+supported. It emits a canonical C kernel, Z3 adapter obligations, provenance, a replacement body,
+and a compilable regenerated C++ translation unit.
+
+This is verified kernel isolation, not arbitrary-C++ equivalence. Object state, allocation, RAII
+and moves, exceptions/destructors, atomics and synchronization, virtual or indirect calls,
+Vulkan/OpenUSD calls, callbacks, and broader stateful protocols receive typed adapter requirements.
+Alive2 proves the isolated compiled kernel; it does not prove those owning protocols.
 
 The package also contains specialist operator, pipeline, projection, quantized-kernel, and
 weight-traversal research adapters. Use `vladder grammar` and `vladder lower list` to distinguish
@@ -63,12 +74,11 @@ closed when source mode is requested.
 
 ## Install
 
-The intended PyPI distribution name is `vladder`; it was unoccupied during rc4 release
-preparation but is not reserved until publication. Once `1.0.0rc4` is published, install the
-Python library and CLI with:
+Install the current published GitHub candidate with its release artifacts. PyPI publication is a
+separate channel; when `1.0.0rc5` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc4'
+python3 -m pip install --pre 'vladder==1.0.0rc5'
 vladder doctor
 ```
 
@@ -223,6 +233,32 @@ invocation or whether `alive-tv` ran. Unsupported regions fail closed with a typ
 requirement. See
 `vladder/skills/vladder/references/automatic-regions.md` for the precise boundary.
 
+For a bounded C++ region, export the production compilation database and use the C++ workflow:
+
+```bash
+cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+vladder cpp inspect \
+  --source src/transform.cpp \
+  --function transform \
+  --compile-commands build \
+  --out-dir vladder-cpp-inspect
+
+vladder cpp optimize \
+  --source src/transform.cpp \
+  --function transform \
+  --compile-commands build \
+  --min-speedup-pct 2 \
+  --out-dir vladder-cpp-out
+```
+
+Use `--symbol _Z...` when overloads or template instances share a source name, and
+`--command-index N` when the compilation database contains multiple configurations for one file.
+The inspect/isolate report is classified `kernel_isolated_adapter_proved`; only a transformed
+candidate that passes strict Z3, memory, Alive2, differential, benchmark, and regenerated-C++
+checks is classified `kernel_proved_adapter_bounded`. See [C++ kernel
+extraction](docs/cpp-kernel-extraction.md) for the exact support and claim boundary.
+
 Key outputs:
 
 - `analysis/`: target LLVM IR, information-flow graph, semantic slice, and SMT model
@@ -257,6 +293,7 @@ from pathlib import Path
 from vladder import (
     AutomaticRegionRequest,
     BenchmarkPolicy,
+    CppRegionRequest,
     LifetimeRequest,
     OptimizationRequest,
     VelocityLadder,
@@ -289,6 +326,17 @@ automatic = engine.optimize_region(
     )
 )
 print(automatic.report)
+
+cpp = engine.cpp_region(
+    CppRegionRequest(
+        source=Path("src/transform.cpp"),
+        function="transform",
+        compilation_database=Path("build/compile_commands.json"),
+        output_directory=Path("vladder-cpp-out"),
+        action="optimize",
+    )
+)
+print(cpp.report["proof_classification"])
 
 lifetime = engine.lifetime(
     LifetimeRequest(
@@ -381,6 +429,7 @@ python3 scripts/audit_release.py --root .
 openspec validate release-vladder-library --strict
 openspec validate release-channels-rc4 --strict
 openspec validate lifetime-aware-realization-v1 --strict
+openspec validate direct-cpp-kernel-extraction --strict
 python3 -m build
 python3 -m twine check dist/*
 python3 scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz

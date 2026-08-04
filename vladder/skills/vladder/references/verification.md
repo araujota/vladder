@@ -23,6 +23,21 @@ LLVM refinement for the compiled functions and flags used when proof IR differs.
 establishes that an applied source edit is the same candidate unless the final function is checked
 against the proof bundle. Use `vladder verify-application` after editing production source.
 
+## C++ Isolation
+
+For `vladder cpp`, separate three claims:
+
+1. Clang AST legality and Z3 adapter proof establish only the declared view, extent, and call
+   mapping.
+2. Alive2 validates the isolated compiled kernel candidate, not constructors, destructors,
+   ownership, publication, synchronization, exceptions, or external APIs.
+3. Regenerated C++ compilation and project tests validate integration under the production build.
+
+Do not promote an inspect/isolate result. Require `kernel_proved_adapter_bounded` from the optimize
+workflow, a passing `optimized.cpp` realization, unchanged source provenance, and application-level
+tests. Owning protocols require CBMC, TLA+, project-specific model checking, or an explicit manual
+adapter in addition to the local kernel proof.
+
 ## Zero-Trust LLM Use
 
 An LLM may propose or reconstruct C, but its output is untrusted. Compile it, regenerate IR, run

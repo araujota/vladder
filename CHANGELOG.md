@@ -2,6 +2,27 @@
 
 All notable changes to vLadder are documented here.
 
+## 1.0.0rc5 - 2026-08-04
+
+### Added
+
+- `bounded-cpp-regions-v2` with exact compilation-database ingestion, Clang semantic AST target
+  selection, concrete mangled-symbol provenance, and production LLVM IR extraction.
+- Automatic kernel isolation for `noexcept` pointer, `std::span<float>`, and borrowed
+  `std::vector<float>` views, including state-independent methods and concrete template
+  specializations.
+- Z3 adapter extent obligations, canonical C kernel handoff, C++ source regeneration, and the
+  `vladder cpp inspect|isolate|optimize` CLI and library workflow.
+- Independent C++ fixtures covering executable parity, methods, templates, containers, overloads,
+  RAII, exceptions, synchronization, and external calls.
+
+### Boundaries
+
+- `kernel_isolated_adapter_proved` covers the bounded adapter, not a transformed candidate.
+- `kernel_proved_adapter_bounded` covers the selected local kernel under adapter preconditions;
+  it does not prove owning C++ object, exception, concurrency, Vulkan, OpenUSD, or callback
+  protocols.
+
 ## 1.0.0rc4 - 2026-08-04
 
 ### Added

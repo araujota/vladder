@@ -15,6 +15,7 @@ import yaml
 
 from .candidates import Candidate, generate_candidates
 from .automatic import inspect_automatic_region
+from .cpp_regions import inspect_cpp_region, optimize_cpp_region
 from .capabilities import load_registry
 from .diagnostics import doctor_report
 from .extractor import extract_function
@@ -794,6 +795,38 @@ def automatic_region_command(args: argparse.Namespace) -> int:
     return result
 
 
+def cpp_region_command(args: argparse.Namespace) -> int:
+    source = Path(args.source).resolve()
+    compilation_database = Path(args.compile_commands).resolve()
+    out_dir = Path(args.out_dir).resolve()
+    if args.cpp_command in {"inspect", "isolate"}:
+        report = inspect_cpp_region(
+            source,
+            args.function,
+            compilation_database,
+            out_dir,
+            symbol=args.symbol,
+            command_index=args.command_index,
+        )
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report.get("status") == "supported" else 2
+    return_code, report = optimize_cpp_region(
+        source,
+        args.function,
+        compilation_database,
+        out_dir,
+        symbol=args.symbol,
+        command_index=args.command_index,
+        n=args.n,
+        reps=args.reps,
+        inner=args.inner,
+        cpu=args.cpu,
+        minimum_speedup_pct=args.min_speedup_pct,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return return_code
+
+
 def verify_application_command(args: argparse.Namespace) -> int:
     report = verify_applied_replacement(
         Path(args.report),
@@ -899,6 +932,27 @@ def build_parser() -> argparse.ArgumentParser:
     region_optimize.add_argument("--search-nodes", type=int, default=64)
     region_optimize.add_argument("--search-ms", type=int, default=1000)
     region_optimize.set_defaults(func=automatic_region_command)
+    cpp = sub.add_parser("cpp", help="extract, isolate, prove, and optimize a bounded C++ kernel")
+    cpp_sub = cpp.add_subparsers(dest="cpp_command", required=True)
+    for action, help_text, default_out in (
+        ("inspect", "classify a concrete C++ definition and emit adapter requirements", "vladder-cpp-inspect"),
+        ("isolate", "extract production IR, isolate the kernel, prove its adapter, and regenerate C++", "vladder-cpp-isolation"),
+        ("optimize", "run the strict C kernel optimizer and regenerate a proved C++ realization", "vladder-cpp-out"),
+    ):
+        command = cpp_sub.add_parser(action, help=help_text)
+        command.add_argument("--source", required=True)
+        command.add_argument("--function", required=True, help="source name, optionally class- or namespace-qualified")
+        command.add_argument("--compile-commands", required=True, help="compile_commands.json or its containing directory")
+        command.add_argument("--symbol", help="exact Clang mangled symbol for an overload or template specialization")
+        command.add_argument("--command-index", type=int, help="exact JSON compilation database entry index")
+        command.add_argument("--out-dir", default=default_out)
+        if action == "optimize":
+            command.add_argument("--n", type=int, default=1 << 18)
+            command.add_argument("--reps", type=int, default=25)
+            command.add_argument("--inner", type=int, default=8)
+            command.add_argument("--cpu", type=int, default=0)
+            command.add_argument("--min-speedup-pct", type=float, default=1.0)
+        command.set_defaults(func=cpp_region_command)
     verify_application = sub.add_parser("verify-application", help="verify that an applied source rewrite is the proved generated candidate")
     verify_application.add_argument("--report", required=True, help="perf.json from the promoting optimization run")
     verify_application.add_argument("--source", required=True, help="source file containing the applied replacement")

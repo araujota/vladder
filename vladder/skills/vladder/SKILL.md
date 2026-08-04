@@ -5,8 +5,9 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc4`, grammar `vladder-v1`, lifetime grammar `lifetime-v1`, and
-automatic support matrix `bounded-regions-v1`. Use vLadder as a proof-gated workflow: semantic
+This skill targets vLadder `1.0.0rc5`, grammar `vladder-v1`,
+lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
+`bounded-cpp-regions-v2`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
@@ -78,6 +79,20 @@ Continue with `vladder region optimize` only when the result is `supported`. Whe
 `adapter_required`, implement the named semantic boundary first; do not claim automatic source
 generation or proof for the unsupported production region.
 
+For C++, do not create a hand-written C capsule before trying the semantic frontend. Export the
+production compilation database and run:
+
+```bash
+vladder cpp inspect --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-inspect
+vladder cpp optimize --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-out
+```
+
+Use `--symbol` to select an overload or concrete template specialization. Automatic C++ support
+is restricted to `noexcept` pointer, span, and borrowed vector views in one bounded loop,
+including state-independent methods. Read [cpp-regions.md](references/cpp-regions.md). Never call
+an isolated-kernel Alive2 result proof of RAII, object ownership, exceptions, concurrency,
+Vulkan/OpenUSD behavior, or another external protocol.
+
 ### 3. Select Realization Lifetime And Placement
 
 Before local IR search, ask whether expensive information is constructed too often, retained after
@@ -136,6 +151,11 @@ Read [verification.md](references/verification.md). Inspect:
 - `alive2/*.txt`: canonical-identity or Alive2 refinement result and unsupported operations
 - `benchmark.csv`: all passing, rejected, tied, and regressing candidates
 - `optimized.patch`: present only for a promotable non-baseline winner
+
+For C++ also inspect `cpp-support.json`, `adapter-contract.json`, `adapter-extents.smt2`,
+`provenance.json`, and `cpp-optimization.json`. `kernel_isolated_adapter_proved` is not a proved
+transformed candidate. Require `kernel_proved_adapter_bounded` plus a passing regenerated source
+before considering the local rewrite.
 
 Reject a result when the optimized region is not load-bearing, the confidence interval includes
 the minimum effect, the benchmark changes workload semantics, or the proof excludes production
