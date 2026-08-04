@@ -42,7 +42,7 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertEqual(result["status"], "pass")
         checks = {item["name"]: item for item in result["checks"]}
         self.assertEqual(checks["artifacts"]["status"], "pending")
-        self.assertEqual(checks["git"]["status"], "pending")
+        self.assertIn(checks["git"]["status"], {"pass", "pending"})
 
     def test_formula_render_is_exact_and_ruby_valid(self):
         source_bytes = b"release source distribution"

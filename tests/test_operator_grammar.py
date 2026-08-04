@@ -6,6 +6,7 @@ import unittest
 from vladder.operator_analysis import analyze_operator
 from vladder.operator_grammar import load_operator_grammar, search_operator_graph, transformed_graph_dict
 from vladder.operator_lift import lift_operator_candidates
+from vladder.toolchain import discover_toolchain
 
 
 class OperatorGrammarTests(unittest.TestCase):
@@ -49,7 +50,8 @@ class OperatorGrammarTests(unittest.TestCase):
             adapter = next(candidate for candidate in candidates if candidate.name == "split_plane_adapter_128")
             path = Path(tmp) / "adapter.c"
             path.write_text("#include <stddef.h>\n" + adapter.source + "\n")
-            subprocess.run(["clang-20", "-std=c17", "-Werror", "-fsyntax-only", str(path)], check=True)
+            compiler = discover_toolchain().compiler
+            subprocess.run([compiler, "-std=c17", "-Werror", "-fsyntax-only", str(path)], check=True)
             self.assertIn("pairs <= 128", adapter.preconditions[0])
 
 

@@ -49,9 +49,9 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install --upgrade pip '.[dev]'
       - name: Audit source tree
         run: python scripts/audit_release.py --root .
+      - run: python -m pip install --upgrade pip '.[dev]'
       - name: Build distributions
         run: python -m build
       - name: Validate distributions
