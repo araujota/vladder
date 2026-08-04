@@ -1,0 +1,7 @@
+{
+  "family": "stencil",
+  "rules": [
+    {"id": "stencil_identity", "input": "canonical", "output": "scalar", "preconditions": [], "proof": "graph_identity", "cost": 1.0},
+    {"id": "stencil_unroll_4", "input": "scalar", "output": "unroll4", "preconditions": ["parallel_iteration_space", "no_alias"], "proof": "loop_partition", "cost": 0.72}
+  ]
+}

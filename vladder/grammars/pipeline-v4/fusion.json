@@ -1,0 +1,4 @@
+{"family":"fusion","rules":[
+  {"id":"fuse_private_producer_consumer","effect":"stream_private_temporary","proof":"observer_alias_lifetime","compute_factor":1.01,"critical_path_factor":0.97,"code_size_factor":1.08,"child_cost":16},
+  {"id":"fuse_four_stage_region","effect":"tile_and_fuse","proof":"iteration_domain+observer_alias_numerical","compute_factor":1.03,"critical_path_factor":0.94,"code_size_factor":1.18,"child_cost":48}
+]}

@@ -1,0 +1,1 @@
+{"family":"recurrence","rules":[{"id":"recurrence_identity","input":"canonical","output":"scalar","preconditions":[],"proof":"graph_identity","cost":1.0}]}

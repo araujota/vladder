@@ -1,0 +1,12 @@
+{
+  "family": "kv_pressure",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["kv-attention-high-occupancy"],
+    "target_metric": "attention_bytes_per_token",
+    "expected_direction": "decrease"
+  },
+  "rules": [
+    {"id": "kv_occupancy_dispatch", "requires_nodes": ["Dispatch"], "guard": "kv_occupancy >= 0.75", "cycle_factor": 0.98, "cache_factor": 0.9, "code_factor": 1.1}
+  ]
+}

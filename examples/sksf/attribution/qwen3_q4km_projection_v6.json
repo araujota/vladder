@@ -1,0 +1,72 @@
+{
+  "schema_version": "vladder-attribution-study-v6.0",
+  "id": "qwen3-q4km-native-projection-2026-08-01",
+  "target": "local-ryzen-9-7950x3d-cpu0-7",
+  "workload": "qwen3-4b-q4_k_m-prompt128-generate8",
+  "source_artifact": "qwen3_q4km_projection_profile_v6.json",
+  "source_sha256": "25605169f8922ff51a242951fa5172805d63b0dc301189dcb2b7be5f844a3395",
+  "measurement_class": "instrumented synchronized substage attribution; not ranking evidence",
+  "instrumented": true,
+  "bottlenecks": [
+    {
+      "id": "all-fused-projection-token1",
+      "region": "native_repack.weight_decode_dot_accumulate",
+      "kind": "cycles",
+      "metric": "fused_projection_time_us",
+      "value": 237106,
+      "unit": "summed_microseconds",
+      "runtime_fraction": 0.9726148772263744,
+      "resolution": "fused-region",
+      "confidence": "1944 instrumented samples; causal substages unresolved"
+    },
+    {
+      "id": "ffn-gate-up-fused-token1",
+      "region": "ffn_gate_up.weight_decode_dot_accumulate",
+      "kind": "cycles",
+      "metric": "fused_projection_time_us",
+      "value": 135291,
+      "unit": "summed_microseconds",
+      "runtime_fraction": 0.9865677845595152,
+      "resolution": "fused-region",
+      "confidence": "578 instrumented samples; causal substages unresolved"
+    },
+    {
+      "id": "qkv-fused-token1",
+      "region": "qkv.weight_decode_dot_accumulate",
+      "kind": "cycles",
+      "metric": "fused_projection_time_us",
+      "value": 39678,
+      "unit": "summed_microseconds",
+      "runtime_fraction": 0.9449617757031603,
+      "resolution": "fused-region",
+      "confidence": "720 instrumented samples; causal substages unresolved"
+    },
+    {
+      "id": "activation-prepare-token1",
+      "region": "all_projections.activation_prepare",
+      "kind": "cycles",
+      "metric": "activation_prepare_time_us",
+      "value": 5646,
+      "unit": "summed_microseconds",
+      "runtime_fraction": 0.023160036425987154,
+      "resolution": "substage",
+      "confidence": "thread-0 conversion time"
+    },
+    {
+      "id": "prepare-sync-token1",
+      "region": "all_projections.prepare_sync",
+      "kind": "synchronization",
+      "metric": "prepare_sync_time_us",
+      "value": 1030,
+      "unit": "summed_microseconds",
+      "runtime_fraction": 0.0042250863476384634,
+      "resolution": "substage",
+      "confidence": "thread-0 barrier wait"
+    }
+  ],
+  "limitations": [
+    "The dominant fused region does not separate weight load, metadata decode, unpack, dot product, or accumulation.",
+    "Instrumentation changes synchronization and is prohibited during candidate ranking.",
+    "This study justifies investigating kernel-internal rules but cannot attribute a win to one fused substage."
+  ]
+}

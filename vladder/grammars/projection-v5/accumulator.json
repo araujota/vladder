@@ -1,0 +1,1 @@
+{"family":"accumulator","rules":[{"id":"native_accumulator_banks"},{"id":"paired_sibling_banks","requires_shared_input":true,"cycle_factor":0.98,"code_factor":1.08},{"id":"partial_reduction_tree","changes_accumulation_order":true,"cycle_factor":0.95,"code_factor":1.05}]}

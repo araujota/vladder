@@ -1,0 +1,1 @@
+{"family":"dispatch","rules":[{"id":"static_regime"},{"id":"phase_token_dispatch","guard":"phase and token_count checked","code_factor":1.05},{"id":"context_batch_dispatch","guard":"context and sequence_count checked","code_factor":1.08,"child_cost":96}]}

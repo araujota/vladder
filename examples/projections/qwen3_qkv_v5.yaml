@@ -1,0 +1,38 @@
+complex: qwen3_qkv
+dimensions: {hidden: 2560, q: 4096, kv: 1024, tokens: 1}
+regime: {phase: decode, token_count: 1, sequence_count: 1, context_tokens: 128}
+semantics: {track: exact, accumulation_order: native, max_abs_error: 0.0, allocation: forbidden}
+objective: {primary: portfolio_tokens_per_second, regional_priority: qkv_projection}
+constraints: {max_scratch_bytes: 65536, max_weight_growth_percent: 15}
+bindings:
+  model_sha256: 53d1f4a178ec89d983f02fc7f9dfdc9143253a4844b88022021886ecfc17666f
+  llama_commit: a7a6d0d269c896218b6c78e0933bd6a17519d3f6
+  normalized_graph_hash: f4c5b796b615ae89a09b9c2ce7056c1c98deab5092816d1e6af68a5019f60b24
+  ggml_nodes: {q: "Qcur-{layer}", k: "Kcur-{layer}", v: "Vcur-{layer}"}
+useful_macs: 15728640
+synchronization_count: 6
+nodes:
+  - {id: input, kind: ActivationSource}
+  - {id: norm, kind: Normalize}
+  - {id: pack, kind: ActivationQuantize, attrs: {format: q8_k}}
+  - {id: q_weight, kind: WeightBlockLoad}
+  - {id: k_weight, kind: WeightBlockLoad}
+  - {id: v_weight, kind: WeightBlockLoad}
+  - {id: q_dot, kind: DotAccumulate}
+  - {id: k_dot, kind: DotAccumulate}
+  - {id: v_dot, kind: DotAccumulate}
+  - {id: q_rope, kind: ProjectionConsumer}
+  - {id: k_rope, kind: ProjectionConsumer}
+  - {id: v_kv, kind: KVWrite}
+edges:
+  - {id: input_norm, src: input, dst: norm, shape: [hidden, tokens], quantization: none, element_type: f32, alignment: 32, stride: [1, 2560], layout: contiguous, memory_region: activation, expected_reuse: 1, producer_tile: [2560, 1], consumer_tile: [2560, 1], alias_set: layer_input, lifetime: complex, role: activation}
+  - {id: norm_pack, src: norm, dst: pack, shape: [hidden, tokens], quantization: none, element_type: f32, alignment: 32, stride: [1, 2560], layout: contiguous, memory_region: scratch, expected_reuse: 3, producer_tile: [2560, 1], consumer_tile: [2560, 1], alias_set: norm_output, lifetime: sibling_projections, role: activation}
+  - {id: packed_q, src: pack, dst: q_dot, shape: [hidden, tokens], quantization: q8_k, block_dimensions: [256], element_type: q8_k, logical_bytes: 2920, alignment: 32, stride: [1], layout: q8_k_blocks, memory_region: scratch, expected_reuse: 1, producer_tile: [2560, 1], consumer_tile: [2560, 1], alias_set: packed_activation, lifetime: sibling_projections, role: activation}
+  - {id: packed_k, src: pack, dst: k_dot, shape: [hidden, tokens], quantization: q8_k, block_dimensions: [256], element_type: q8_k, logical_bytes: 2920, alignment: 32, stride: [1], layout: q8_k_blocks, memory_region: scratch, expected_reuse: 1, producer_tile: [2560, 1], consumer_tile: [2560, 1], alias_set: packed_activation, lifetime: sibling_projections, role: activation}
+  - {id: packed_v, src: pack, dst: v_dot, shape: [hidden, tokens], quantization: q8_k, block_dimensions: [256], element_type: q8_k, logical_bytes: 2920, alignment: 32, stride: [1], layout: q8_k_blocks, memory_region: scratch, expected_reuse: 1, producer_tile: [2560, 1], consumer_tile: [2560, 1], alias_set: packed_activation, lifetime: sibling_projections, role: activation}
+  - {id: q_weights, src: q_weight, dst: q_dot, shape: [hidden, q], quantization: q4_k, block_dimensions: [256], element_type: q4_k, logical_bytes: 5898240, alignment: 32, stride: [144], layout: native_gguf, memory_region: model_weights, expected_reuse: 1, producer_tile: [256, 8], consumer_tile: [256, 8], alias_set: q_weights, lifetime: model, role: weight}
+  - {id: k_weights, src: k_weight, dst: k_dot, shape: [hidden, kv], quantization: q4_k, block_dimensions: [256], element_type: q4_k, logical_bytes: 1474560, alignment: 32, stride: [144], layout: native_gguf, memory_region: model_weights, expected_reuse: 1, producer_tile: [256, 8], consumer_tile: [256, 8], alias_set: k_weights, lifetime: model, role: weight}
+  - {id: v_weights, src: v_weight, dst: v_dot, shape: [hidden, kv], quantization: q4_k, block_dimensions: [256], element_type: q4_k, logical_bytes: 1474560, alignment: 32, stride: [144], layout: native_gguf, memory_region: model_weights, expected_reuse: 1, producer_tile: [256, 8], consumer_tile: [256, 8], alias_set: v_weights, lifetime: model, role: weight}
+  - {id: q_output, src: q_dot, dst: q_rope, shape: [q, tokens], quantization: none, element_type: f32, alignment: 32, stride: [1, 4096], layout: contiguous, memory_region: temporary, expected_reuse: 1, producer_tile: [4096, 1], consumer_tile: [4096, 1], alias_set: q_output, lifetime: immediate_consumer, role: temporary}
+  - {id: k_output, src: k_dot, dst: k_rope, shape: [kv, tokens], quantization: none, element_type: f32, alignment: 32, stride: [1, 1024], layout: contiguous, memory_region: temporary, expected_reuse: 1, producer_tile: [1024, 1], consumer_tile: [1024, 1], alias_set: k_output, lifetime: immediate_consumer, role: temporary}
+  - {id: v_output, src: v_dot, dst: v_kv, shape: [kv, tokens], quantization: none, element_type: f32, alignment: 32, stride: [1, 1024], layout: contiguous, memory_region: temporary, expected_reuse: 1, producer_tile: [1024, 1], consumer_tile: [1024, 1], alias_set: v_output, lifetime: immediate_consumer, role: temporary}

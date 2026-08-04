@@ -1,0 +1,4 @@
+{"family":"materialization","rules":[
+  {"id":"stream_single_consumer_tensor","effect":"stream_private_temporary","proof":"single_observer+pipeline_ownership","compute_factor":1.0,"critical_path_factor":0.98,"code_size_factor":1.04,"child_cost":8},
+  {"id":"rematerialize_cheap_value","effect":"rematerialize","proof":"pure_producer+cost_bound","compute_factor":1.06,"critical_path_factor":1.01,"code_size_factor":0.98,"child_cost":12}
+]}

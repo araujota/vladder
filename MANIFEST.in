@@ -1,0 +1,9 @@
+include CHANGELOG.md LICENSE README.md
+recursive-include vladder/grammars *.json
+recursive-include vladder/skills *.md *.yaml
+recursive-include examples *.c *.cpp *.json *.yaml
+recursive-include docs *.md
+recursive-include openspec *.md *.yaml
+recursive-include packaging *.in
+recursive-include scripts *.sh *.py
+prune third_party

@@ -1,0 +1,77 @@
+operator: decode_book_update
+entrypoint: decode_book_update
+language: c17
+inputs:
+  message: {element_type: u8, shape: [18], param_index: 0}
+  length: {element_type: u64, shape: [1], param_index: 1}
+outputs:
+  event: {element_type: u8, shape: [24], param_index: 3}
+  top: {element_type: i32, shape: [4], param_index: 4}
+  changed_mask: {element_type: u64, shape: [1], param_index: 5}
+  status: {element_type: i32, shape: [1], param_index: 6}
+state:
+  book:
+    element_type: i32
+    shape: [136]
+    param_index: 2
+    ownership: single_threaded
+    max_levels: 64
+semantics:
+  integer_overflow: forbidden
+  floating_point: exact
+  allocation: forbidden
+  io: forbidden
+  exceptions: none
+distribution:
+  trace_schema: market_replay_v1
+  message_mix: {add: 0.42, modify: 0.37, delete: 0.21}
+  train_seed: 303
+  held_out_seed: 404
+objective:
+  primary: p99_9_cycles
+  secondary: [median_cycles, branch_misses, l1d_misses]
+constraints:
+  max_code_growth_percent: 100
+  max_stack_bytes: 4096
+specializations:
+  common_add: {value: 1, enforcement: guard}
+  depth_64: {value: 64, enforcement: precondition}
+graph:
+  edge_defaults:
+    element_type: i32
+    shape: [1]
+    stride: [1]
+    alignment: 4
+    alias_set: operator_regions
+    mutability: immutable
+    lifetime: event
+    memory_region: register
+    ordering: data
+    numerical_contract: exact
+  nodes:
+    - {id: load_message, kind: LoadStream, attrs: {stream: message}}
+    - {id: validate_decode, kind: DecodeField, attrs: {schema: market_message_v1}}
+    - {id: materialize_event, kind: Materialize, attrs: {layout_owner: operator, layout: aos}}
+    - {id: read_book, kind: StateRead, attrs: {state: book}}
+    - {id: locate_level, kind: Map, attrs: {op: dense_tick_index}}
+    - {id: write_book, kind: StateWrite, attrs: {state: book}}
+    - {id: best_bid, kind: Reduce, attrs: {op: highest_nonzero, algebra: ordered_integer}}
+    - {id: best_ask, kind: Reduce, attrs: {op: lowest_nonzero, algebra: ordered_integer}}
+    - {id: emit_event, kind: Emit, attrs: {output: event}}
+    - {id: emit_top, kind: Emit, attrs: {output: top}}
+    - {id: emit_mask, kind: Emit, attrs: {output: changed_mask}}
+    - {id: emit_status, kind: Emit, attrs: {output: status}}
+  edges:
+    - {src: load_message, dst: validate_decode, element_type: u8, shape: [18], memory_region: input}
+    - {src: validate_decode, dst: materialize_event, element_type: u8, shape: [24], memory_region: temporary}
+    - {src: materialize_event, dst: locate_level}
+    - {src: read_book, dst: locate_level, memory_region: state}
+    - {src: locate_level, dst: write_book, memory_region: state, mutability: mutable, ordering: state}
+    - {src: write_book, dst: read_book, memory_region: state, mutability: mutable, ordering: next_event}
+    - {src: write_book, dst: best_bid, shape: [64], memory_region: state}
+    - {src: write_book, dst: best_ask, shape: [64], memory_region: state}
+    - {src: materialize_event, dst: emit_event, element_type: u8, shape: [24], memory_region: output, mutability: writeonly}
+    - {src: best_bid, dst: emit_top, shape: [2], memory_region: output, mutability: writeonly}
+    - {src: best_ask, dst: emit_top, shape: [2], memory_region: output, mutability: writeonly}
+    - {src: locate_level, dst: emit_mask, element_type: u64, memory_region: output, mutability: writeonly}
+    - {src: validate_decode, dst: emit_status, memory_region: output, mutability: writeonly}

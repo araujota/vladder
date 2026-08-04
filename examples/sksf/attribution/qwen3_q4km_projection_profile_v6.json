@@ -1,0 +1,18 @@
+{
+  "schema_version": "vladder-attribution-source-fixture-v1",
+  "measurement_class": "instrumented synchronized substage attribution; not ranking evidence",
+  "target": "local-ryzen-9-7950x3d-cpu0-7",
+  "workload": "qwen3-4b-q4_k_m-prompt128-generate8",
+  "samples": 1944,
+  "summed_microseconds": {
+    "activation_prepare": 5646,
+    "prepare_sync": 1030,
+    "fused_projection": 237106,
+    "ffn_gate_up_fused": 135291,
+    "qkv_fused": 39678
+  },
+  "limitations": [
+    "Fixture preserves the measured attribution inputs used by grammar-admission tests.",
+    "It is not a production ranking artifact and does not contain raw per-sample measurements."
+  ]
+}

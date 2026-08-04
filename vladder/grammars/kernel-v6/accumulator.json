@@ -1,0 +1,14 @@
+{
+  "family": "accumulator",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["all-fused-projection-token1"],
+    "target_metric": "fused_projection_time_us",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "four_exact_accumulator_banks", "requires_nodes": ["DotProduct"], "cycle_factor": 0.96, "depth_factor": 0.72, "register_factor": 1.35, "changes_accumulation_order": false},
+    {"id": "pairwise_reduction", "requires_nodes": ["PartialReduction"], "cycle_factor": 0.95, "depth_factor": 0.65, "register_factor": 1.2, "changes_accumulation_order": true}
+  ]
+}

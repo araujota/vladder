@@ -1,0 +1,4 @@
+{"family":"traversal","rules":[
+  {"id":"tile_64_producer_consumer","effect":"tile_and_fuse","proof":"affine_domain+tail","compute_factor":1.01,"critical_path_factor":0.96,"code_size_factor":1.10,"scratch_bytes":1024,"tile":64,"child_cost":24},
+  {"id":"tile_256_producer_consumer","effect":"tile_and_fuse","proof":"affine_domain+tail","compute_factor":0.99,"critical_path_factor":0.95,"code_size_factor":1.12,"scratch_bytes":4096,"tile":256,"child_cost":24}
+]}

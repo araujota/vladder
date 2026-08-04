@@ -1,0 +1,5 @@
+{"family":"fusion","rules":[
+  {"id":"producer_consumer_fusion","requires_nodes":["Materialize"],"effect":"eliminate_private_materialization","proof":"observer_alias_order","cost":{"materialized_bytes_factor":0.0,"instruction_factor":1.12}},
+  {"id":"epilogue_fusion","requires_nodes":["Map","Pack","Emit"],"effect":"fuse_map_pack_emit","proof":"per_output_equivalence","cost":{"materialized_bytes_factor":0.8,"instruction_factor":0.95}},
+  {"id":"reduction_normalization_fusion","requires_nodes":["Reduce","Map"],"effect":"fuse_reduction_normalization","proof":"reduction_state_equivalence","cost":{"materialized_bytes_factor":0.9,"instruction_factor":0.96}}
+]}

@@ -1,0 +1,1 @@
+{"family":"traversal","rules":[{"id":"projection_major"},{"id":"input_block_major_siblings","requires_shared_input":true,"cycle_factor":0.97,"code_factor":1.08},{"id":"weight_block_major_tokens","guard":"token_count >= 2 with fallback","cycle_factor":0.96,"code_factor":1.12}]}

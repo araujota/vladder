@@ -1,0 +1,13 @@
+{
+  "family": "activation_preparation",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["activation-prepare-token1"],
+    "target_metric": "activation_prepare_time_us",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "prepare_activation_once_per_complex", "requires_nodes": ["ActivationQuantize"], "cycle_factor": 0.995, "cache_factor": 0.998}
+  ]
+}

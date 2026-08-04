@@ -1,0 +1,5 @@
+{"family":"schedule","rules":[
+  {"id":"scalar","effect":"schedule_scalar","proof":"identity","cost":{"unroll":1}},
+  {"id":"unroll4","effect":"schedule_unroll4","proof":"loop_partition","cost":{"unroll":4,"code_growth_percent":30}},
+  {"id":"prefetch_2","effect":"schedule_prefetch2","proof":"nonsemantic_hint","cost":{"prefetch_distance":2,"code_growth_percent":10}}
+]}

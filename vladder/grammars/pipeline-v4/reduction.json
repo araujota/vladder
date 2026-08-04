@@ -1,0 +1,4 @@
+{"family":"reduction","rules":[
+  {"id":"online_attention_reduction","effect":"online_reduction","proof":"online_max_sum_invariant+numerical_budget","compute_factor":0.97,"critical_path_factor":0.93,"code_size_factor":1.20,"child_cost":64},
+  {"id":"blocked_hierarchical_reduction","effect":"hierarchical_reduction","proof":"reduction_algebra+numerical_budget","compute_factor":0.96,"critical_path_factor":0.94,"code_size_factor":1.15,"scratch_bytes":2048,"child_cost":40}
+]}

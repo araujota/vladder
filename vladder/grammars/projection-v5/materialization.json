@@ -1,0 +1,1 @@
+{"family":"materialization","rules":[{"id":"full_outputs"},{"id":"cache_sized_output_tile","temporary_factor":0.5,"scratch_bytes":16384,"cycle_factor":0.98,"code_factor":1.05},{"id":"direct_consumer_tile","temporary_factor":0.1,"scratch_bytes":8192,"cycle_factor":0.96,"code_factor":1.10}]}

@@ -1,0 +1,325 @@
+schema_version: vladder-lifetime-manifest-v1
+name: isolated-lifetime-regression-corpus
+domain: architecture-fixtures
+scopes:
+  names:
+    - instruction
+    - function_call
+    - fragment
+    - logical_record
+    - planning_event
+    - update_transaction
+    - notice
+    - frame
+    - scene_generation
+    - connection
+    - process
+    - application
+  containment:
+    - [instruction, function_call]
+    - [function_call, fragment]
+    - [function_call, planning_event]
+    - [function_call, notice]
+    - [fragment, logical_record]
+    - [notice, update_transaction]
+    - [planning_event, scene_generation]
+    - [update_transaction, scene_generation]
+    - [frame, scene_generation]
+    - [logical_record, connection]
+    - [connection, process]
+    - [scene_generation, process]
+    - [function_call, process]
+    - [process, application]
+contract:
+  semantics: exact
+  allocation: permitted_outside_hot_path
+  source_authority: manifest_only
+  trace_authority: cost_and_observed_reuse_only
+  concurrency: immutable_or_single_owner
+  fallback_required: true
+information_items:
+  - id: logical_record_serialized_body
+    source: [validated_logical_record, serialization_schema_v1]
+    representation: canonical_record_body_bytes
+    realization_kind: SerializedBody
+    owner: logical_record_emitter
+    readers: [fragment_emitter]
+    writers: [logical_record_emitter]
+    validity_start: validation_complete
+    invalidation_frontier: logical_record_mutation_or_schema_change
+    final_use_frontier: last_fragment_emitted
+    current:
+      scope: fragment
+      placement: temporary_heap_buffer
+      construction: eager_per_fragment
+      consistency: immutable
+      publication: explicit_publish
+    candidate_scopes: [fragment, logical_record]
+    candidate_placements: [temporary_heap_buffer, immutable_record_cache]
+    consumers:
+      - {id: fragment_emitter, scope: fragment, independent_observer: false}
+    mutations: [logical_record_mutation, serialization_version_change, fragment_index_change, transport_retry]
+    invalidators: [logical_record_mutation, serialization_version_change]
+    non_invalidators: [fragment_index_change, transport_retry]
+    mutation_dependencies: [logical_record_mutation, serialization_version_change]
+    alias_set: record_body
+    byte_size: 4096
+    fallback: serialize_per_fragment
+    proof_class: P1-exact-state-transition
+    traits: [serialized_body, derived]
+    costs: {construction_ns: 2200, access_ns: 25, retention_byte_ns: 0.01, invalidation_ns: 60, transfer_ns: 0}
+    implementation:
+      permitted_files: [fixtures/record_emitter.cpp, fixtures/record_emitter_test.cpp]
+      lifecycle_hooks: [after_record_validation, before_fragment_emission, on_record_mutation]
+    expected_family: serialization-body-reuse
+    benchmark_case: serialized_body
+
+  - id: immutable_scene_index
+    source: [scene_topology, mesh_identity]
+    representation: mesh_identity_to_node_index
+    realization_kind: PersistentIndex
+    owner: scene_generation
+    readers: [planner]
+    writers: [scene_generation]
+    validity_start: scene_generation_begin
+    invalidation_frontier: topology_mutation_or_generation_rollover
+    final_use_frontier: scene_generation_end
+    current:
+      scope: planning_event
+      placement: planner_heap
+      construction: eager_per_planning_event
+      consistency: generation_atomic
+      publication: explicit_publish
+    candidate_scopes: [planning_event, scene_generation]
+    candidate_placements: [planner_heap, generation_object]
+    consumers:
+      - {id: planner, scope: planning_event, independent_observer: false}
+    mutations: [topology_mutation, transform_update]
+    invalidators: [topology_mutation]
+    non_invalidators: [transform_update]
+    mutation_dependencies: [topology_mutation]
+    alias_set: scene_topology
+    byte_size: 32768
+    fallback: rebuild_index_for_planning_event
+    proof_class: P1-exact-state-transition
+    traits: [derived]
+    costs: {construction_ns: 18000, access_ns: 40, retention_byte_ns: 0.02, invalidation_ns: 400, transfer_ns: 0}
+    implementation:
+      permitted_files: [fixtures/scene_generation.cpp, fixtures/planner.cpp]
+      lifecycle_hooks: [on_generation_begin, on_topology_mutation, on_generation_end]
+    expected_family: repeated-derivation-elimination
+    benchmark_case: scene_index
+
+  - id: temporary_gpu_compositor_image
+    source: [decoded_frame]
+    representation: compositor_input_image
+    realization_kind: GPUResidentState
+    owner: frame_pipeline
+    readers: [presentation_dispatch]
+    writers: [decode_dispatch]
+    validity_start: decode_complete
+    invalidation_frontier: frame_retire
+    final_use_frontier: presentation_dispatch_complete
+    current:
+      scope: frame
+      placement: gpu_temporary
+      construction: eager_after_decode
+      consistency: single_threaded
+      publication: explicit_publish
+    candidate_scopes: [frame]
+    candidate_placements: [gpu_temporary, presentation_image]
+    consumers:
+      - {id: presentation_dispatch, scope: frame, independent_observer: false}
+    mutations: [decoded_frame_replacement]
+    invalidators: [decoded_frame_replacement]
+    non_invalidators: []
+    mutation_dependencies: [decoded_frame_replacement]
+    alias_set: frame_image
+    byte_size: 1048576
+    fallback: allocate_and_dispatch_compositor_image
+    proof_class: P1-exact-state-transition-plus-gpu-adapter
+    traits: [unobserved_intermediate]
+    costs: {construction_ns: 42000, access_ns: 1500, retention_byte_ns: 0.0, invalidation_ns: 1000, transfer_ns: 0}
+    implementation:
+      permitted_files: [fixtures/gpu_frame_pipeline.cpp]
+      lifecycle_hooks: [after_decode, before_present, on_frame_retire, on_device_loss]
+    expected_family: intermediate-realization-elimination
+    benchmark_case: gpu_intermediate
+
+  - id: changed_path_vector
+    source: [update_notice_changed_paths]
+    representation: immutable_path_vector
+    realization_kind: SharedImmutableView
+    owner: update_notice
+    readers: [cache_consumer, planner_consumer, observer_consumer]
+    writers: [update_notice]
+    validity_start: notice_constructed
+    invalidation_frontier: notice_destroyed
+    final_use_frontier: last_notice_consumer
+    current:
+      scope: function_call
+      placement: consumer_local_vector
+      construction: eager_per_consumer
+      consistency: immutable
+      publication: explicit_publish
+    candidate_scopes: [function_call, notice]
+    candidate_placements: [consumer_local_vector, shared_notice_storage]
+    consumers:
+      - {id: cache_consumer, scope: function_call, independent_observer: false}
+      - {id: planner_consumer, scope: function_call, independent_observer: false}
+      - {id: observer_consumer, scope: function_call, independent_observer: false}
+    mutations: [notice_replacement]
+    invalidators: [notice_replacement]
+    non_invalidators: []
+    mutation_dependencies: [notice_replacement]
+    alias_set: changed_paths
+    byte_size: 65536
+    fallback: reconstruct_consumer_local_vector
+    proof_class: P1-exact-state-transition
+    traits: [derived]
+    costs: {construction_ns: 8000, access_ns: 20, retention_byte_ns: 0.005, invalidation_ns: 20, transfer_ns: 0}
+    implementation:
+      permitted_files: [fixtures/update_notice.cpp, fixtures/update_consumers.cpp]
+      lifecycle_hooks: [on_notice_construct, on_notice_destroy]
+    expected_family: repeated-derivation-elimination
+    benchmark_case: shared_changed_paths
+
+  - id: one_shot_retained_lookup
+    source: [request_fields]
+    representation: one_shot_lookup_table
+    realization_kind: MaterializedBuffer
+    owner: request_processor
+    readers: [request_consumer]
+    writers: [request_processor]
+    validity_start: process_start
+    invalidation_frontier: process_end
+    final_use_frontier: request_consumer_complete
+    current:
+      scope: process
+      placement: process_heap
+      construction: lazy_first_use
+      consistency: single_threaded
+      publication: explicit_publish
+    candidate_scopes: [function_call, process]
+    candidate_placements: [process_heap, stack]
+    consumers:
+      - {id: request_consumer, scope: function_call, independent_observer: false}
+    mutations: [request_replacement]
+    invalidators: [request_replacement]
+    non_invalidators: []
+    mutation_dependencies: [request_replacement]
+    alias_set: request_lookup
+    byte_size: 131072
+    fallback: retain_process_lookup
+    proof_class: P1-exact-state-transition
+    traits: []
+    costs: {construction_ns: 12000, access_ns: 30, retention_byte_ns: 0.2, invalidation_ns: 50, transfer_ns: 0}
+    implementation:
+      permitted_files: [fixtures/request_processor.cpp]
+      lifecycle_hooks: [before_request, after_request]
+    expected_family: intermediate-realization-elimination
+
+  - id: receiver_decoded_state
+    source: [wire_schema, received_record]
+    representation: decoded_receiver_state
+    realization_kind: DecodedState
+    owner: receiver_connection
+    readers: [receiver_stage]
+    writers: [decoder]
+    validity_start: record_decode_complete
+    invalidation_frontier: record_version_change_or_disconnect
+    final_use_frontier: connection_close
+    current:
+      scope: function_call
+      placement: cpu_ingress
+      construction: eager_after_receive
+      consistency: single_writer_multi_reader
+      publication: explicit_publish
+    candidate_scopes: [function_call, connection]
+    candidate_placements: [cpu_ingress, receiver_cache]
+    consumers:
+      - {id: receiver_stage, scope: function_call, independent_observer: false}
+    mutations: [record_version_change, transport_retry]
+    invalidators: [record_version_change]
+    non_invalidators: [transport_retry]
+    mutation_dependencies: [record_version_change]
+    alias_set: decoded_receiver
+    byte_size: 131072
+    fallback: decode_for_each_receiver_stage
+    proof_class: P1-exact-state-transition
+    traits: []
+    costs: {construction_ns: 1000, access_ns: 30, retention_byte_ns: 0.01, invalidation_ns: 80, transfer_ns: 6000}
+    implementation:
+      permitted_files: [fixtures/receiver.cpp]
+      lifecycle_hooks: [on_decode_complete, on_version_change, on_disconnect]
+    expected_family: placement-resident-state
+    benchmark_case: receiver_residency
+
+  - id: mutable_fragment_validation
+    source: [mutable_fragment]
+    representation: validation_result
+    realization_kind: CachedValidation
+    owner: fragment_validator
+    readers: [fragment_emitter]
+    writers: [fragment_validator]
+    validity_start: fragment_validation_complete
+    invalidation_frontier: fragment_edit
+    final_use_frontier: fragment_emit_complete
+    current:
+      scope: fragment
+      placement: stack
+      construction: eager_per_fragment
+      consistency: single_threaded
+      publication: explicit_publish
+    candidate_scopes: [fragment, logical_record]
+    candidate_placements: [stack, immutable_record_cache]
+    consumers:
+      - {id: fragment_emitter, scope: fragment, independent_observer: false}
+    mutations: [fragment_edit]
+    invalidators: [fragment_edit]
+    non_invalidators: []
+    mutation_dependencies: [fragment_edit]
+    alias_set: fragment_validation
+    byte_size: 8
+    fallback: validate_each_fragment
+    proof_class: P1-exact-state-transition
+    traits: [derived]
+    costs: {construction_ns: 500, access_ns: 5, retention_byte_ns: 0.0, invalidation_ns: 5, transfer_ns: 0}
+    implementation:
+      permitted_files: [fixtures/fragment_validator.cpp]
+      lifecycle_hooks: [before_fragment_emit, on_fragment_edit]
+
+  - id: independently_observed_intermediate
+    source: [producer_output]
+    representation: audited_intermediate
+    realization_kind: MaterializedBuffer
+    owner: producer
+    readers: [consumer, audit_observer]
+    writers: [producer]
+    validity_start: producer_complete
+    invalidation_frontier: transaction_end
+    final_use_frontier: audit_complete
+    current:
+      scope: update_transaction
+      placement: transaction_arena
+      construction: eager
+      consistency: immutable
+      publication: explicit_publish
+    candidate_scopes: [update_transaction]
+    candidate_placements: [transaction_arena]
+    consumers:
+      - {id: consumer, scope: update_transaction, independent_observer: false}
+      - {id: audit_observer, scope: update_transaction, independent_observer: true}
+    mutations: [producer_reexecution]
+    invalidators: [producer_reexecution]
+    non_invalidators: []
+    mutation_dependencies: [producer_reexecution]
+    alias_set: audited_intermediate
+    byte_size: 1024
+    fallback: retain_audited_intermediate
+    proof_class: P1-exact-state-transition
+    traits: [unobserved_intermediate]
+    costs: {construction_ns: 1000, access_ns: 10, retention_byte_ns: 0.0, invalidation_ns: 10, transfer_ns: 0}
+    implementation:
+      permitted_files: [fixtures/audited_pipeline.cpp]
+      lifecycle_hooks: [after_producer, after_audit]

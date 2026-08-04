@@ -1,0 +1,252 @@
+{
+  "version": "vladder-v1",
+  "language_scope": [
+    "C99",
+    "C11",
+    "C17",
+    "restricted C++20"
+  ],
+  "contract_dimensions": [
+    "integer overflow",
+    "floating-point ordering and tolerance",
+    "pointer provenance and aliasing",
+    "object bounds and lifetime",
+    "volatile and observable side effects",
+    "exceptions and termination",
+    "thread ownership and memory order",
+    "alignment and target ISA",
+    "input shape and distribution",
+    "semantic validity and invalidation",
+    "realization lifetime and placement"
+  ],
+  "families": [
+    {
+      "id": "expression-algebra",
+      "title": "Expression and bit-vector algebra",
+      "status": "operational",
+      "concerns": ["scalar DAG shape", "constant and strength reduction", "boolean and bit-vector identities"],
+      "rules": ["constant-fold", "identity-elimination", "strength-reduce", "select-normalize", "bitvector-canonicalize", "bounded-reassociate"],
+      "contract_facts": ["integer overflow policy", "floating-point policy", "operand width", "poison and undefined-behavior policy"],
+      "proof_strategies": ["Z3 bit-vector equivalence", "Alive2 translation validation", "adversarial differential tests"],
+      "cost_signals": ["instruction count", "critical path", "execution-port pressure", "code size"],
+      "lowerer": "vladder.lowerers:ExpressionAlgebraLowerer",
+      "source_routes": {
+        "constant-fold": "vladder.grammar_search:search_candidates",
+        "identity-elimination": "vladder.grammar_search:search_candidates",
+        "strength-reduce": "vladder.graph_candidates:graph_candidates",
+        "select-normalize": "vladder.graph_candidates:graph_candidates",
+        "bitvector-canonicalize": "vladder.grammar_search:search_candidates",
+        "bounded-reassociate": "vladder.grammar_search:search_candidates"
+      }
+    },
+    {
+      "id": "control-flow",
+      "title": "Control flow and predication",
+      "status": "operational",
+      "concerns": ["branches", "conditional select", "masks", "dispatch order", "common-case specialization"],
+      "rules": ["branch-to-select", "select-to-mask", "predicate-aggregate", "rare-path-isolate", "guard-hoist", "dispatch-reorder"],
+      "contract_facts": ["side-effect freedom", "exception policy", "branch distribution", "speculation safety"],
+      "proof_strategies": ["path-condition SMT", "Alive2", "representative and adversarial branch traces"],
+      "cost_signals": ["branch misses", "dependency depth", "instruction count", "tail latency"],
+      "lowerer": "vladder.lowerers:ControlFlowLowerer",
+      "source_routes": {
+        "branch-to-select": "vladder.graph_candidates:graph_candidates",
+        "select-to-mask": "vladder.grammar_search:search_candidates",
+        "predicate-aggregate": "vladder.operator_grammar:search_operator_graph",
+        "rare-path-isolate": "vladder.operator_grammar:search_operator_graph",
+        "guard-hoist": "vladder.operator_grammar:search_operator_graph",
+        "dispatch-reorder": "vladder.operator_grammar:search_operator_graph"
+      }
+    },
+    {
+      "id": "loop-schedule",
+      "title": "Loop structure and schedule",
+      "status": "operational",
+      "concerns": ["unrolling", "tiling", "interchange", "fusion and fission", "software pipelining"],
+      "rules": ["unroll", "tile", "interchange", "fuse", "fission", "peel-tail", "pipeline-blocks"],
+      "contract_facts": ["iteration independence", "dependence distance", "trip-count bounds", "observable ordering"],
+      "proof_strategies": ["dependence legality", "bounded memory-footprint SMT", "Alive2 for lowered loops", "sequence differential tests"],
+      "cost_signals": ["loop overhead", "vectorization", "cache reuse", "register pressure", "code growth"],
+      "lowerer": "vladder.lowerers:LoopScheduleLowerer",
+      "source_routes": {
+        "unroll": "vladder.grammar_search:search_candidates",
+        "tile": "vladder.grammar_search:search_candidates",
+        "interchange": "vladder.operator_grammar:search_operator_graph",
+        "fuse": "vladder.operator_grammar:search_operator_graph",
+        "fission": "vladder.operator_grammar:search_operator_graph",
+        "peel-tail": "vladder.grammar_search:search_candidates",
+        "pipeline-blocks": "vladder.pipeline_search:search_pipeline_graph"
+      }
+    },
+    {
+      "id": "memory-alias",
+      "title": "Memory access, aliasing, and alignment",
+      "status": "operational",
+      "concerns": ["pointer footprints", "load/store ordering", "alignment", "restrict qualification", "gather and scatter"],
+      "rules": ["prove-nonalias", "add-restrict", "alignment-assume", "load-hoist", "store-sink", "prefetch", "address-strength-reduce"],
+      "contract_facts": ["pointer provenance", "object bounds", "alias sets", "alignment", "lifetime", "volatile policy"],
+      "proof_strategies": ["Z3 pointer-footprint obligations", "structural legality", "sanitizer differential tests", "Alive2"],
+      "cost_signals": ["bytes transferred", "cache misses", "TLB misses", "address-generation pressure", "load-use latency"],
+      "lowerer": "vladder.lowerers:MemoryAliasLowerer",
+      "source_routes": {
+        "prove-nonalias": "vladder.memory_proofs:prove_memory_safety",
+        "add-restrict": "vladder.grammar_search:search_candidates",
+        "alignment-assume": "vladder.grammar_search:search_candidates",
+        "load-hoist": "vladder.grammar_search:search_candidates",
+        "store-sink": "vladder.grammar_search:search_candidates",
+        "prefetch": "vladder.grammar_search:search_candidates",
+        "address-strength-reduce": "vladder.grammar_search:search_candidates"
+      }
+    },
+    {
+      "id": "reductions-scans",
+      "title": "Reductions, scans, and recurrences",
+      "status": "operational",
+      "concerns": ["accumulator topology", "pairwise trees", "prefix scans", "bounded recurrences", "online reductions"],
+      "rules": ["multi-accumulator", "pairwise-tree", "block-reduce", "hierarchical-scan", "online-max-sum", "incremental-state"],
+      "contract_facts": ["associativity", "commutativity", "overflow", "floating-point tolerance", "determinism"],
+      "proof_strategies": ["algebra-specific SMT", "bounded sequence equivalence", "high-precision differential reference"],
+      "cost_signals": ["recurrence latency", "SIMD utilization", "reduction depth", "register pressure"],
+      "lowerer": "vladder.lowerers:ReductionScanLowerer",
+      "source_routes": {
+        "multi-accumulator": "vladder.operator_lift:lift_operator_candidates",
+        "pairwise-tree": "vladder.operator_lift:lift_operator_candidates",
+        "block-reduce": "vladder.grammar_search:search_candidates",
+        "hierarchical-scan": "vladder.grammar_search:search_candidates",
+        "online-max-sum": "vladder.operator_lift:lift_operator_candidates",
+        "incremental-state": "vladder.grammar_search:search_candidates"
+      }
+    },
+    {
+      "id": "layout-representation",
+      "title": "Data layout and representation",
+      "status": "experimental",
+      "concerns": ["AoS and SoA", "blocking", "interleaving", "packing", "scratch layout", "boundary adapters"],
+      "rules": ["aos-to-soa", "interleave-pairs", "split-planes", "block-layout", "pad-alignment", "pack-fields", "layout-adapter"],
+      "contract_facts": ["layout ownership", "consumer coverage", "ABI boundary", "padding interpretation", "serialization"],
+      "proof_strategies": ["bijection and inverse-layout proof", "byte-stream hashes", "consumer differential tests"],
+      "cost_signals": ["cache-line utilization", "reuse distance", "working-set size", "conversion amortization"],
+      "lowerer": "vladder.lowerers:LayoutRepresentationLowerer",
+      "source_routes": {
+        "interleave-pairs": "vladder.projection_layout:interleave_sibling_blocks",
+        "layout-adapter": "vladder.operator_lift:lift_operator_candidates"
+      }
+    },
+    {
+      "id": "materialization-fusion",
+      "title": "Fusion and materialization",
+      "status": "operational",
+      "concerns": ["producer-consumer fusion", "temporary elimination", "tile streaming", "epilogue fusion"],
+      "rules": ["loop-fuse", "producer-consumer-fuse", "epilogue-fuse", "tile-materialize", "scratch-reuse", "recompute-cheap-value"],
+      "contract_facts": ["no intermediate observers", "alias legality", "lifetime", "side effects", "numeric ordering"],
+      "proof_strategies": ["OperatorGraph legality", "multi-output differential tests", "bounded SMT", "source-to-IR validation"],
+      "cost_signals": ["temporary bytes", "cache round trips", "allocation count", "regional latency"],
+      "lowerer": "vladder.lowerers:MaterializationFusionLowerer",
+      "source_routes": {
+        "loop-fuse": "vladder.operator_lift:lift_operator_candidates",
+        "producer-consumer-fuse": "vladder.operator_lift:lift_operator_candidates",
+        "epilogue-fuse": "vladder.operator_lift:lift_operator_candidates",
+        "tile-materialize": "vladder.pipeline_search:search_pipeline_graph",
+        "scratch-reuse": "vladder.pipeline_search:search_pipeline_graph",
+        "recompute-cheap-value": "vladder.pipeline_search:search_pipeline_graph"
+      }
+    },
+    {
+      "id": "state-window",
+      "title": "State, windows, and bounded transitions",
+      "status": "experimental",
+      "concerns": ["bounded mutable state", "rolling windows", "incremental versus recomputed state", "state representation"],
+      "rules": ["ring-window", "incremental-update", "state-cache", "derived-state", "eager-lazy-maintenance", "change-mask-output"],
+      "contract_facts": ["state ownership", "transition invariants", "capacity", "event ordering", "initial state"],
+      "proof_strategies": ["transition-system SMT", "stateful sequence differential tests", "invariant checks"],
+      "cost_signals": ["state bytes", "branch entropy", "tail latency", "cache locality"],
+      "lowerer": "vladder.lowerers:StateWindowLowerer",
+      "source_routes": {
+        "incremental-update": "vladder.grammar_search:search_candidates"
+      }
+    },
+    {
+      "id": "concurrency-memory-order",
+      "title": "Concurrency and memory ordering",
+      "status": "modeled",
+      "concerns": ["single-owner regions", "SPSC rings", "atomic memory order", "commit and rollback"],
+      "rules": ["spsc-index-layout", "release-acquire-pair", "producer-batch", "consumer-batch", "tentative-commit"],
+      "contract_facts": ["thread topology", "happens-before", "object lifetime", "atomic width", "progress requirement"],
+      "proof_strategies": ["C++ memory-model litmus tests", "bounded model checking", "stress differential tests"],
+      "cost_signals": ["synchronization count", "cache invalidation", "false sharing", "p99.99 latency"],
+      "lowerer": "vladder.lowerers:ConcurrencyMemoryOrderLowerer",
+      "source_routes": {}
+    },
+    {
+      "id": "specialization-dispatch",
+      "title": "Guarded specialization and dispatch",
+      "status": "experimental",
+      "concerns": ["shape specialization", "ISA dispatch", "alignment paths", "distribution-aware fast paths"],
+      "rules": ["fixed-dimension", "trip-count-bucket", "isa-guard", "alignment-guard", "common-case-guard", "portfolio-plan"],
+      "contract_facts": ["guard completeness", "fallback semantics", "deployment preconditions", "input distribution"],
+      "proof_strategies": ["guard coverage SMT", "per-path equivalence", "held-out distribution tests"],
+      "cost_signals": ["dispatch overhead", "code size", "i-cache pressure", "portfolio score"],
+      "lowerer": "vladder.lowerers:SpecializationDispatchLowerer",
+      "source_routes": {
+        "portfolio-plan": "vladder.weight_traversal_search:synthesize_dispatch"
+      }
+    },
+    {
+      "id": "hardware-codegen",
+      "title": "Hardware-aware code-generation choices",
+      "status": "operational",
+      "concerns": ["SIMD width", "unroll factor", "prefetch distance", "compiler flags", "instruction selection"],
+      "rules": ["scalar", "sse", "avx2", "avx512", "unroll-factor", "prefetch-distance", "compiler-variant"],
+      "contract_facts": ["target ISA", "OS vector state", "alignment", "fallback availability"],
+      "proof_strategies": ["CPUID guard validation", "Alive2 before target lowering", "differential execution"],
+      "cost_signals": ["llvm-mca throughput", "instruction mix", "port pressure", "frequency effects", "code size"],
+      "lowerer": "vladder.lowerers:HardwareCodegenLowerer",
+      "source_routes": {
+        "scalar": "vladder.candidates:generate_candidates",
+        "sse": "vladder.candidates:generate_candidates",
+        "avx2": "vladder.candidates:generate_candidates",
+        "avx512": "vladder.candidates:generate_candidates",
+        "unroll-factor": "vladder.candidates:generate_candidates",
+        "prefetch-distance": "vladder.grammar_search:search_candidates",
+        "compiler-variant": "vladder.candidates:generate_candidates"
+      }
+    },
+    {
+      "id": "operator-pipeline",
+      "title": "Hierarchical operator and pipeline organization",
+      "status": "research",
+      "concerns": ["multi-stage graphs", "cross-operator traversal", "weight reuse", "runtime planning"],
+      "rules": ["operator-compose", "pipeline-tile", "weight-major-traversal", "token-tile", "sequence-tile", "runtime-dispatch-plan"],
+      "contract_facts": ["graph ownership", "shape compatibility", "state boundaries", "latency constraints", "workload portfolio"],
+      "proof_strategies": ["hierarchical structural proof", "stateful differential testing", "model-level verification"],
+      "cost_signals": ["useful work per byte", "tokens per second", "temporary traffic", "synchronization", "tail latency"],
+      "lowerer": "vladder.lowerers:OperatorPipelineLowerer",
+      "source_routes": {
+        "operator-compose": "vladder.operator_lift:lift_operator_candidates",
+        "pipeline-tile": "vladder.pipeline_search:search_pipeline_graph",
+        "weight-major-traversal": "vladder.weight_traversal_search:search_weight_traversal_graph",
+        "token-tile": "vladder.weight_traversal_search:search_weight_traversal_graph",
+        "sequence-tile": "vladder.weight_traversal_search:search_weight_traversal_graph",
+        "runtime-dispatch-plan": "vladder.weight_traversal_search:synthesize_dispatch"
+      }
+    },
+    {
+      "id": "lifetime-realization",
+      "title": "Semantic realization lifetime and placement",
+      "status": "experimental",
+      "concerns": ["realization frequency", "validity and final-use frontiers", "retention", "invalidation", "placement", "transfer reuse"],
+      "rules": ["repeated-derivation-elimination", "serialization-body-reuse", "immutable-mutable-projection-split", "intermediate-realization-elimination", "placement-resident-state"],
+      "contract_facts": ["semantic source authority", "scope containment", "complete mutation classification", "ownership and consistency", "publication and retirement", "fallback equivalence"],
+      "proof_strategies": ["structural lifetime legality", "Z3 bounded state transitions", "stateful differential replay", "protocol adapter where required", "Alive2 for local helpers only"],
+      "cost_signals": ["realization redundancy", "retention waste", "transfer redundancy", "construction cost", "persistent bytes", "invalidation cost"],
+      "lowerer": "vladder.lowerers:LifetimeRealizationLowerer",
+      "source_routes": {
+        "repeated-derivation-elimination": "vladder.lifetime_workflow:synthesize_lifetime_flow",
+        "serialization-body-reuse": "vladder.lifetime_workflow:synthesize_lifetime_flow",
+        "immutable-mutable-projection-split": "vladder.lifetime_workflow:synthesize_lifetime_flow",
+        "intermediate-realization-elimination": "vladder.lifetime_workflow:synthesize_lifetime_flow",
+        "placement-resident-state": "vladder.lifetime_workflow:synthesize_lifetime_flow"
+      }
+    }
+  ]
+}

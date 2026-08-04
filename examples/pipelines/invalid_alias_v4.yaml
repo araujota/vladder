@@ -1,0 +1,10 @@
+pipeline: invalid_alias
+dimensions: {n: 16}
+semantics: {max_pipeline_abs_error: 0.0}
+objective: {primary: latency}
+constraints: {max_scratch_bytes: 1024}
+nodes:
+  - {id: a, operator: map}
+  - {id: b, operator: map}
+edges:
+  - {id: unknown_alias, src: a, dst: b, element_type: f32, shape: [n], alias_set: unknown, ownership: pipeline, observers: [b], materialization: streamed, cache_target: register}

@@ -1,0 +1,1 @@
+{"family":"weight_layout","rules":[{"id":"native_gguf","layout":"native_gguf"},{"id":"native_cpu_repack","layout":"native_cpu_repack","cycle_factor":0.97},{"id":"interleaved_sibling_blocks","layout":"interleaved_sibling_blocks","requires_shared_input":true,"cycle_factor":0.95,"code_factor":1.10}]}

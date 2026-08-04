@@ -1,0 +1,43 @@
+name: qwen3_q4km_weight_reuse_v9
+model:
+  path: /mnt/disk-1tb/models/vladder-qwen3-4b/Qwen3-4B-Q4_K_M.gguf
+  sha256: 53d1f4a178ec89d983f02fc7f9dfdc9143253a4844b88022021886ecfc17666f
+  size_bytes: 2491323904
+  parameters: 4022468096
+target:
+  cpu: AMD Ryzen 9 7950X3D
+  cpu_list: 0-7
+  threads: 8
+  llama_commit: a7a6d0d269c896218b6c78e0933bd6a17519d3f6
+kernel:
+  gemv: ggml_gemv_q4_K_8x8_q8_K
+  gemm: ggml_gemm_q4_K_8x8_q8_K
+  gemm_row_group: 4
+  input_dimension: 2560
+  output_dimension: 9728
+  regional_weight_bytes: 14008320
+semantics:
+  weight_format: Q4_K
+  activation_format: Q8_K
+  numerical_contract: E1
+  sequence_state: isolated
+  allocation: forbidden_hot_path
+  speculative_enabled: false
+grammar:
+  token_tiles: [1, 2, 4, 8, 16]
+  sequence_tiles: [1, 2, 4, 8]
+  projection_sharing: [independent, gate_up, qkv, logits]
+  traversals: [output_major, weight_major, token_major, mixed]
+  runtime_policies: [prompt, decode, mixed, continuous_batch, latency_first, throughput_first]
+  speculative: [false, true]
+portfolio:
+  interactive: {weight: 0.30, metric: generated_tokens_per_second, minimum_relative_performance: 0.99}
+  prompt: {weight: 0.20, metric: prompt_tokens_per_second, minimum_relative_performance: 0.99}
+  concurrent: {weight: 0.35, metric: aggregate_generated_tokens_per_second, minimum_relative_performance: 0.99}
+  kv_pressure: {weight: 0.15, metric: generated_tokens_per_second, minimum_relative_performance: 0.98}
+constraints:
+  interactive_min_relative_performance: 0.99
+  minimum_portfolio_improvement_percent: 5
+  max_queue_delay_us: 1000
+  exact_outputs: true
+  profiler_during_ranking: false

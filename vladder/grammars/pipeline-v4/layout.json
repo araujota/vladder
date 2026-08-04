@@ -1,0 +1,4 @@
+{"family":"layout","rules":[
+  {"id":"head_major_blocking","effect":"change_layout","proof":"boundary_adapters+all_consumers","from_layouts":["sequence_major","contiguous"],"compute_factor":0.98,"critical_path_factor":0.98,"code_size_factor":1.14,"child_cost":20},
+  {"id":"quant_block_interleave","effect":"change_layout","proof":"pack_unpack_bijection+all_consumers","from_layouts":["quant_block"],"compute_factor":0.97,"critical_path_factor":0.99,"code_size_factor":1.16,"child_cost":28}
+]}

@@ -1,0 +1,4 @@
+{"family":"specialization","rules":[
+  {"id":"declared_dimension","requires_specialization":true,"effect":"fixed_dimension_guard","proof":"guard_partition","cost":{"expected_branch_factor":0.05}},
+  {"id":"declared_common_case","requires_specialization":true,"effect":"common_case_guard","proof":"guard_partition","cost":{"expected_branch_factor":0.2}}
+]}

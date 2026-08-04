@@ -1,0 +1,4 @@
+{"family":"layout","rules":[
+  {"id":"aos_to_soa","requires_any_layout":["aos"],"effect":"layout_soa","proof":"adapter_bijection","cost":{"stream_bytes_factor":1.0,"address_factor":0.8}},
+  {"id":"interleaved_to_split","requires_any_layout":["interleaved","interleaved_pairs"],"effect":"layout_split","proof":"pair_bijection","cost":{"stream_bytes_factor":1.0,"shuffle_factor":0.7}}
+]}

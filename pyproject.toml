@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vladder"
+version = "1.0.0rc4"
+description = "Verified hardware-aware information-flow superoptimization for C and C++"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "vLadder contributors"}]
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["superoptimization", "LLVM", "Alive2", "Z3", "C", "C++", "performance"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: C",
+  "Programming Language :: C++",
+  "Topic :: Software Development :: Compilers",
+]
+dependencies = [
+  "PyYAML>=6.0,<7",
+  "z3-solver>=4.12,<5",
+]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2,<2",
+  "pytest>=8,<9",
+  "tomli>=2,<3; python_version < '3.11'",
+  "twine>=6,<7",
+]
+
+[project.scripts]
+vladder = "vladder.cli:main"
+silicontune = "vladder.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["vladder*"]
+
+[tool.setuptools.package-data]
+vladder = [
+  "grammars/**/*.json",
+  "grammars/**/*.yaml",
+  "skills/**/*.md",
+  "skills/**/*.yaml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

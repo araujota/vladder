@@ -1,0 +1,40 @@
+{
+  "version": "lifetime-v1",
+  "authority": {
+    "semantic_validity": "manifest contract",
+    "cost_and_observed_reuse": "runtime trace",
+    "rule": "observed non-mutation never establishes an invariant"
+  },
+  "families": [
+    {
+      "id": "repeated-derivation-elimination",
+      "direction": "extend",
+      "trigger": "realization redundancy above one with a contract-authorized containing scope",
+      "proofs": ["derivation", "reuse preservation", "invalidation completeness", "retirement"]
+    },
+    {
+      "id": "serialization-body-reuse",
+      "direction": "split-and-extend",
+      "trigger": "invariant body repeated inside per-emission envelopes",
+      "proofs": ["canonical body bytes", "envelope/body identity", "schema invalidation"]
+    },
+    {
+      "id": "immutable-mutable-projection-split",
+      "direction": "split",
+      "trigger": "representation depends on a strict subset of declared mutations",
+      "proofs": ["projection derivation", "dependency completeness", "publication"]
+    },
+    {
+      "id": "intermediate-realization-elimination",
+      "direction": "shorten-or-eliminate",
+      "trigger": "no independent observer or retention beyond final use",
+      "proofs": ["observer freedom", "consumer equivalence", "retirement safety"]
+    },
+    {
+      "id": "placement-resident-state",
+      "direction": "move-and-extend",
+      "trigger": "equivalent transfer redundancy with a contract-authorized consumer placement",
+      "proofs": ["version identity", "visibility and ordering", "device or owner fallback"]
+    }
+  ]
+}

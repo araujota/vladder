@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-04
+goal: Ship a reproducible release candidate and validate its
+  install-to-optimization workflow on NeuralFusion.

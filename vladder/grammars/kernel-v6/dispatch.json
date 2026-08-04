@@ -1,0 +1,13 @@
+{
+  "family": "dispatch",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["all-fused-projection-token1"],
+    "target_metric": "fused_projection_time_us",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "guard_token_count_regime", "requires_nodes": ["Dispatch"], "cycle_factor": 1.0, "code_factor": 1.08}
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "family": "decode",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["all-fused-projection-token1"],
+    "target_metric": "fused_projection_time_us",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "decode_metadata_before_values", "requires_nodes": ["MetadataDecode", "BlockDecode"], "cycle_factor": 0.98, "depth_factor": 0.96, "register_factor": 1.08},
+    {"id": "decode_values_in_vector_order", "requires_nodes": ["BlockDecode", "DotProduct"], "cycle_factor": 0.97, "register_factor": 1.12, "code_factor": 1.08}
+  ]
+}

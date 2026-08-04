@@ -1,0 +1,4 @@
+{"family":"state","rules":[
+  {"id":"incremental_kv_state","effect":"incremental_state","proof":"transition_equivalence+ordering","compute_factor":0.96,"critical_path_factor":0.98,"code_size_factor":1.12,"child_cost":32},
+  {"id":"recompute_derived_state","effect":"derived_state","proof":"pure_derivation+observer_equivalence","compute_factor":1.08,"critical_path_factor":1.02,"code_size_factor":0.96,"child_cost":16}
+]}

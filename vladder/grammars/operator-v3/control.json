@@ -1,0 +1,5 @@
+{"family":"control","rules":[
+  {"id":"branch","requires_nodes":["Select"],"effect":"control_branch","proof":"identity","cost":{"branch_factor":1.0}},
+  {"id":"select_mask","requires_nodes":["Select"],"effect":"control_mask","proof":"predicate_equivalence","cost":{"branch_factor":0.2}},
+  {"id":"guarded_common_path","requires_specialization":true,"effect":"checked_fast_path","proof":"guard_partition","cost":{"expected_branch_factor":0.5}}
+]}

@@ -1,0 +1,10 @@
+{
+  "family": "guarded_pointwise_map",
+  "rules": [
+    {"id": "branch_identity", "input": "canonical", "output": "branch", "preconditions": [], "proof": "graph_identity", "cost": 1.0},
+    {"id": "branch_to_select", "input": "branch", "output": "select", "preconditions": ["pointwise_independent"], "proof": "select_equivalence", "cost": 0.72},
+    {"id": "select_unroll_4", "input": "select", "output": "select_unroll4", "preconditions": ["pointwise_independent"], "proof": "loop_partition", "cost": 0.60},
+    {"id": "select_avx2", "input": "select", "output": "avx2", "preconditions": ["pointwise_independent", "no_alias", "avx2"], "proof": "lane_equivalence", "cost": 0.28},
+    {"id": "select_avx512", "input": "select", "output": "avx512", "preconditions": ["pointwise_independent", "no_alias", "avx512f"], "proof": "lane_equivalence", "cost": 0.18}
+  ]
+}

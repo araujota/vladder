@@ -1,0 +1,9 @@
+complex: invalid_tile
+dimensions: {hidden: 256}
+regime: {phase: decode, token_count: 1, sequence_count: 1}
+semantics: {track: exact, max_abs_error: 0}
+objective: {primary: regional_cycles}
+constraints: {max_scratch_bytes: 1024}
+nodes: [{id: input, kind: ActivationSource}, {id: dot, kind: DotAccumulate}]
+edges:
+  - {id: bad, src: input, dst: dot, shape: [hidden], quantization: none, element_type: f32, layout: contiguous, memory_region: activation, alias_set: input, lifetime: complex, producer_tile: [256, 1], consumer_tile: [128, 1], role: activation}

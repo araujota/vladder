@@ -1,0 +1,14 @@
+{
+  "family": "token_reuse",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["all-fused-projection-token1"],
+    "target_metric": "fused_projection_time_us",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "token_tile_2", "requires_nodes": ["WeightBlockLoad", "Dispatch"], "token_tile": 2, "guard": "token_count >= 2", "cycle_factor": 0.92, "cache_factor": 0.65, "register_factor": 1.4, "code_factor": 1.15},
+    {"id": "token_tile_4", "requires_nodes": ["WeightBlockLoad", "Dispatch"], "token_tile": 4, "guard": "token_count >= 4", "cycle_factor": 0.85, "cache_factor": 0.4, "register_factor": 1.8, "code_factor": 1.3}
+  ]
+}

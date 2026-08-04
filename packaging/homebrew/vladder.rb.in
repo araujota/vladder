@@ -1,0 +1,34 @@
+class Vladder < Formula
+  include Language::Python::Virtualenv
+
+  desc "Verified hardware-aware information-flow superoptimization"
+  homepage "https://github.com/@REPOSITORY@"
+  url "@SOURCE_URL@"
+  sha256 "@SOURCE_SHA256@"
+  license "MIT"
+
+  depends_on "cmake" => :build
+  depends_on "llvm@20"
+  depends_on "python@3.13"
+  depends_on "z3"
+
+  resource "pyyaml" do
+    url "@PYYAML_URL@"
+    sha256 "@PYYAML_SHA256@"
+  end
+
+  resource "z3-solver" do
+    url "@Z3_SOLVER_URL@"
+    sha256 "@Z3_SOLVER_SHA256@"
+  end
+
+  def install
+    virtualenv_install_with_resources
+    bin.env_script_all_files(libexec/"bin", PATH: "#{Formula["llvm@20"].opt_bin}:$PATH")
+  end
+
+  test do
+    assert_match version.to_s, shell_output("#{bin}/vladder doctor")
+    system bin/"vladder", "skill", "validate"
+  end
+end

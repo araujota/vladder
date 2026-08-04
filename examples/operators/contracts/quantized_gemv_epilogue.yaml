@@ -1,0 +1,26 @@
+operator: quantized_gemv_epilogue
+entrypoint: quantized_gemv_epilogue
+language: c17
+inputs:
+  weights: {element_type: i8, shape: [n], param_index: 0}
+  scales: {element_type: f32, shape: [blocks], param_index: 1}
+  x: {element_type: f32, shape: [n], param_index: 2}
+outputs: {output: {element_type: f32, shape: [1], param_index: 3}}
+semantics: {integer_overflow: forbidden, floating_point: {class: deterministic_tolerance, max_abs: 1.0e-5, max_rel: 1.0e-5}, nan_policy: forbidden_by_precondition, infinity_policy: forbidden_by_precondition, allocation: forbidden, io: forbidden, exceptions: none}
+distribution: {quantization: q8_0_like, block_sizes: [32, 64], dimensions: [256, 1024, 4096], train_seed: 111, held_out_seed: 112}
+objective: {primary: operator_latency_cycles, secondary: [stream_bytes]}
+constraints: {max_code_growth_percent: 100, max_stack_bytes: 4096}
+specializations: {block_32: {value: 32, enforcement: guard}}
+graph:
+  edge_defaults: {element_type: f32, shape: [n], stride: [1], alignment: 4, alias_set: tensor_regions, mutability: immutable, lifetime: invocation, memory_region: register, ordering: data, numerical_contract: tolerance}
+  nodes:
+    - {id: packed, kind: LoadStream, attrs: {stream: weights, layout: blocked}}
+    - {id: unpack, kind: Unpack, attrs: {format: q8}}
+    - {id: dot, kind: Reduce, attrs: {op: dot, algebra: fp_tolerance}}
+    - {id: activation, kind: Map, attrs: {op: silu}}
+    - {id: emit, kind: Emit, attrs: {output: output}}
+  edges:
+    - {src: packed, dst: unpack, element_type: i8, memory_region: input}
+    - {src: unpack, dst: dot}
+    - {src: dot, dst: activation}
+    - {src: activation, dst: emit, shape: [1], memory_region: output, mutability: writeonly}

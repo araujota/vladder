@@ -1,0 +1,68 @@
+pipeline: qwen3_4b_transformer_block
+schema_version: pipeline-manifest-v4.0
+model:
+  architecture: qwen3
+  parameters: 4022468096
+  quantization: Q4_K_M
+  sha256: 53d1f4a178ec89d983f02fc7f9dfdc9143253a4844b88022021886ecfc17666f
+  llama_commit: a7a6d0d269c896218b6c78e0933bd6a17519d3f6
+target:
+  name: local-7950x3d
+  backend: CPU
+  cache_line_bytes: 64
+  l1d_bytes_per_core: 32768
+  l2_bytes_per_core: 1048576
+  llc_bytes: 100663296
+workload:
+  phase: decode
+  batch: 1
+  context: 128
+  threads: 8
+dimensions:
+  n_embd: 2560
+  n_head: 32
+  head_dim: 128
+  q_width: 4096
+  kv_width: 1024
+  ffn: 9728
+semantics:
+  floating_point: ieee_order_equivalent
+  max_pipeline_abs_error: 0.0
+  sampling: exact
+  allocation: forbidden_in_hot_path
+objective:
+  primary: decode_tokens_per_second
+  secondary: [dram_bytes, llc_bytes, materialized_bytes, latency]
+constraints:
+  max_scratch_bytes: 1048576
+  max_code_growth_percent: 150
+profile:
+  measured: false
+  source: structural_placeholder_not_claimable
+nodes:
+  - {id: input, operator: input_embedding, profile_weight: 0.0}
+  - {id: attn_norm, operator: residual_rmsnorm, profile_weight: 0.03}
+  - {id: qkv, operator: quantized_qkv_projection, profile_weight: 0.23}
+  - {id: rope, operator: rope_qk, profile_weight: 0.02}
+  - {id: attention, operator: attention, profile_weight: 0.10}
+  - {id: out_proj, operator: quantized_output_projection, profile_weight: 0.12}
+  - {id: attn_residual, operator: residual_add, profile_weight: 0.01}
+  - {id: ffn_norm, operator: residual_rmsnorm, profile_weight: 0.03}
+  - {id: gate_up, operator: quantized_gate_up_projection, profile_weight: 0.30}
+  - {id: activation, operator: silu_gate, profile_weight: 0.03}
+  - {id: down_proj, operator: quantized_down_projection, profile_weight: 0.12}
+  - {id: output, operator: residual_add_emit, profile_weight: 0.01}
+edges:
+  - {id: hidden_in, src: input, dst: attn_norm, tensor: hidden, element_type: f32, shape: [n_embd], layout: contiguous, alignment: 64, alias_set: hidden, ownership: external, lifetime: block, observers: [attn_norm], materialization: external, reuse_distance_bytes: 10240, cache_target: l2, numerical_contract: exact}
+  - {id: normed_attn, src: attn_norm, dst: qkv, tensor: normed_attn, element_type: f32, shape: [n_embd], layout: contiguous, alignment: 64, alias_set: tmp_norm_attn, ownership: pipeline, lifetime: producer_consumer, observers: [qkv], materialization: materialized, reuse_distance_bytes: 10240, cache_target: l1, numerical_contract: exact}
+  - {id: q_values, src: qkv, dst: rope, tensor: q, element_type: f32, shape: [q_width], layout: head_major, alignment: 64, alias_set: q_tmp, ownership: pipeline, lifetime: producer_consumer, observers: [rope], materialization: materialized, reuse_distance_bytes: 16384, cache_target: l1, numerical_contract: exact}
+  - {id: k_values, src: qkv, dst: rope, tensor: k, element_type: f32, shape: [kv_width], layout: head_major, alignment: 64, alias_set: k_tmp, ownership: pipeline, lifetime: producer_consumer, observers: [rope], materialization: materialized, reuse_distance_bytes: 4096, cache_target: l1, numerical_contract: exact}
+  - {id: v_values, src: qkv, dst: attention, tensor: v, element_type: f32, shape: [kv_width], layout: head_major, alignment: 64, alias_set: v_tmp, ownership: pipeline, lifetime: attention, observers: [attention], materialization: materialized, reuse_distance_bytes: 4096, cache_target: l1, numerical_contract: exact}
+  - {id: q_rotated, src: rope, dst: attention, tensor: q_rotated, element_type: f32, shape: [q_width], layout: head_major, alignment: 64, alias_set: q_rot, ownership: pipeline, lifetime: producer_consumer, observers: [attention], materialization: materialized, reuse_distance_bytes: 16384, cache_target: l1, numerical_contract: exact}
+  - {id: attention_out, src: attention, dst: out_proj, tensor: attention_out, element_type: f32, shape: [n_embd], layout: contiguous, alignment: 64, alias_set: attn_out, ownership: pipeline, lifetime: producer_consumer, observers: [out_proj], materialization: materialized, reuse_distance_bytes: 10240, cache_target: l1, numerical_contract: exact}
+  - {id: projected_attn, src: out_proj, dst: attn_residual, tensor: projected_attn, element_type: f32, shape: [n_embd], layout: contiguous, alignment: 64, alias_set: proj_attn, ownership: pipeline, lifetime: producer_consumer, observers: [attn_residual], materialization: materialized, reuse_distance_bytes: 10240, cache_target: l1, numerical_contract: exact}
+  - {id: residual_mid, src: attn_residual, dst: ffn_norm, tensor: residual_mid, element_type: f32, shape: [n_embd], layout: contiguous, alignment: 64, alias_set: residual_mid, ownership: pipeline, lifetime: ffn, observers: [ffn_norm], materialization: materialized, reuse_distance_bytes: 10240, cache_target: l1, numerical_contract: exact}
+  - {id: normed_ffn, src: ffn_norm, dst: gate_up, tensor: normed_ffn, element_type: f32, shape: [n_embd], layout: contiguous, alignment: 64, alias_set: norm_ffn, ownership: pipeline, lifetime: producer_consumer, observers: [gate_up], materialization: materialized, reuse_distance_bytes: 10240, cache_target: l1, numerical_contract: exact}
+  - {id: gate_up_values, src: gate_up, dst: activation, tensor: gate_up, element_type: f32, shape: [ffn], layout: contiguous, alignment: 64, alias_set: gate_up, ownership: pipeline, lifetime: producer_consumer, observers: [activation], materialization: materialized, reuse_distance_bytes: 38912, cache_target: l2, numerical_contract: exact}
+  - {id: activated, src: activation, dst: down_proj, tensor: activated, element_type: f32, shape: [ffn], layout: contiguous, alignment: 64, alias_set: activated, ownership: pipeline, lifetime: producer_consumer, observers: [down_proj], materialization: materialized, reuse_distance_bytes: 38912, cache_target: l2, numerical_contract: exact}
+  - {id: projected_ffn, src: down_proj, dst: output, tensor: projected_ffn, element_type: f32, shape: [n_embd], layout: contiguous, alignment: 64, alias_set: projected_ffn, ownership: pipeline, lifetime: producer_consumer, observers: [output], materialization: materialized, reuse_distance_bytes: 10240, cache_target: l1, numerical_contract: exact}

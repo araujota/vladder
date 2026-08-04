@@ -1,0 +1,4 @@
+{"family":"scratch","rules":[
+  {"id":"reuse_disjoint_scratch","effect":"share_scratch_lifetime","proof":"nonoverlapping_lifetimes+alignment","compute_factor":1.0,"critical_path_factor":1.0,"code_size_factor":1.03,"child_cost":8},
+  {"id":"promote_tile_to_l1_scratch","effect":"promote_scratch","proof":"capacity+alignment+bounds","compute_factor":0.99,"critical_path_factor":0.97,"code_size_factor":1.08,"scratch_bytes":8192,"child_cost":12}
+]}

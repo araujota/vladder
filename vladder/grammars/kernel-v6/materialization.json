@@ -1,0 +1,13 @@
+{
+  "family": "materialization",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["all-fused-projection-token1"],
+    "target_metric": "temporary_bytes",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "stream_output_tile_to_consumer", "requires_nodes": ["DotProduct", "Consumer"], "cycle_factor": 0.98, "cache_factor": 0.85, "register_factor": 1.15}
+  ]
+}

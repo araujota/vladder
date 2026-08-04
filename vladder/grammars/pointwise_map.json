@@ -1,0 +1,10 @@
+{
+  "family": "pointwise_map",
+  "rules": [
+    {"id": "scalar_identity", "input": "canonical", "output": "scalar", "preconditions": [], "proof": "graph_identity", "cost": 1.0},
+    {"id": "unroll_4", "input": "scalar", "output": "unroll4", "preconditions": ["pointwise_independent"], "proof": "loop_partition", "cost": 0.82},
+    {"id": "unroll_8", "input": "scalar", "output": "unroll8", "preconditions": ["pointwise_independent"], "proof": "loop_partition", "cost": 0.78},
+    {"id": "vector_avx2", "input": "scalar", "output": "avx2", "preconditions": ["pointwise_independent", "no_alias", "avx2"], "proof": "lane_equivalence", "cost": 0.30},
+    {"id": "vector_avx512", "input": "scalar", "output": "avx512", "preconditions": ["pointwise_independent", "no_alias", "avx512f"], "proof": "lane_equivalence", "cost": 0.20}
+  ]
+}

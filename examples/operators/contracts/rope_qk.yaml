@@ -1,0 +1,31 @@
+operator: rope_qk
+entrypoint: rope_qk
+language: c17
+inputs:
+  q: {element_type: f32, shape: [head_dim], param_index: 0}
+  k: {element_type: f32, shape: [head_dim], param_index: 1}
+  cos: {element_type: f32, shape: [pairs], param_index: 2}
+  sin: {element_type: f32, shape: [pairs], param_index: 3}
+outputs:
+  q_out: {element_type: f32, shape: [head_dim], param_index: 4}
+  k_out: {element_type: f32, shape: [head_dim], param_index: 5}
+semantics: {integer_overflow: forbidden, floating_point: {class: bitwise}, nan_policy: forbidden_by_precondition, infinity_policy: forbidden_by_precondition, allocation: forbidden, io: forbidden, exceptions: none}
+distribution: {head_dimensions: [64, 128, 256], train_seed: 101, held_out_seed: 102}
+objective: {primary: operator_latency_cycles, secondary: [stream_bytes]}
+constraints: {max_code_growth_percent: 100, max_stack_bytes: 4096}
+specializations: {head_dim_128: {value: 128, enforcement: guard}}
+graph:
+  edge_defaults: {element_type: f32, shape: [head_dim], stride: [1], alignment: 4, alias_set: tensor_regions, mutability: immutable, lifetime: invocation, memory_region: register, ordering: data, numerical_contract: bitwise}
+  nodes:
+    - {id: q, kind: LoadStream, attrs: {stream: q, layout: interleaved_pairs}}
+    - {id: k, kind: LoadStream, attrs: {stream: k, layout: interleaved_pairs}}
+    - {id: trig, kind: Zip, attrs: {layout: split_planes}}
+    - {id: rotate, kind: Map, attrs: {op: complex_rotate}}
+    - {id: emit_q, kind: Emit, attrs: {output: q_out}}
+    - {id: emit_k, kind: Emit, attrs: {output: k_out}}
+  edges:
+    - {src: q, dst: rotate, memory_region: input}
+    - {src: k, dst: rotate, memory_region: input}
+    - {src: trig, dst: rotate, memory_region: input}
+    - {src: rotate, dst: emit_q, memory_region: output, mutability: writeonly}
+    - {src: rotate, dst: emit_k, memory_region: output, mutability: writeonly}

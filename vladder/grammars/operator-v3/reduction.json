@@ -1,0 +1,5 @@
+{"family":"reduction","rules":[
+  {"id":"linear_accumulator","requires_nodes":["Reduce"],"effect":"reduction_linear","proof":"identity_order","numerical_classes":["bitwise","ieee_order","deterministic_tolerance","distributional_tolerance"],"cost":{"critical_path_factor":1.0,"stack_bytes":0}},
+  {"id":"four_accumulators","requires_nodes":["Reduce"],"effect":"reduction_multi4","proof":"tolerance_reassociation","numerical_classes":["deterministic_tolerance","distributional_tolerance"],"cost":{"critical_path_factor":0.35,"stack_bytes":0}},
+  {"id":"pairwise_tree","requires_nodes":["Reduce"],"effect":"reduction_pairwise","proof":"tolerance_reassociation","numerical_classes":["deterministic_tolerance","distributional_tolerance"],"cost":{"critical_path_factor":0.25,"stack_bytes":1024}}
+]}

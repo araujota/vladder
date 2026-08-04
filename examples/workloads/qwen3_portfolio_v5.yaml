@@ -1,0 +1,10 @@
+portfolio: qwen3_cpu_general_throughput_v5
+model: {path: /mnt/disk-1tb/models/vladder-qwen3-4b/Qwen3-4B-Q4_K_M.gguf, sha256: 53d1f4a178ec89d983f02fc7f9dfdc9143253a4844b88022021886ecfc17666f, quantization: Q4_K_M}
+target: {cpu: AMD Ryzen 9 7950X3D, cpu_list: "0-7", threads: 8, smt: isolated, llama_commit: a7a6d0d269c896218b6c78e0933bd6a17519d3f6}
+workloads:
+  interactive_decode: {weight: 0.30, metric: generated_tokens_per_second, minimum_relative_performance: 0.99, prompts: [128, 512, 2048], generated: 128, parallel: [1]}
+  prompt_processing: {weight: 0.20, metric: prompt_tokens_per_second, minimum_relative_performance: 1.00, prompts: [128, 512, 2048, 8192], generated: 1, microbatches: [32, 64, 128, 256, 512]}
+  concurrent_serving: {weight: 0.35, metric: aggregate_generated_tokens_per_second, minimum_relative_performance: 1.02, parallel: [2, 4, 8, 16]}
+  kv_pressure: {weight: 0.15, metric: generated_tokens_per_second, minimum_relative_performance: 0.98, contexts: [2048, 8192, 16384], parallel: [1, 4, 8], occupancy_percent: [25, 50, 75, 90]}
+constraints: {generated_output: exact, peak_memory_growth_percent: 10, transformed_weight_growth_percent: 15, time_to_first_token_regression_percent: 2}
+measurement: {independent_processes: 10, randomized_candidate_order: true, bootstrap_confidence: 0.95, held_out_traces: true, profiler_during_ranking: false}

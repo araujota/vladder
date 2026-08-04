@@ -1,0 +1,14 @@
+{
+  "family": "traversal",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["all-fused-projection-token1"],
+    "target_metric": "fused_projection_time_us",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "output_tile_major", "requires_nodes": ["WeightBlockLoad", "DotProduct"], "cycle_factor": 0.97, "cache_factor": 0.94, "register_factor": 1.08},
+    {"id": "sibling_projection_major", "requires_nodes": ["ActivationLoad", "DotProduct"], "cycle_factor": 0.98, "cache_factor": 0.97, "code_factor": 1.05}
+  ]
+}

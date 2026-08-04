@@ -1,0 +1,10 @@
+pipeline: invalid_external_observer
+dimensions: {n: 16}
+semantics: {max_pipeline_abs_error: 0.0}
+objective: {primary: latency}
+constraints: {max_scratch_bytes: 1024}
+nodes:
+  - {id: a, operator: map}
+  - {id: b, operator: map}
+edges:
+  - {id: observed, src: a, dst: b, element_type: f32, shape: [n], alias_set: tmp, ownership: pipeline, observers: [external_debug], materialization: streamed, cache_target: register}

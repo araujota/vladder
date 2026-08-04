@@ -1,0 +1,9 @@
+complex: invalid_quantization
+dimensions: {hidden: 256}
+regime: {phase: decode, token_count: 1, sequence_count: 1}
+semantics: {track: exact, max_abs_error: 0}
+objective: {primary: regional_cycles}
+constraints: {max_scratch_bytes: 1024}
+nodes: [{id: weights, kind: WeightBlockLoad}, {id: dot, kind: DotAccumulate}]
+edges:
+  - {id: bad, src: weights, dst: dot, shape: [hidden], quantization: unknown, element_type: q4_k, logical_bytes: 144, layout: native_gguf, memory_region: model_weights, alias_set: weights, lifetime: model, role: weight}

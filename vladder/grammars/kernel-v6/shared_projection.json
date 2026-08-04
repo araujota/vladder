@@ -1,0 +1,13 @@
+{
+  "family": "shared_projection",
+  "attribution": {
+    "study_id": "qwen3-q4km-native-projection-2026-08-01",
+    "bottleneck_ids": ["ffn-gate-up-fused-token1", "qkv-fused-token1"],
+    "target_metric": "fused_projection_time_us",
+    "expected_direction": "decrease",
+    "allow_instrumented_attribution": true
+  },
+  "rules": [
+    {"id": "coordinate_sibling_output_tiles", "requires_nodes": ["ActivationLoad", "WeightBlockLoad", "DotProduct"], "cycle_factor": 0.97, "cache_factor": 0.95, "register_factor": 1.4, "code_factor": 1.2}
+  ]
+}

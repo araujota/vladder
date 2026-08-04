@@ -1,0 +1,4 @@
+interface:
+  display_name: "vLadder"
+  short_description: "Verified lifetime and C/C++ flow optimization"
+  default_prompt: "Use vLadder to attribute semantic lifetimes and compiled information flow, synthesize and prove a bounded realization, benchmark it, and safely implement the repository rewrite."
