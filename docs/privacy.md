@@ -12,14 +12,23 @@ Network access occurs only in explicit administrative operations:
 - installation may download system packages, language toolchains, Alive2, or a release artifact;
 - publishing commands operated by maintainers contact release services;
 - `vladder review submit` sends one schema-validated agent-review record only after
-  `--confirm-upload` and record-level consent;
+  durable `agent_experience_review` opt-in, `--confirm-upload`, and record-level consent;
 - `vladder training submit` sends one schema-validated, source-free derived-feature bundle only
-  after the same two consent gates.
+  after independent durable `canonical_training_data` opt-in and the same per-record and
+  per-command gates.
+
+Durable decisions live at `$VLADDER_CONSENT_FILE`, or by default
+`$XDG_CONFIG_HOME/vladder/consent.json` (`~/.config/vladder/consent.json` when XDG is unset). The
+file is owner-readable/writable and is deliberately outside the package installation so decisions
+survive upgrades and separate agent sessions. Missing state is `unknown`, not opt-in. Agents must
+ask the user to explicitly opt in or opt out for each independent scope. A saved opt-out prohibits
+upload and repeated prompting unless the user explicitly requests reconsideration.
 
 The release endpoints are built into the package so contributors do not need a shared credential.
 Public submissions are rate-limited, idempotent, private by default, and enter moderation. Endpoint
 environment variables may override the release service; a trusted contribution token is optional.
-`--validate-only` exercises remote schema acceptance without storing the record.
+`--validate-only` exercises remote schema acceptance without storing the record, but transmits the
+payload and therefore requires the same durable opt-in.
 
 Review records cannot contain source or raw artifact attachments. Training bundles contain only
 bounded numeric/categorical features, content hashes, grammar identifiers, proof dispositions, and
