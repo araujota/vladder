@@ -5,10 +5,10 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc11`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc13`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v5`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v1`, and
-`bounded-julia-regions-v1` adapters. Use vLadder as a proof-gated workflow: semantic
+`bounded-cpp-regions-v6`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v2`, and
+`bounded-julia-regions-v2` adapters. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
@@ -23,6 +23,10 @@ All supported frontends converge on `SemanticFlowGraph v2`. Read typed `obligati
 `protocols`, and `claims` before interpreting a graph. An obligation is actionable through its ID,
 scope, proof method, and language binding; do not recover semantics by parsing its human-readable
 statement. A successful graph build with an excluded or unverified claim is not proof of it.
+For C/C++, inspect `region-closure.json` before requesting an adapter. It distinguishes a missing
+grammar from an unmodeled ABI and records aggregate projections, tagged exits, local helper
+relations, and no-growth ownership projections. Treat `closed_at_compiled_abi` as representation
+closure, not proof of a future candidate or an owning wrapper.
 
 ## Non-Negotiable Rules
 
@@ -150,6 +154,10 @@ vladder dataflow graph --contract contract.json --target mask-prefix-stable --ou
 vladder dataflow verify --contract contract.json --target guarded-avx2-compaction --out-dir proof
 ```
 
+Add `--language c|cpp|zig|julia` to emit the shared derivation natively. Read
+`candidate.lowering_class`: `semantic_scalar_fallback` establishes native semantic execution but
+does not establish a distinct SIMD realization.
+
 No-growth vector closure requires a checked available-capacity guard before any write, trivial
 element lifetime, no throwing local operation, and declared aliases. `reserve()` is not enough.
 An owning wrapper that remains outside this envelope is an explicit adapter, not a blocker for the
@@ -181,6 +189,9 @@ vladder zig synthesize --source src/root.zig --function countEqual --build-root 
 vladder zig optimize --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-out
 ```
 
+Use `--specialization u8` for a compatible `comptime T: type` byte reduction. Capture keeps the
+target at its original module path; a detached source copy is invalid compiler provenance.
+
 For Julia, read [julia-regions.md](references/julia-regions.md). Always provide one exact module,
 method, and tuple signature; a generic function name is not a proof boundary:
 
@@ -190,7 +201,9 @@ vladder julia synthesize --project . --source src/Package.jl --module Package --
 vladder julia optimize --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-out
 ```
 
-Zig and Julia use the shared graph and source-derived exact-reduction schedule proof. Native LLVM
+Zig and Julia use the shared graph and source-derived exact-reduction schedule proof. Julia loads
+the declared package/module and does not invoke arbitrary methods during reflection. Methods beyond
+the executable grammar may still be `local_graph_only` with typed/LLVM/native capture. Native LLVM
 is compiler provenance; the strict Alive2 artifact validates the canonical schedule lowerer. Do
 not claim direct whole-frontend refinement. Zig allocator/error/defer/atomic/FFI protocols and
 Julia other methods/worlds, GC allocation, dynamic dispatch, tasks, globals, `ccall`, and external
@@ -237,7 +250,8 @@ vladder deep rank --language cpp --predicate equal-u8 --processes 10 --repetitio
 ```
 
 Inspect the earliest failed audit stage. Use `bounded_optimal_local` only when finite search is
-saturated and all unique terminal realizations are lowered, proved, and measured.
+saturated, every hot identity is non-empty and resolved, and all unique terminal realizations are
+lowered, proved, and measured.
 Every `deep-v2` terminal has native C, C++20, Rust, Zig, and Julia emission. Select the production
 language; do not translate through C merely to access a deeper grammar. Language runtime scopes
 remain explicit typed obligations rather than claims of arbitrary-language equivalence.

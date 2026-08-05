@@ -152,7 +152,7 @@ state ownership, layouts, quantization blocks, resource pressure, or token/seque
 
 ## Bounded C++ Closure Frontend
 
-`bounded-cpp-regions-v5` treats semantic capture, local closure, proof, candidate generation,
+`bounded-cpp-regions-v6` treats semantic capture, local closure, proof, candidate generation,
 benchmarking, source realization, and protocol equivalence as separate facts.
 It selects a concrete definition with Clang and the production compilation database, preserves
 source-level ownership and exception hazards, and recursively summarizes definition-visible LLVM

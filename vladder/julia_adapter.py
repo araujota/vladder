@@ -17,7 +17,7 @@ from .language_adapter import LANGUAGE_ADAPTER_PROTOCOL_VERSION, LanguageAdapter
 from .paired_benchmark import run_paired_benchmark
 
 
-JULIA_SUPPORT_VERSION = "bounded-julia-regions-v1"
+JULIA_SUPPORT_VERSION = "bounded-julia-regions-v2"
 
 
 @dataclass(frozen=True)
@@ -224,22 +224,44 @@ def _capture(request: JuliaRegionRequest) -> tuple[LanguageRegionEvidence, str]:
     julia = shutil.which("julia")
     if not julia: raise RuntimeError("julia is required")
     source = request.source.resolve()
-    function = _extract_julia_function(source.read_text(), request.function)
-    blockers = _source_blockers(function, request.signature)
     output = request.output_directory.resolve()
     capture = output / "capture"
     capture.mkdir(parents=True, exist_ok=True)
     reflection = _run_reflection(request, capture)
+    function = ""
+    extraction_error: str | None = None
+    try:
+        function = _extract_julia_function(source.read_text(), request.function)
+    except ValueError as error:
+        extraction_error = str(error)
+    if not function and reflection["status"] == "pass":
+        method_file = Path(str(reflection.get("metadata", {}).get("method_file", "")))
+        if method_file.exists():
+            try:
+                function = _extract_julia_function(
+                    method_file.read_text(), request.function,
+                    int(reflection["metadata"].get("method_line", "0")),
+                )
+                source = method_file.resolve()
+                extraction_error = None
+            except (ValueError, OSError):
+                pass
+    blockers = _source_blockers(function, request.signature) if function else [{
+        "kind": "source-region-unresolved",
+        "reason": extraction_error or "method source could not be mapped from reflection",
+        "required_adapter": "provide a method source mapping while retaining typed compiler capture",
+    }]
     if reflection["status"] != "pass":
         blockers.append({"kind": "compiler-semantic-failure", "reason": reflection.get("stderr", "")[-1000:], "required_adapter": "resolve module/method/signature capture"})
     else:
         typed = Path(reflection["artifacts"]["typed_ir"]).read_text()
-        allocation = int(reflection["metadata"].get("allocated_bytes", "-1"))
+        allocation_text = reflection["metadata"].get("allocated_bytes", "not_measured")
+        allocation = int(allocation_text) if str(allocation_text).lstrip("-").isdigit() else None
         if " dynamic " in typed or "::Any" in typed:
             blockers.append({"kind": "dynamic-dispatch", "reason": "typed IR is not fully concrete", "required_adapter": "specialize the method and remove dynamic dispatch"})
-        if reflection["metadata"].get("return_type") != "Int64":
+        if not blockers and reflection["metadata"].get("return_type") != "Int64":
             blockers.append({"kind": "type-instability", "reason": f"inferred return type is {reflection['metadata'].get('return_type')}", "required_adapter": "isolate a concretely inferred specialization"})
-        if allocation != 0:
+        if not blockers and allocation != 0:
             blockers.append({"kind": "gc-allocation", "reason": f"sampled steady-state allocation is {allocation} bytes", "required_adapter": "isolate an allocation-free kernel or model GC-visible ownership"})
     version = _command([julia, "--version"])
     project = request.project.resolve()
@@ -257,8 +279,9 @@ def _capture(request: JuliaRegionRequest) -> tuple[LanguageRegionEvidence, str]:
             contracts={"operation": "count_equal_u8", "specialization": request.signature, "world": reflection["metadata"].get("world"), "bounds": "@inbounds valid Vector storage", "allocation": "zero steady-state bytes"},
             excluded_claims=("other generic-function methods or future world states", "GC ownership, tasks, global mutation, ccall, and external effects"),
         )
-    capabilities = _capabilities(graph is not None, not blockers, artifacts)
-    status = "supported" if graph is not None and not blockers else "local_graph_only" if graph else "adapter_required"
+    compiler_captured = reflection["status"] == "pass"
+    capabilities = _capabilities(compiler_captured, graph is not None, not blockers, artifacts)
+    status = "supported" if graph is not None and not blockers else "local_graph_only" if compiler_captured else "adapter_required"
     evidence = LanguageRegionEvidence(
         LANGUAGE_ADAPTER_PROTOCOL_VERSION, JuliaLanguageAdapter.name, "julia", JULIA_SUPPORT_VERSION,
         f"{request.module}.{request.function}::{request.signature}", status, capabilities, graph,
@@ -273,19 +296,23 @@ def _capture(request: JuliaRegionRequest) -> tuple[LanguageRegionEvidence, str]:
 def _run_reflection(request: JuliaRegionRequest, output: Path) -> dict[str, Any]:
     script = output / "capture.jl"
     paths = {name: output / name for name in ("lowered.txt", "typed.txt", "llvm.ll", "native.s")}
+    exact_count_signature = request.signature.replace(" ", "") in {"Vector{UInt8},UInt8", "Array{UInt8,1},UInt8"}
+    allocation_probe = '''sample = fill(UInt8(1), 1024)
+fun(sample, UInt8(1))
+measure_allocated(f, value) = @allocated f(value, UInt8(1))
+allocated = measure_allocated(fun, sample)
+''' if exact_count_signature else 'allocated = "not_measured"\n'
     script.write_text(f'''using InteractiveUtils
-include({json.dumps(str(request.source.resolve()))})
-mod = getfield(Main, Symbol({json.dumps(request.module)}))
+module_parts = split({json.dumps(request.module)}, ".")
+mod = Base.require(Main, Symbol(first(module_parts)))
+for part in module_parts[2:end]; global mod = getfield(mod, Symbol(part)); end
 fun = getfield(mod, Symbol({json.dumps(request.function)}))
-types = Tuple{{{request.signature}}}
+types = Core.eval(mod, Meta.parse({json.dumps('Tuple{' + request.signature + '}')}))
 open({json.dumps(str(paths['lowered.txt']))}, "w") do io; show(io, MIME("text/plain"), code_lowered(fun, types)); end
 open({json.dumps(str(paths['typed.txt']))}, "w") do io; show(io, MIME("text/plain"), code_typed(fun, types; optimize=true)); end
 open({json.dumps(str(paths['llvm.ll']))}, "w") do io; code_llvm(io, fun, types; raw=true, dump_module=false, optimize=true, debuginfo=:none); end
 open({json.dumps(str(paths['native.s']))}, "w") do io; code_native(io, fun, types; syntax=:intel, debuginfo=:none); end
-sample = fill(UInt8(1), 1024)
-fun(sample, UInt8(1))
-measure_allocated(f, value) = @allocated f(value, UInt8(1))
-allocated = measure_allocated(fun, sample)
+{allocation_probe}
 method = which(fun, types)
 println("VLADDER|world|", Base.get_world_counter())
 println("VLADDER|method|", method)
@@ -367,11 +394,25 @@ def _rename_first_llvm_function(path: Path, name: str) -> None:
     path.write_text(text)
 
 
-def _extract_julia_function(text: str, requested: str) -> str:
+def _extract_julia_function(text: str, requested: str, line_hint: int | None = None) -> str:
     name = requested.split(".")[-1]
     lines = text.splitlines(keepends=True)
-    start = next((i for i, line in enumerate(lines) if re.match(rf"\s*function\s+{re.escape(name)}\s*\(", line)), None)
-    if start is None: raise ValueError(f"Julia long-form function not found: {requested}")
+    long_form = re.compile(rf"\s*(?:(?:Base\.)?@\w+(?:\([^)]*\))?\s+)*function\s+{re.escape(name)}(?:\s*\{{[^}}]*\}})?\s*\(")
+    starts = [i for i, line in enumerate(lines) if long_form.match(line)]
+    if line_hint and starts:
+        prior = [index for index in starts if index + 1 <= line_hint]
+        start = max(prior, default=starts[0])
+    else:
+        start = starts[0] if starts else None
+    if start is None:
+        short = re.compile(rf"\s*(?:(?:Base\.)?@\w+\s+)*{re.escape(name)}\s*\(.*")
+        short_start = next((i for i, line in enumerate(lines) if short.match(line)), None)
+        if short_start is not None:
+            end = short_start
+            while end + 1 < len(lines) and (lines[end].rstrip().endswith(("=", ",")) or lines[end + 1].startswith((" ", "\t"))):
+                end += 1
+            return "".join(lines[short_start:end + 1])
+        raise ValueError(f"Julia function source not found: {requested}")
     depth = 0
     starters = re.compile(r"\b(function|for|while|if|let|begin|try|struct|macro)\b")
     for index in range(start, len(lines)):
@@ -489,9 +530,9 @@ println(Char(123), Char(34), "metric_ns", Char(34), ":", elapsed/(N*INNER), ",",
 '''
 
 
-def _capabilities(graph: bool, closed: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
+def _capabilities(captured: bool, graph: bool, closed: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
     return {
-        "semantic_capture": LanguageCapability(graph, graph, "one concrete Julia method specialization captured", artifacts.get("typed_ir")),
+        "semantic_capture": LanguageCapability(captured, captured, "one concrete Julia method specialization captured without arbitrary invocation", artifacts.get("typed_ir")),
         "information_flow": LanguageCapability(graph, graph, "shared semantic information-flow graph"),
         "candidate_generation": LanguageCapability(closed, closed, "native Julia exact-reduction schedules"),
         "local_proof": LanguageCapability(closed, closed, "source-derived Z3 schedule plus fixed-specialization LLVM refinement"),

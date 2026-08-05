@@ -21,12 +21,13 @@ from .cpp_semantics import (
     source_semantics,
 )
 from .cpp_closure import aggregate_closure_capabilities, classify_cpp_closure, materialize_cpp_closure
+from .region_closure import build_region_closure_graph, prove_region_closure
 from .extractor import ExtractedFunction, extract_function
 from .report import write_json
 from .toolchain import compiler_version, discover_toolchain, run
 
 
-CPP_SUPPORT_VERSION = "bounded-cpp-regions-v5"
+CPP_SUPPORT_VERSION = "bounded-cpp-regions-v6"
 
 
 @dataclass(frozen=True)
@@ -501,6 +502,8 @@ def _prove_typed_abi(abi: dict[str, Any], out_dir: Path) -> dict[str, Any]:
 def _proof_plan(
     abi: dict[str, Any], tier: dict[str, Any], effects: dict[str, Any], source: dict[str, Any],
     subregions: list[dict[str, Any]], out_dir: Path,
+    region_closure: dict[str, Any] | None = None,
+    region_closure_proof: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     typed_abi = _prove_typed_abi(abi, out_dir)
     plan = {
@@ -523,13 +526,20 @@ def _proof_plan(
             "build_specific": True,
         },
         "required_before_source_rewrite": [],
+        "closed_obligations": [],
         "excluded_claims": [
             "arbitrary C++ equivalence", "allocator equivalence", "destructor protocol equivalence",
             "concurrency equivalence", "external API equivalence", "whole-function proof from a subregion proof",
         ],
     }
     if abi["return"]["category"] == "aggregate_value":
-        plan["required_before_source_rewrite"].append("prove source aggregate fields against the compiler-lowered output-storage ABI")
+        if (
+            region_closure and region_closure.get("classes", {}).get("aggregate_result") == "closed_at_compiled_abi"
+            and region_closure_proof and region_closure_proof.get("status") == "PASS"
+        ):
+            plan["closed_obligations"].append("aggregate fields are bound to ordered compiler ABI projections; each transformed candidate still requires Alive2 and differential proof")
+        else:
+            plan["required_before_source_rewrite"].append("prove source aggregate fields against the compiler-lowered output-storage ABI")
     if source["object_state"]:
         plan["required_before_source_rewrite"].append("declare and prove an explicit object-state projection and invariant")
     if tier["tier"] == "extractable_subregions":
@@ -747,9 +757,22 @@ def inspect_cpp_region(
                 effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(node["mangledName"]))
         effects["source"] = effect_source
         source_info = source_semantics(node, function_source)
-        abi = describe_abi(str(node.get("type", {}).get("qualType", "")), parameters, effects["signature"])
-        subregions = discover_subregions(node, source_text)
+        abi = describe_abi(
+            str(node.get("type", {}).get("qualType", "")), parameters, effects["signature"], documents, source_text
+        )
+        subregions = discover_subregions(node, source_text, effects)
         closure = helper_closure(source_info["calls"], effects)
+        region_closure = build_region_closure_graph(
+            language="cpp",
+            function=str(node.get("name") or function),
+            abi=abi,
+            source=source_info,
+            effects=effects,
+            subregions=subregions,
+            compiler_identity=str(production_ir["compiler_version"]),
+            function_identity=str(report["selection"]["function_sha256"]),
+        )
+        region_closure_proof = prove_region_closure(region_closure, out_dir / "region-closure-proof")
         information_flow = build_cpp_information_flow(
             abi,
             source_info,
@@ -764,6 +787,8 @@ def inspect_cpp_region(
             "compiled_effects": effects,
             "source_semantics": source_info,
             "helper_closure": closure,
+            "region_closure": region_closure,
+            "region_closure_proof": region_closure_proof,
             "subregions": subregions,
             "information_flow": information_flow,
         })
@@ -771,13 +796,17 @@ def inspect_cpp_region(
         abi_path = out_dir / "typed-abi.json"
         subregions_path = out_dir / "subregions.json"
         information_flow_path = out_dir / "cpp-information-flow.json"
+        region_closure_path = out_dir / "region-closure.json"
         write_json(effects_path, effects)
         write_json(abi_path, abi)
         write_json(subregions_path, {"schema_version": "vladder-cpp-subregions-v1", "regions": subregions})
         write_json(information_flow_path, information_flow)
+        write_json(region_closure_path, region_closure)
         report["artifacts"].update({
             "compiled_effects": str(effects_path), "typed_abi": str(abi_path), "subregions": str(subregions_path),
             "information_flow": str(information_flow_path),
+            "region_closure": str(region_closure_path),
+            "region_closure_proof": str(out_dir / "region-closure-proof" / "region-closure-proof.json"),
         })
 
         kernel_source: str | None = None
@@ -808,7 +837,9 @@ def inspect_cpp_region(
         report["transformation_ready"] = tier["transformation_ready"]
         adapters = _effect_adapters(source_info, effects, abi, tier, subregions)
         report["adapters"] = [asdict(item) for item in adapters]
-        proof_plan = _proof_plan(abi, tier, effects, source_info, subregions, out_dir)
+        proof_plan = _proof_plan(
+            abi, tier, effects, source_info, subregions, out_dir, region_closure, region_closure_proof
+        )
         report["proof_envelope"] = proof_plan
         report["artifacts"]["proof_envelope"] = proof_plan["artifact"]
         report["closure"] = classify_cpp_closure(report)

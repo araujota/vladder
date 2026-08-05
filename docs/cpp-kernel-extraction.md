@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`bounded-cpp-regions-v5` expands C++ coverage without claiming arbitrary C++ equivalence. It
+`bounded-cpp-regions-v6` expands C++ coverage without claiming arbitrary C++ equivalence. It
 distinguishes three jobs that were previously conflated:
 
 1. capture the production translation unit, concrete definition, ABI, and compiled effects;

@@ -190,10 +190,10 @@ def prove_dataflow_candidate(
         "native-source-binding",
         "PASS" if actual_hash == candidate.source_sha256 else "FAIL",
         "SHA-256",
-        "generated C++ source",
+        f"generated {candidate.language} source",
         "candidate source matches the derivation-bound artifact" if actual_hash == candidate.source_sha256 else "candidate source was modified",
     ))
-    graph = build_bounded_dataflow_graph(contract, derivation.target, source_language="cpp", function_identity=candidate.function)
+    graph = build_bounded_dataflow_graph(contract, derivation.target, source_language=candidate.language, function_identity=candidate.function)
     obligations.append(DataflowProofObligation(
         "semantic-graph-binding",
         "PASS" if graph.graph_hash == candidate.graph_hash else "FAIL",
@@ -226,7 +226,13 @@ def prove_dataflow_candidate(
         "status": "not_applicable",
         "reason": "variable-output memory/state refinement is represented by bounded Z3 sequence and transition obligations; no whole-wrapper Alive2 claim is made",
     }
-    differential = run_dataflow_differential(contract, candidate, output_directory / "differential") if run_differential else {"status": "NOT_RUN"}
+    if run_differential and candidate.language == "cpp":
+        differential = run_dataflow_differential(contract, candidate, output_directory / "differential")
+    elif run_differential:
+        from .dataflow_multilang import run_native_dataflow_differential
+        differential = run_native_dataflow_differential(contract, candidate, output_directory / "differential")
+    else:
+        differential = {"status": "NOT_RUN"}
     proof_pass = all(item.status == "PASS" for item in obligations)
     differential_pass = differential.get("status") in {"PASS", "NOT_RUN"}
     alive_pass = alive2.get("status") in {"correct", "not_applicable"}

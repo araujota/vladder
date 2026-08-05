@@ -170,7 +170,7 @@ function vladder_verify()
 end
 
 function vladder_main()
-    vladder_verify()
+    get(ENV, "VLADDER_SKIP_EXHAUSTIVE_VERIFY", "0") == "1" || vladder_verify()
     candidate_mode = length(ARGS) >= 1 && ARGS[1] == "candidate"
     n = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 1 << 20
     inner = length(ARGS) >= 3 ? parse(Int, ARGS[3]) : 128
@@ -202,17 +202,103 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _hot_assembly_identity(path: Path, function: str) -> dict[str, Any]:
-    """Fingerprint the emitted hot implementation while discarding assembler-only identity."""
-    labels = {function, f"{function}_avx2", f"{function}_scalar"}
+def _function_symbol_matches(symbol: str, function: str) -> bool:
+    """Match native and JIT symbol spellings without accepting unrelated suffixes."""
+    normalized = symbol.strip('"')
+    return bool(re.search(
+        rf"(?:^|[.$_]){re.escape(function)}(?:$|[.$_]\d+$)",
+        normalized,
+    )) and not normalized.endswith(("_scalar", "_avx2"))
+
+
+def _normalized_identity(
+    lines: list[str], function: str, source: str, symbol: str | None,
+) -> dict[str, Any]:
+    encoded = "\n".join(lines).encode()
+    instruction_lines = sum(line != "FUNCTION" and not line.startswith(("define ", "}")) for line in lines)
+    if instruction_lines == 0:
+        return {
+            "schema_version": "vladder-hot-code-identity-v2",
+            "status": "unresolved",
+            "function": function,
+            "source": source,
+            "resolved_symbol": symbol,
+            "normalized_sha256": None,
+            "normalized_instruction_lines": 0,
+            "mnemonics": {},
+            "reason": "no hot instructions or LLVM operations were resolved for the requested function",
+        }
+    mnemonics: dict[str, int] = {}
+    for line in lines:
+        if line == "FUNCTION" or line.startswith(("define ", "}")):
+            continue
+        mnemonic = line.split(None, 1)[0]
+        mnemonics[mnemonic] = mnemonics.get(mnemonic, 0) + 1
+    return {
+        "schema_version": "vladder-hot-code-identity-v2",
+        "status": "resolved",
+        "function": function,
+        "source": source,
+        "resolved_symbol": symbol,
+        "normalized_sha256": hashlib.sha256(encoded).hexdigest(),
+        "normalized_instruction_lines": instruction_lines,
+        "mnemonics": dict(sorted(mnemonics.items())),
+        "normalization": "comments, assembler directives, local labels, and generated function symbols removed",
+    }
+
+
+def _hot_llvm_identity(path: Path, function: str) -> dict[str, Any]:
+    text = path.read_text(errors="replace")
+    alias_target: str | None = None
+    alias = re.search(
+        rf'^@(?:"?{re.escape(function)}"?)\s*=\s*alias\b[^\n]*\bptr\s+@(?:"([^"]+)"|([^,\s]+))',
+        text,
+        flags=re.MULTILINE,
+    )
+    if alias:
+        alias_target = alias.group(1) or alias.group(2)
     selected: list[str] = []
     active = False
-    mnemonics: dict[str, int] = {}
-    for raw in path.read_text().splitlines():
-        label = re.match(r"^([A-Za-z_.$][A-Za-z0-9_.$]*):\s*(?:#.*)?$", raw)
-        if label and not label.group(1).startswith(".L"):
-            active = label.group(1) in labels
+    depth = 0
+    symbol: str | None = None
+    for raw in text.splitlines():
+        definition = re.match(r'^define\b.*@(?:"([^"]+)"|([^ (]+))\(', raw)
+        if definition:
+            candidate = definition.group(1) or definition.group(2)
+            active = _function_symbol_matches(candidate, function) or candidate == alias_target
+            depth = raw.count("{") - raw.count("}")
             if active:
+                symbol = candidate
+                selected.append("define FUNCTION")
+            continue
+        if not active:
+            continue
+        depth += raw.count("{") - raw.count("}")
+        line = raw.split(";", 1)[0].strip()
+        if line and not line.endswith(":") and not line.startswith("!"):
+            line = re.sub(r"%[A-Za-z0-9_.-]+", "%v", line)
+            line = re.sub(r"!\d+", "!n", line)
+            selected.append(line)
+        if depth <= 0:
+            active = False
+            break
+    return _normalized_identity(selected, function, "llvm_ir", symbol)
+
+
+def _hot_assembly_identity(
+    path: Path, function: str, llvm_path: Path | None = None,
+) -> dict[str, Any]:
+    """Fingerprint a resolved hot body; an empty selection is never an identity."""
+    selected: list[str] = []
+    active = False
+    symbol: str | None = None
+    for raw in path.read_text(errors="replace").splitlines():
+        label = re.match(r'^\s*(?:"([^"]+)"|([A-Za-z_.$][A-Za-z0-9_.$]*)):\s*(?:[#;].*)?$', raw)
+        candidate_symbol = (label.group(1) or label.group(2)) if label else None
+        if candidate_symbol is not None and not candidate_symbol.startswith(".L"):
+            active = _function_symbol_matches(candidate_symbol, function)
+            if active:
+                symbol = candidate_symbol
                 selected.append("FUNCTION")
             continue
         if not active:
@@ -223,17 +309,26 @@ def _hot_assembly_identity(path: Path, function: str) -> dict[str, Any]:
         line = re.sub(r"\.L(?:BB|tmp|CPI|JTI)[A-Za-z0-9_.$-]*", ".L", line)
         line = re.sub(rf"\b(?:{re.escape(function)}(?:_avx2|_scalar)?)\b", "FUNCTION", line)
         selected.append(line)
-        mnemonic = line.split(None, 1)[0]
-        mnemonics[mnemonic] = mnemonics.get(mnemonic, 0) + 1
-    encoded = "\n".join(selected).encode()
-    return {
-        "schema_version": "vladder-hot-assembly-identity-v1",
-        "function": function,
-        "normalized_sha256": hashlib.sha256(encoded).hexdigest(),
-        "normalized_instruction_lines": sum(not line.startswith("FUNCTION") for line in selected),
-        "mnemonics": dict(sorted(mnemonics.items())),
-        "normalization": "comments, assembler directives, local labels, and generated function symbols removed",
-    }
+    identity = _normalized_identity(selected, function, "assembly", symbol)
+    if identity["status"] == "unresolved" and llvm_path is not None and llvm_path.exists():
+        return _hot_llvm_identity(llvm_path, function)
+    return identity
+
+
+def _physical_search_complete(
+    rows: list[dict[str, Any]], assembly_identity_count: int, measured_count: int,
+) -> bool:
+    """Return true only when every proved terminal has resolved physical coverage."""
+    return (
+        bool(rows)
+        and all(row.get("physical_identity_status") == "resolved" for row in rows)
+        and measured_count == assembly_identity_count
+        and all(
+            row["classification"]
+            not in {"verification_failed", "compile_failed", "benchmark_failed"}
+            for row in rows
+        )
+    )
 
 
 def compile_deep_harness(
@@ -336,7 +431,11 @@ def compile_deep_harness(
         "hashes": {path.name: _sha256(path) for path in (source, binary, assembly, llvm) if path.exists()},
     }
     if assembly.exists():
-        report["hot_assembly_identity"] = _hot_assembly_identity(assembly, candidate.function)
+        report["hot_assembly_identity"] = _hot_assembly_identity(
+            assembly,
+            candidate.function,
+            llvm if llvm.exists() else None,
+        )
     return report
 
 
@@ -381,6 +480,11 @@ def benchmark_deep_candidate(
         "cpu": cpu,
         "candidate_identity": candidate.id,
     }
+    if candidate.language == "julia":
+        # The exhaustive oracle has already run once above. Repeating it in every
+        # short-lived Julia timing process distorts the sample and needlessly
+        # recompiles the full verification loop.
+        manifest["environment"] = {"VLADDER_SKIP_EXHAUSTIVE_VERIFY": "1"}
     manifest_path = output_directory / "paired.yaml"
     manifest_path.write_text(yaml.safe_dump(manifest, sort_keys=True))
     paired = run_paired_benchmark(manifest_path, output_directory / "paired")
@@ -433,7 +537,9 @@ def rank_deep_grammar(
         if proof["status"] == "PASS":
             build = compile_deep_harness(contract, candidate, case_directory / "screening-build")
             row["build"] = build
-            identity = (build.get("hot_assembly_identity") or {}).get("normalized_sha256")
+            physical_identity = build.get("hot_assembly_identity") or {}
+            identity = physical_identity.get("normalized_sha256") if physical_identity.get("status") == "resolved" else None
+            row["physical_identity_status"] = physical_identity.get("status", "unresolved")
             if identity and identity in assembly_owners:
                 row["classification"] = "assembly_duplicate"
                 row["assembly_duplicate_of"] = assembly_owners[identity]
@@ -462,7 +568,8 @@ def rank_deep_grammar(
         rows.append(row)
     measured = [row for row in rows if isinstance(row.get("effect_percent"), (int, float))]
     winner = max(measured, key=lambda row: float(row["effect_percent"])) if measured else None
-    all_closed = bool(rows) and all(row["classification"] not in {"verification_failed", "compile_failed", "benchmark_failed"} for row in rows)
+    identities_resolved = bool(rows) and all(row.get("physical_identity_status") == "resolved" for row in rows)
+    all_closed = _physical_search_complete(rows, len(assembly_owners), len(measured))
     report = {
         "schema_version": "vladder-deep-ranking-v1",
         "status": "pass" if all_closed else "incomplete",
@@ -473,6 +580,7 @@ def rank_deep_grammar(
         "search": search.to_dict(),
         "classification": "bounded_optimal_local" if search.saturated and all_closed else "best_verified_found",
         "assembly_identity_count": len(assembly_owners),
+        "physical_identity_complete": identities_resolved,
         "candidate_count": len(rows),
         "measured_candidate_count": len(measured),
         "winner": {

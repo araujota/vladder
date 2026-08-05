@@ -81,6 +81,14 @@ SEMANTIC_NODE_KINDS = frozenset({
     "Tile",
     "Quantize",
     "QualityMetric",
+    # Bounded ABI and CFG closure vocabulary. These describe compiled information
+    # channels rather than C/C++ syntax.
+    "AggregatePack",
+    "AggregateUnpack",
+    "ExitMerge",
+    "HelperSummary",
+    "OwnershipGuard",
+    "Append",
 })
 
 

@@ -25,6 +25,7 @@ class DataflowCandidate:
     graph_hash: str
     compiler_flags: tuple[str, ...]
     obligations: tuple[SemanticObligation, ...]
+    lowering_class: str = "native_physical"
 
     def to_dict(self) -> dict[str, Any]:
         return {

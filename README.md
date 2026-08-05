@@ -30,10 +30,10 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc11`, the C++ closure matrix is
-`bounded-cpp-regions-v5`; it retains the
+The package version is `1.0.0rc13`, the C++ closure matrix is
+`bounded-cpp-regions-v6`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
-`bounded-zig-regions-v1`, and `bounded-julia-regions-v1` adapters. The C frontend fully
+`bounded-zig-regions-v2`, and `bounded-julia-regions-v2` adapters. The C frontend fully
 automates extraction, LLVM-derived classification, transformation, C source regeneration,
 formal refinement, differential execution, hardware benchmarking, and proof-gated patch
 promotion for canonical functions with this ABI:
@@ -55,8 +55,15 @@ typed obligations, effects, protocol transitions, and claim boundaries. The C fr
 the same authoritative v2 graph to every admitted legacy `FlowGraph`; legacy classification
 fields remain compatibility views.
 
+The v6 `RegionClosureGraph` additionally represents noncanonical first-order C ABIs, ordered
+aggregate-result projections, ordinary multi-exit CFGs, definition-visible helper summaries, and
+guarded no-growth trivial container writes. These close local representation boundaries; they do
+not make reallocation, nontrivial destruction, exceptions, indirect calls, or external ownership
+generic. A modeled C ABI with no executable family is reported as `grammar-adapter`, not
+misreported as an ABI failure.
+
 Results expose independent capture, isolation, candidate-generation, local-proof, benchmark,
-source-rewrite, and protocol-equivalence capabilities. v5 can materialize whole local functions
+source-rewrite, and protocol-equivalence capabilities. v6 can materialize whole local functions
 and eligible nested loops as proof units, and can emit bounded source schedule candidates for the
 latter. It still requires a workload adapter before ranking a noncanonical C++ candidate. Alive2
 can prove local LLVM rewrites; it does not prove RAII, allocation, object invariants, exception,
@@ -93,15 +100,17 @@ candidates in a randomized same-executable benchmark. Unsafe contracts, owning a
 custom destruction, async, concurrency, FFI, unresolved calls, and external protocols fail closed
 with explicit adapter requirements.
 
-The Zig frontend captures a selected native function, compiler/build identity, safety mode, LLVM
-IR, and assembly. Z1 closes allocation-free exact byte reductions over borrowed slices, regenerates
+The Zig frontend captures a selected native function in its original module graph, compiler/build
+identity, safety mode, LLVM IR, and assembly. Z2 accepts explicit bounded comptime type
+specializations such as `countScalar(u8, ...)` and closes allocation-free exact byte reductions over borrowed slices, regenerates
 Zig, derives the realized schedule back from source, proves it with Z3 and canonical Alive2 LLVM,
 runs differential tests, and ranks variants in one executable. Allocator ownership, error unions,
 `defer`, volatile/atomic effects, assembly, FFI, and unresolved calls remain explicit boundaries.
 
-The Julia frontend captures one concrete module/method/tuple specialization, Julia version,
-project/manifest, world counter, inferred effects and allocation, lowered/typed IR, LLVM IR, and
-native assembly. J1 closes type-stable zero-allocation exact byte reductions and ranks warmed
+The Julia frontend captures one concrete module/method/tuple specialization through the declared
+project and package module, Julia version, project/manifest, world counter, inferred effects,
+lowered/typed IR, LLVM IR, and native assembly. Reflection does not execute arbitrary target
+methods. J2 closes type-stable zero-allocation exact byte reductions and ranks warmed
 steady-state native Julia candidates in independent processes. Other methods/worlds, dynamic
 dispatch, GC-visible allocation, globals, exceptions, tasks, `ccall`, nondeterminism, and external
 effects fail closed.
@@ -117,8 +126,12 @@ runtime- or deployment-dispatch realizations. The same derivation regenerates na
 Rust, Zig, or Julia source for every terminal. Language adapters contribute typed bounds,
 ownership, lifetime, exception, unsafe, numeric, and ISA obligations without forking the
 information-flow vocabulary. Z3, compatible Alive2 core refinements, exhaustive boundary
-execution, normalized assembly identities where available, and randomized paired ranking are all
+execution, non-empty symbol-resolved assembly or LLVM identities, and randomized paired ranking are all
 required by the closed path.
+
+An unresolved hot body is never hashed as an empty physical identity. It is measured without
+deduplication and forces `best_verified_found`; `bounded_optimal_local` additionally requires every
+terminal identity to resolve and every unique identity to be measured.
 
 `SemanticFlowGraph v2` is the common evidence contract. Obligations have stable IDs, categories,
 scopes, proof methods, and native-language bindings. Effects name memory, allocation, cleanup,
@@ -133,12 +146,13 @@ before performance identifies missing grammar/tooling coverage rather than a phy
 semantic equivalent.
 
 `bounded-dataflow-v1` extends that executable path beyond scalar counts to bounded variable-output
-and stateful C++ regions. Its five families cover predicate/mask/stable compaction, fixed-width
+and stateful regions. Its five families cover predicate/mask/stable compaction, fixed-width
 wire codecs, transactional baseline/delta transducers, AoS projected multi-reductions, and
-deterministic 4x4 packed blocks. All 17 terminals have native C++20 emission, deterministic
-SemanticFlowGraph v2 derivations, bounded Z3 obligations, and compiled differential execution;
+deterministic 4x4 packed blocks. All 17 terminals have native C, C++20, Zig, and Julia emission,
+deterministic SemanticFlowGraph v2 derivations, bounded Z3 obligations, and compiled differential execution;
 fixed codec helpers also receive local Alive2 refinement evidence. Guarded AVX2 and AVX-512
-compaction terminals retain scalar fallbacks.
+compaction terminals retain scalar fallbacks. Bindings unable to express a named ISA terminal
+report `semantic_scalar_fallback` and do not count as distinct physical coverage.
 
 The C++ closure is intentionally finite. Borrowed spans and caller-owned output can close when a
 pre-write capacity guard proves no growth, element lifetime is trivial, aliases are declared, and
@@ -152,6 +166,7 @@ vladder dataflow coverage
 vladder dataflow verify \
   --contract examples/dataflow/compaction-contract.json \
   --target guarded-avx2-compaction \
+  --language cpp \
   --out-dir /tmp/vladder-compaction
 ```
 
@@ -170,10 +185,10 @@ closed when source mode is requested.
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc11` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc13` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc11'
+python3 -m pip install --pre 'vladder==1.0.0rc13'
 vladder doctor
 ```
 
@@ -449,9 +464,12 @@ proves predicted local units but still performs no optimization, benchmark, or s
 `--command-index N` when the compilation database contains multiple configurations for one file.
 Inspect `closure.disposition`, each independent `closure.capabilities` entry, categorical
 `protocol_scopes`, `compiled-effects.json`, `typed-abi.json`, `subregions.json`,
-`cpp-information-flow.json`, and `proof-envelope.json`. `bounded-cpp-regions-v5` can emit whole
+`cpp-information-flow.json`, `region-closure.json`, `region-closure-proof.json`, and
+`proof-envelope.json`. `bounded-cpp-regions-v6` can emit whole
 local-function proof units and source-preserving lambda capsules for eligible loops inside owning
-C++ methods. Its bounded schedule grammar emits guarded Clang unroll candidates with identity and
+C++ methods. Ordinary early-return loops use a whole-function CFG boundary so return semantics are
+not changed by lambda extraction. Guarded no-growth trivial vector regions and call-preserving
+local helpers are eligible bounded capsules. Its bounded schedule grammar emits guarded Clang unroll candidates with identity and
 Z3 schedule evidence, but requires an application benchmark adapter before ranking or applying
 them. RAII, exceptions/destructors, allocation ownership, concurrency, callbacks, Vulkan/OpenUSD,
 and other external protocols remain explicitly outside generic whole-function proof. They do not
@@ -642,6 +660,11 @@ python3 scripts/release_preflight.py --repository OWNER/REPOSITORY
 
 The release audit rejects generated outputs, caches, model files, vendored application trees,
 credentials, compiled objects, and oversized machine-local artifacts.
+
+The pinned no-write C, C++, Zig, and Julia acceptance study is documented in
+[docs/cross-language-rc12-evaluation.md](docs/cross-language-rc12-evaluation.md). It distinguishes
+compiler capture, semantic closure, candidate generation, proof, and physical rejection rather
+than treating successful command execution as optimization success.
 
 ## Publishing
 

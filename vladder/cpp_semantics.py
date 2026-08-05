@@ -102,13 +102,55 @@ def describe_cpp_type(spelling: str, role: str) -> CppTypeDescriptor:
     return CppTypeDescriptor(normalized, role, "aggregate_value", normalized, is_const, False, "value", "lowered_aggregate")
 
 
-def describe_abi(function_type: str, parameters: list[dict[str, str]], lowered_signature: str) -> dict[str, Any]:
+def _source_aggregate_fields(
+    result: CppTypeDescriptor,
+    documents: list[dict[str, Any]] | None,
+    source_text: str | None,
+) -> list[dict[str, str]]:
+    if result.category != "aggregate_value":
+        return []
+    wanted = normalize_type(str(result.element_type or result.spelling)).split("::")[-1]
+    for document in documents or []:
+        for item in walk_ast(document):
+            if item.get("kind") not in {"CXXRecordDecl", "RecordDecl"} or item.get("name") != wanted:
+                continue
+            fields = [
+                {"name": str(child.get("name", f"field_{index}")), "type": normalize_type(str(child.get("type", {}).get("qualType", "unknown"))), "provenance": "clang-ast"}
+                for index, child in enumerate(item.get("inner", [])) if child.get("kind") == "FieldDecl"
+            ]
+            if fields:
+                return fields
+    # The function-filtered JSON AST may omit the record declaration. Preserve a
+    # conservative fallback for ordinary, non-macro POD declarations; the exact
+    # compiler-lowered ABI remains the authoritative physical binding.
+    if source_text:
+        record = re.search(rf"\b(?:struct|class)\s+{re.escape(wanted)}\s*\{{(.*?)\}}\s*;", source_text, re.DOTALL)
+        if record:
+            fields = []
+            for statement in record.group(1).split(";"):
+                declaration = re.sub(r"//.*", "", statement).strip()
+                match = re.match(r"(.+?)\s+([A-Za-z_]\w*)\s*$", declaration)
+                if match and "(" not in declaration:
+                    fields.append({"name": match.group(2), "type": normalize_type(match.group(1)), "provenance": "source-pod-fallback"})
+            if fields:
+                return fields
+    return []
+
+
+def describe_abi(
+    function_type: str,
+    parameters: list[dict[str, str]],
+    lowered_signature: str,
+    documents: list[dict[str, Any]] | None = None,
+    source_text: str | None = None,
+) -> dict[str, Any]:
     result = describe_cpp_type(function_return_type(function_type), "return")
     arguments = [describe_cpp_type(item["type"], "parameter") for item in parameters]
     lowered_sret = bool(re.search(r"\bsret(?:\(|\b)", lowered_signature))
     lowered_return = re.match(r"^define\s+(?:[-A-Za-z0-9_]+\s+)*([^@]+?)\s+@", lowered_signature)
     lowered_return_type = normalize_type(lowered_return.group(1)) if lowered_return else "unknown"
     lowered_register_result = result.category == "aggregate_value" and lowered_return_type != "void" and not lowered_sret
+    source_fields = _source_aggregate_fields(result, documents, source_text)
     accepted_categories = {"scalar", "pointer", "span", "borrowed_vector", "aggregate_reference"}
     parameters_modeled = all(item.category in accepted_categories for item in arguments)
     result_modeled = result.category in {"void", "scalar"} or (
@@ -122,6 +164,7 @@ def describe_abi(function_type: str, parameters: list[dict[str, str]], lowered_s
         "lowered_sret": lowered_sret,
         "lowered_return_type": lowered_return_type,
         "lowered_register_aggregate": lowered_register_result,
+        "source_aggregate_fields": source_fields,
         "parameters_modeled": parameters_modeled,
         "result_modeled": result_modeled,
         "modeled": parameters_modeled and result_modeled,
@@ -213,6 +256,8 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
             "local_effects": nested["local_effects"],
             "nounwind": nested["nounwind"],
             "memory_effect": nested["memory_effect"],
+            "function_body_sha256": nested["function_body_sha256"],
+            "instruction_counts": nested["instruction_counts"],
         }
         if not nested["local_effects"]:
             # A definition-visible helper is not automatically harmless. Preserve a
@@ -255,6 +300,12 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
         "synchronization_operations": synchronization,
         "volatile_operations": volatile,
         "global_stores": global_stores,
+        "function_body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "aggregate_operations": {
+            "extractvalue": len(re.findall(r"\bextractvalue\b", body)),
+            "insertvalue": len(re.findall(r"\binsertvalue\b", body)),
+            "sret_stores": len(re.findall(r"\bstore\b[^\n]*\bsret\b", body)),
+        },
         "instruction_counts": {
             "loads": len(re.findall(r"\bload\b", body)),
             "stores": len(re.findall(r"\bstore\b", body)),
@@ -262,6 +313,9 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
             "phis": len(re.findall(r"\bphi\b", body)),
             "calls": len(calls),
             "invokes": len(invokes),
+            "returns": len(re.findall(r"^\s*ret\b", body, re.MULTILINE)),
+            "basic_blocks": len(re.findall(r"^[A-Za-z$._][-A-Za-z$._0-9]*:\s*(?:;.*)?$", body, re.MULTILINE)),
+            "selects": len(re.findall(r"\bselect\b", body)),
         },
         "local_effects": local,
     }
@@ -298,6 +352,9 @@ def source_semantics(node: dict[str, Any], function_source: str) -> dict[str, An
         "object_state": "CXXThisExpr" in kinds,
         "memory_order_syntax": memory_order,
         "runtime_control": runtime_control,
+        "return_count": sum(kind == "ReturnStmt" for kind in (item.get("kind") for item in nodes)),
+        "break_count": sum(kind == "BreakStmt" for kind in (item.get("kind") for item in nodes)),
+        "cleanup_syntax": bool(kinds & {"CXXBindTemporaryExpr", "CXXDeleteExpr", "CXXTryStmt"}),
         "loop_count": sum(kind in {"ForStmt", "CXXForRangeStmt", "WhileStmt", "DoStmt"} for kind in (item.get("kind") for item in nodes)),
     }
 
@@ -317,7 +374,9 @@ def helper_closure(source_calls: list[str], effects: dict[str, Any]) -> dict[str
     return {"source_calls": source_calls, "remaining_ir_calls": remaining, "disposition": disposition}
 
 
-def discover_subregions(node: dict[str, Any], source_text: str) -> list[dict[str, Any]]:
+def discover_subregions(
+    node: dict[str, Any], source_text: str, effects: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
     regions: list[dict[str, Any]] = []
     loop_kinds = {"ForStmt", "CXXForRangeStmt", "WhileStmt", "DoStmt"}
     modeled_calls = {"operator[]", "size", "data", "begin", "end", "operator*", "operator++", "operator==", "operator!=", "front", "empty"}
@@ -325,6 +384,21 @@ def discover_subregions(node: dict[str, Any], source_text: str) -> list[dict[str
     function_range = node.get("range", {})
     function_begin = function_range.get("begin", {}).get("offset")
     function_end = function_range.get("end", {}).get("offset")
+    function_token_length = int(function_range.get("end", {}).get("tokLen", 1))
+    function_source = ""
+    if isinstance(function_begin, int) and isinstance(function_end, int):
+        function_source = source_text[function_begin : function_end + function_token_length]
+    noexcept_boundary = "noexcept" in function_source
+    vector_elements = {
+        name: normalize_type(element)
+        for element, name in re.findall(
+            r"(?:std::)?vector\s*<\s*([^,>]+)(?:,[^>]*)?>\s*&?\s*([A-Za-z_]\w*)",
+            function_source,
+        )
+    }
+    trivial_element = re.compile(
+        r"^(?:std::)?(?:u?int(?:8|16|32|64)_t|byte|char|short|int|long|float|double)$"
+    )
     for index, item in enumerate(candidate for candidate in walk_ast(node) if candidate.get("kind") in loop_kinds):
         source_range = item.get("range", {})
         begin_location = source_range.get("begin", {})
@@ -342,6 +416,19 @@ def discover_subregions(node: dict[str, Any], source_text: str) -> list[dict[str
             or begin < 0 or end > len(source_text) or begin >= end
         )
         snippet = source_text[begin:end]
+        append_receivers = set(re.findall(r"\b([A-Za-z_]\w*)\s*\.\s*(?:push_back|emplace_back)\s*\(", snippet))
+        trivial_container = bool(append_receivers) and all(
+            receiver in vector_elements and trivial_element.fullmatch(vector_elements[receiver])
+            for receiver in append_receivers
+        )
+        prefix = source_text[function_begin:begin] if isinstance(function_begin, int) else ""
+        capacity_guard_present = bool(
+            re.search(
+                r"\bif\s*\([^{};]*?\.capacity\s*\(\)[^{};]*?\.size\s*\(\)[^{};]*?\)\s*\{?\s*return\b",
+                prefix,
+                re.DOTALL,
+            )
+        )
         semantics = source_semantics(item, snippet)
         hard_hazards = []
         if semantics["explicit_throw"]:
@@ -360,10 +447,25 @@ def discover_subregions(node: dict[str, Any], source_text: str) -> list[dict[str
         })
         calls = set(semantics["calls"])
         unmodeled = sorted(calls - modeled_calls - capacity_calls)
+        helper_summary_closed = bool(
+            unmodeled and effects
+            and not effects.get("external_calls") and not effects.get("indirect_calls")
+            and (
+                not effects.get("remaining_direct_calls")
+                or bool(effects.get("internal_call_summaries"))
+            )
+        )
         capacity = sorted(calls & capacity_calls)
-        if unmodeled:
+        if unmodeled and not helper_summary_closed:
             hard_hazards.append("external_call")
-        if capacity:
+        bounded_no_growth = bool(
+            capacity
+            and set(capacity) <= {"push_back", "emplace_back"}
+            and capacity_guard_present
+            and noexcept_boundary
+            and trivial_container
+        )
+        if capacity and not bounded_no_growth:
             hard_hazards.append("capacity_mutation")
         if macro_origin or outside_function:
             hard_hazards.append("source_range")
@@ -375,6 +477,12 @@ def discover_subregions(node: dict[str, Any], source_text: str) -> list[dict[str
             str(child.get("referencedDecl", {}).get("name")) for child in walk_ast(item)
             if isinstance(child.get("referencedDecl"), dict) and child["referencedDecl"].get("name")
         }
+        structured_return_exit = bool(escaping_control) and set(escaping_control) == {"ReturnStmt"} and not hard_hazards
+        closure_mode = (
+            "whole_function_cfg" if structured_return_exit else
+            "no_growth_container" if bounded_no_growth else
+            "lambda_capsule"
+        )
         regions.append({
             "id": f"region-{index:03d}",
             "kind": str(item.get("kind")),
@@ -384,9 +492,22 @@ def discover_subregions(node: dict[str, Any], source_text: str) -> list[dict[str
             "outside_selected_function": outside_function,
             "calls": sorted(calls),
             "unmodeled_source_calls": unmodeled,
+            "helper_summary_closure": {
+                "closed": helper_summary_closed,
+                "mode": "inlined_or_exact_call_preserving" if helper_summary_closed else "not_applicable" if not unmodeled else "requires_adapter",
+            },
             "capacity_operations": capacity,
+            "container_closure": {
+                "mode": "borrowed_no_growth" if bounded_no_growth else "unclosed" if capacity else "not_applicable",
+                "capacity_guard": capacity_guard_present,
+                "guard_dominates_region": capacity_guard_present,
+                "noexcept": noexcept_boundary,
+                "trivial_element": trivial_container,
+                "ownership_change_permitted": False,
+            },
             "hard_hazards": hard_hazards,
             "escaping_control": escaping_control,
+            "closure_mode": closure_mode,
             "boundary": {
                 "declared_locals": sorted(declarations),
                 "referenced_identifiers": sorted(references),
@@ -394,11 +515,14 @@ def discover_subregions(node: dict[str, Any], source_text: str) -> list[dict[str
             },
             "classification": (
                 "blocked" if hard_hazards else
+                "bounded_no_growth_container" if bounded_no_growth else
+                "structured_multi_exit_candidate" if structured_return_exit else
                 "bounded_container_candidate" if capacity else
+                "helper_summary_candidate" if helper_summary_closed else
                 "helper_closure_candidate" if unmodeled else
                 "extractable_local_candidate"
             ),
-            "extractable_candidate": not hard_hazards and not escaping_control,
+            "extractable_candidate": not hard_hazards and (not escaping_control or structured_return_exit),
         })
     return regions
 

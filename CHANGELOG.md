@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0rc13 - 2026-08-05
+
+- Add `bounded-cpp-regions-v6` and `RegionClosureGraph` for first-order C ABI capture, aggregate
+  live-out projections, tagged ordinary exits, exact local helper relations, and guarded no-growth
+  trivial container output.
+- Add Z3 aggregate, exit-selector, and capacity closure obligations plus whole-function schedule
+  realization for early-return loops. Reallocation, nontrivial destruction, exceptions, indirect
+  calls, and external ownership remain explicit protocol boundaries.
+
+## 1.0.0rc12 - 2026-08-05
+
+- Preserve Zig project/module context during capture and add explicit bounded comptime type
+  specialization for native exact reductions. Physical comparisons call the original baseline
+  through that module rather than copying a dependency-incomplete function body.
+- Load Julia methods through their declared project/module and separate compiler reflection from
+  target execution; broader methods now retain typed/LLVM/native capture as `local_graph_only`.
+- Reject substring-based semantic false positives and empty physical identities.
+- Require resolved physical identity and complete unique measurement before
+  `bounded_optimal_local`.
+- Run Julia's exhaustive differential oracle once before paired timing rather than inside every
+  benchmark process.
+- Add C, Zig, and Julia bindings for every `bounded-dataflow-v1` terminal, with native differential
+  execution and explicit `semantic_scalar_fallback` classification where ISA lowering is absent.
 All notable changes to vLadder are documented here.
 
 ## Unreleased

@@ -5,6 +5,7 @@ from contextlib import redirect_stdout
 import io
 import json
 from pathlib import Path
+import shutil
 import tempfile
 import unittest
 
@@ -12,6 +13,7 @@ from vladder.dataflow_audit import _selected_source, classify_cpp_dataflow
 from vladder.dataflow_grammar import load_bounded_dataflow_grammar
 from vladder.dataflow_ir import BoundedDataflowContract, DATAFLOW_FAMILIES, build_bounded_dataflow_graph
 from vladder.dataflow_lowering import emit_dataflow_cpp, run_dataflow_differential
+from vladder.dataflow_multilang import emit_dataflow_native, run_native_dataflow_differential
 from vladder.dataflow_proof import prove_dataflow_candidate
 from vladder.cli import main
 
@@ -60,6 +62,25 @@ class BoundedDataflowTests(unittest.TestCase):
                         candidate = emit_dataflow_cpp(contract, derivation)
                         report = run_dataflow_differential(contract, candidate, root / family / derivation.target)
                         self.assertEqual(report["status"], "PASS", report)
+
+    def test_shared_grammar_emits_every_native_language(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="vladder-dataflow-native-") as temporary:
+            root = Path(temporary)
+            for language in ("c", "zig", "julia"):
+                if language == "zig" and not shutil.which("zig"):
+                    continue
+                if language == "julia" and not shutil.which("julia"):
+                    continue
+                for family in sorted(DATAFLOW_FAMILIES):
+                    contract = BoundedDataflowContract(family=family, max_elements=64)
+                    for derivation in self.grammar.search(contract):
+                        with self.subTest(language=language, family=family, target=derivation.target):
+                            candidate = emit_dataflow_native(contract, derivation, language)
+                            self.assertEqual(candidate.derivation_hash, derivation.derivation_hash)
+                            report = run_native_dataflow_differential(
+                                contract, candidate, root / language / family / derivation.target,
+                            )
+                            self.assertEqual(report["status"], "PASS", report)
 
     def test_output_modes_and_capacity_policies_are_executable(self) -> None:
         with tempfile.TemporaryDirectory(prefix="vladder-compaction-contracts-") as temporary:

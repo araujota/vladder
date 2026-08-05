@@ -26,7 +26,7 @@ SUPPORTED = {
 ADAPTERS = {
     "adapter_external_call.c": "external-call-adapter",
     "adapter_multi_loop.c": "loop-shape-adapter",
-    "adapter_wrong_abi.c": "abi-adapter",
+    "adapter_wrong_abi.c": "grammar-adapter",
     "adapter_control_flow.c": "control-flow-adapter",
 }
 
@@ -66,6 +66,17 @@ class AutomaticRegionTests(unittest.TestCase):
             self.assertEqual(report.adapters[0].kind, "language-adapter")
             self.assertIn("compile_commands", report.adapters[0].required_boundary)
             self.assertIn("vladder cpp", report.adapters[0].next_workflow)
+
+    def test_noncanonical_first_order_c_abi_is_closed_before_grammar_admission(self):
+        with tempfile.TemporaryDirectory() as directory:
+            report = inspect_automatic_region(
+                FIXTURES / "adapter_scalar_result.c", "checksum_bytes", Path(directory) / "out"
+            )
+            self.assertFalse(report.supported)
+            self.assertEqual(report.adapters[0].kind, "grammar-adapter")
+            self.assertEqual(report.region_closure["status"], "abi_closed_grammar_missing")
+            self.assertTrue(report.region_closure["c_boundary"]["modeled"])
+            self.assertEqual(report.region_closure["c_boundary"]["return_type"], "uint32_t")
 
     def test_generated_ordered_source_and_proof_source_compile(self):
         source = FIXTURES / "supported_recurrence.c"
@@ -107,7 +118,7 @@ class AutomaticRegionTests(unittest.TestCase):
             result = VelocityLadder().optimize_region(request)
             self.assertEqual(result.return_code, 2)
             self.assertEqual(result.report["status"], "adapter_required")
-            self.assertEqual(result.report["adapters"][0]["kind"], "abi-adapter")
+            self.assertEqual(result.report["adapters"][0]["kind"], "grammar-adapter")
 
 
 if __name__ == "__main__":

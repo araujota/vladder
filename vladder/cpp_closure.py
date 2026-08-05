@@ -81,7 +81,7 @@ def _capsulable(region: dict[str, Any], tier: str) -> tuple[bool, list[str]]:
     hazards = set(region.get("hard_hazards", []))
     permitted = {"object_state"} if tier == "bounded_state_transition" else set()
     remaining = sorted(hazards - permitted)
-    if region.get("escaping_control"):
+    if region.get("escaping_control") and region.get("closure_mode") != "whole_function_cfg":
         remaining.append("escaping_control")
     return not remaining, remaining
 
@@ -127,7 +127,12 @@ def classify_cpp_closure(report: dict[str, Any]) -> dict[str, Any]:
             "eligible": eligible,
             "blockers": blockers,
             "blocker_details": [_region_blocker(item) for item in blockers],
-            "disposition": "automatic_capsule" if eligible else "region_adapter_required",
+            "disposition": (
+                "whole_function_cfg" if eligible and region.get("closure_mode") == "whole_function_cfg" else
+                "no_growth_container_capsule" if eligible and region.get("closure_mode") == "no_growth_container" else
+                "automatic_capsule" if eligible else "region_adapter_required"
+            ),
+            "isolation_mode": region.get("closure_mode", "lambda_capsule"),
             "classification": region.get("classification"),
             "source_range": region.get("source_range"),
         })
@@ -161,7 +166,7 @@ def classify_cpp_closure(report: dict[str, Any]) -> dict[str, Any]:
                 "scope": "selected build and declared contract",
             },
             "isolation": {"ready": isolation_predicted, "actual": False, "kind": "canonical" if canonical else "predicted"},
-            "candidate_generation": {"ready": candidate_predicted, "actual": False, "grammar": "typed-loop-schedule-v1" if nested else None},
+            "candidate_generation": {"ready": candidate_predicted, "actual": False, "grammar": "bounded-cfg-and-loop-schedule-v2" if nested else None},
             "local_proof": {"ready": isolation_predicted, "actual": False, "method": "canonical IR identity plus typed obligations"},
             "benchmark": {"ready": canonical, "actual": canonical, "adapter_required": not canonical},
             "source_rewrite": {"ready": canonical or nested, "actual": canonical, "application_performed": False},
@@ -352,6 +357,48 @@ def materialize_cpp_closure(
         region_id = str(region["id"])
         region_dir = out_dir / region_id
         region_dir.mkdir(parents=True, exist_ok=True)
+        if region.get("isolation_mode") == "whole_function_cfg":
+            whole = next((item for item in proof_units if item.get("id") == "whole-function"), None)
+            identity = (whole or {}).get("proof", {})
+            for factor in (2, 4):
+                direct_candidate = region_dir / f"source-unroll-{factor}.cpp"
+                direct_candidate.write_text(_direct_hint(source_text, region["source_range"], factor))
+                physical_ir = region_dir / f"whole-function-unroll-{factor}.ll"
+                candidate_compile = _compile_ir(
+                    semantic_arguments, directory, source, direct_candidate, physical_ir
+                )
+                syntax = run(
+                    [discover_toolchain().compiler, *semantic_arguments, "-iquote", str(source.parent),
+                     "-fsyntax-only", str(direct_candidate)],
+                    cwd=directory, timeout=240,
+                )
+                candidates.append({
+                    "id": f"{region_id}-cfg-unroll-{factor}",
+                    "grammar": "bounded-cfg-and-loop-schedule-v2",
+                    "rule": "whole-function-clang-unroll-hint",
+                    "factor": factor,
+                    "repository_candidate_source": str(direct_candidate),
+                    "source_sha256": _sha256(direct_candidate.read_bytes()),
+                    "placement": {"source": str(source), "insert_before": region["source_range"][0]},
+                    "compile": candidate_compile,
+                    "repository_syntax": {"status": "pass" if syntax.returncode == 0 else "fail", "stderr": syntax.stderr[-4000:]},
+                    "proof": {
+                        "status": "SOURCE_CONTRACT_PROVED" if identity.get("status") == "correct" and syntax.returncode == 0 else "FAILED",
+                        "class": "whole_function_schedule_contract",
+                        "body_refinement": identity,
+                        "physical_candidate_alive2": {"status": "NOT_RUN", "reason": "the source directive is a compiler scheduling request and is absent from the semantic proof build"},
+                        "claim": "ordinary return exits remain in the original function; only a guarded compiler loop schedule hint is added",
+                        "excluded_claims": ["performance improvement", "exception or cleanup equivalence outside the captured local function"],
+                    },
+                    "benchmark": {"status": "ADAPTER_REQUIRED", "reason": "production inputs and workload remain project-defined"},
+                    "application_performed": False,
+                })
+            proof_units.append({
+                "id": region_id, "kind": "whole_function_cfg", "status": "isolated" if identity.get("status") == "correct" else "proof_failed",
+                "source_range": region["source_range"], "proof": identity,
+                "capture": "tagged ordinary returns at whole-function boundary",
+            })
+            continue
         baseline_source = region_dir / "capsule-baseline.cpp"
         baseline_source.write_text(_wrap_loop(source_text, region["source_range"]))
         baseline_ir = region_dir / "capsule-baseline.ll"

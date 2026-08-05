@@ -11,7 +11,7 @@ multi-reduction, or bounded state transition rather than only a scalar count.
 3. For C++ containers, require a pre-write no-growth guard, trivial element lifetime, and a
    nonthrowing local region. `reserve()` alone does not close ownership.
 4. Run `dataflow graph` to inspect typed obligations and excluded claims.
-5. Run `dataflow verify` to generate C++20, source/graph binding, Z3 obligations, applicable local
+5. Run `dataflow verify --language c|cpp|zig|julia` to generate native source, source/graph binding, Z3 obligations, applicable local
    Alive2 evidence, and differential execution.
 6. If an owning wrapper remains, preserve it and adapt only the proved borrowed kernel. Verify the
    adapter's capacity, status, extent, and state pre/postconditions separately.
@@ -30,6 +30,8 @@ vladder dataflow verify --contract contract.json --target guarded-avx2-compactio
 - `alive2: not_applicable` is expected for variable-output memory/state protocols; inspect the Z3
   sequence and transition obligations instead.
 - `production_promotion: false` means no repository rewrite or speedup has been established.
+- `semantic_scalar_fallback` preserves terminal semantics but does not establish a distinct named
+  ISA realization and must not be counted as complete physical coverage.
 
 ## Recovery Paths
 

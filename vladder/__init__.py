@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc11"
+__version__ = "1.0.0rc13"
 
 from .api import (
     AgentWorkflowRequest,
@@ -37,6 +37,7 @@ from .deep_grammar import DeepGrammar, load_deep_grammar, search_deep_grammar
 from .deep_ir import DeepKernelContract, DeepRealizationGraph
 from .dataflow_grammar import BoundedDataflowGrammar, load_bounded_dataflow_grammar
 from .dataflow_ir import BoundedDataflowContract, BoundedDataflowGraph, build_bounded_dataflow_graph
+from .region_closure import build_region_closure_graph, describe_c_boundary, prove_region_closure
 
 __all__ = [
     "BenchmarkPolicy",
@@ -94,4 +95,7 @@ __all__ = [
     "run_agent_workflow",
     "search_deep_grammar",
     "build_bounded_dataflow_graph",
+    "build_region_closure_graph",
+    "describe_c_boundary",
+    "prove_region_closure",
 ]

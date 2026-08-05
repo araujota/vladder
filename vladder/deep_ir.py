@@ -318,7 +318,12 @@ def inspect_source_realization(source: str, language: str, function: str) -> Sou
         r"(?:\*?\s*[A-Za-z_][A-Za-z0-9_]*\s*>>\s*6\s*\)?)\s*!=\s*(?:0b10|2)(?:u8)?",
         normalized,
     ))
-    if utf8_shift_predicate or any(token in source for token in ("0b1100_0000", "0xC0", "0xC0u8", "is_leading_utf8_byte", "vladder_utf8_leading")):
+    utf8_mask_predicate = bool(re.search(
+        r"(?:&\s*(?:0[xX][cC]0(?:u8)?|0b1100_?0000))\s*\)?\s*!=\s*(?:0[xX]80(?:u8)?|0b1000_?0000)",
+        normalized,
+    ))
+    utf8_named_predicate = bool(re.search(r"\b(?:is_leading_utf8_byte|vladder_utf8_leading)\b", source))
+    if utf8_shift_predicate or utf8_mask_predicate or utf8_named_predicate:
         predicate = "utf8-leading-byte"
         evidence.append("UTF-8 leading-byte predicate" if not utf8_shift_predicate else "normalized shift-and-compare UTF-8 leading-byte predicate")
     elif any(token in source for token in ("== needle", "==needle", "== needles", "simd_eq", "cmpeq_epi8", "bytewise_equal", "vladder_word_equal", "vladder_mask_popcount", "vladder_lane_byte_accumulate")):

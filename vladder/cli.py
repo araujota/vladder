@@ -82,6 +82,7 @@ from .dataflow_audit import audit_dataflow_manifest
 from .dataflow_grammar import load_bounded_dataflow_grammar
 from .dataflow_ir import BoundedDataflowContract, build_bounded_dataflow_graph
 from .dataflow_lowering import emit_dataflow_cpp
+from .dataflow_multilang import emit_dataflow_native
 from .dataflow_proof import prove_dataflow_candidate
 
 
@@ -909,15 +910,16 @@ def dataflow_command(args: argparse.Namespace) -> int:
         derivation = grammar.derive(contract, args.target)
         if args.dataflow_command == "graph":
             report = build_bounded_dataflow_graph(
-                contract, args.target, source_language="cpp", function_identity=args.function
+                contract, args.target, source_language=args.language, function_identity=args.function
             ).to_dict()
             report["status"] = "pass"
             output = Path(args.out).resolve() if args.out else None
         else:
             output_directory = Path(args.out_dir).resolve()
             output_directory.mkdir(parents=True, exist_ok=True)
-            candidate = emit_dataflow_cpp(contract, derivation, args.function, grammar)
-            source = output_directory / "candidate.cpp"
+            candidate = emit_dataflow_native(contract, derivation, args.language, args.function, grammar)
+            suffix = {"c": ".c", "cpp": ".cpp", "zig": ".zig", "julia": ".jl"}[args.language]
+            source = output_directory / ("candidate" + suffix)
             source.write_text(candidate.source)
             proof = prove_dataflow_candidate(
                 contract,
@@ -1097,7 +1099,7 @@ def zig_region_command(args: argparse.Namespace) -> int:
         minimum_speedup_pct=getattr(args, "min_speedup_pct", 1.0),
         benchmark_elements=getattr(args, "n", 1 << 20), benchmark_inner=getattr(args, "inner", 128),
         benchmark_processes=getattr(args, "processes", 8), benchmark_repetitions=getattr(args, "repetitions", 2),
-        cpu=getattr(args, "cpu", None),
+        cpu=getattr(args, "cpu", None), specialization=getattr(args, "specialization", None),
     )
     actions = {"inspect": inspect_zig_region, "isolate": isolate_zig_region, "synthesize": synthesize_zig_region, "optimize": optimize_zig_region}
     report = actions[args.zig_command](request)
@@ -1335,7 +1337,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.set_defaults(func=deep_command)
     dataflow = sub.add_parser(
         "dataflow",
-        help="derive, emit, prove, and audit bounded variable-output and stateful C++ dataflow",
+        help="derive, emit, prove, and audit bounded variable-output and stateful dataflow",
     )
     dataflow.add_argument("--grammar", help="alternate bounded-dataflow-v1 grammar JSON")
     dataflow_sub = dataflow.add_subparsers(dest="dataflow_command", required=True)
@@ -1348,13 +1350,14 @@ def build_parser() -> argparse.ArgumentParser:
     dataflow_audit.set_defaults(func=dataflow_command)
     for action, help_text in (
         ("graph", "construct one SemanticFlowGraph v2 bounded-dataflow realization"),
-        ("emit", "emit native C++ and bounded proof obligations without physical promotion"),
-        ("verify", "emit, prove, compile, and differentially execute one native C++ realization"),
+        ("emit", "emit native C/C++/Zig/Julia and bounded proof obligations without physical promotion"),
+        ("verify", "emit, prove, compile, and differentially execute one native realization"),
     ):
         command = dataflow_sub.add_parser(action, help=help_text)
         command.add_argument("--contract", required=True, help="bounded dataflow contract JSON")
         command.add_argument("--target", required=True, help="terminal realization name from dataflow coverage")
         command.add_argument("--function", default="dataflow_candidate")
+        command.add_argument("--language", choices=("c", "cpp", "zig", "julia"), default="cpp")
         if action == "graph":
             command.add_argument("--out")
         else:
@@ -1462,6 +1465,7 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         command = zig_sub.add_parser(action, help=help_text)
         command.add_argument("--source", required=True); command.add_argument("--function", required=True)
+        command.add_argument("--specialization", help="concrete Zig comptime type, for example u8")
         command.add_argument("--build-root"); command.add_argument("--optimize-mode", choices=("Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"), default="ReleaseFast")
         command.add_argument("--target", default="native"); command.add_argument("--proof-bound", type=int, default=32); command.add_argument("--out-dir", default=default_out)
         if action == "optimize":

@@ -102,6 +102,10 @@ class BoundedDataflowGrammar:
                 "terminals": list(terminals),
                 "graph_builder": "vladder.dataflow_ir:build_bounded_dataflow_graph",
                 "cpp_emitter": "vladder.dataflow_lowering:emit_dataflow_cpp",
+                "native_emitters": {
+                    language: "vladder.dataflow_multilang:emit_dataflow_native"
+                    for language in ("c", "cpp", "zig", "julia")
+                },
                 "proof_generator": "vladder.dataflow_proof:prove_dataflow_candidate",
                 "differential_runner": "vladder.dataflow_lowering:run_dataflow_differential",
             })
