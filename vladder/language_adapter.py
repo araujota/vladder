@@ -13,16 +13,19 @@ SEMANTIC_FLOW_SCHEMA_VERSION = "semantic-flow-v2"
 OBLIGATION_CATEGORIES = frozenset({
     "aliasing", "bounds", "cleanup", "concurrency", "dispatch", "exception",
     "external-effect", "lifetime", "memory", "numeric", "ownership", "placement",
-    "representation", "safety", "shape", "state", "target", "validation",
+    "representation", "resource", "safety", "shape", "state", "synchronization",
+    "target", "topology", "validation",
 })
 EFFECT_KINDS = frozenset({
     "MemoryRead", "MemoryWrite", "Allocate", "Deallocate", "Cleanup",
     "ExceptionalExit", "Synchronize", "Atomic", "Dispatch", "ExternalCall",
-    "Publish", "Invalidate", "Transfer", "Nondeterminism",
+    "Publish", "Invalidate", "Transfer", "Nondeterminism", "Barrier", "Fence",
+    "DMA", "Acquire", "Present", "Release", "CounterSample",
 })
 PROTOCOL_KINDS = frozenset({
     "Ownership", "Lifetime", "Cleanup", "Publication", "Invalidation", "Dispatch",
-    "Exception", "Concurrency",
+    "Exception", "Concurrency", "Queue", "MemoryVisibility", "DMA", "Presentation",
+    "Topology",
 })
 CLAIM_STATUSES = frozenset({"proved", "required", "assumed", "excluded", "unverified"})
 
@@ -89,6 +92,31 @@ SEMANTIC_NODE_KINDS = frozenset({
     "HelperSummary",
     "OwnershipGuard",
     "Append",
+    # Heterogeneous execution vocabulary. Dialect/API names remain provenance.
+    "DispatchGrid",
+    "Workgroup",
+    "Subgroup",
+    "Lane",
+    "SharedMemory",
+    "LocalMemory",
+    "GlobalMemoryTransaction",
+    "MemoryCoalesce",
+    "Barrier",
+    "Atomic",
+    "ResourceUse",
+    "UnsupportedOperation",
+    "QueueSubmit",
+    "SemaphoreSignal",
+    "SemaphoreWait",
+    "Fence",
+    "DMARegister",
+    "DMATransfer",
+    "TopologyRoute",
+    "Acquire",
+    "Present",
+    "Scanout",
+    "Release",
+    "CounterSample",
 })
 
 

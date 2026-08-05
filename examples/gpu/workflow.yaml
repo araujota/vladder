@@ -1,0 +1,18 @@
+schema_version: vladder-gpu-workflow-v1
+name: portable-scale-compute
+kernel:
+  source: ../shaders/scale.comp
+  dialect: spirv
+  entry_point: main
+  target_env: vulkan1.2
+architecture: architectures/portable-test.yaml
+contract:
+  exact_observables: true
+  logical_extent: [1048576]
+protocols:
+  - protocols/queue-valid.yaml
+search:
+  maximum_candidates: 128
+  static_finalists: 16
+  spirv_binary_recipes: true
+physical_ranking: ranking.yaml

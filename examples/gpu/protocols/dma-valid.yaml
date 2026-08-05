@@ -1,0 +1,28 @@
+kind: dma
+name: gpu-to-nic-direct
+devices:
+  - id: gpu0
+    type: gpu
+    capabilities: [peer_dma_export]
+  - id: nic0
+    type: nic
+    capabilities: [peer_dma_import]
+links:
+  - from: gpu0
+    to: nic0
+    kind: pcie
+    direct: true
+    bidirectional: true
+    bandwidth_bytes_per_second: 25000000000
+    latency_ns: 900
+transfer:
+  source: gpu0
+  destination: nic0
+  route: [gpu0, nic0]
+  bytes: 1048576
+  direct: true
+  memory_registered: true
+  producer_complete_before_dma: true
+  dma_complete_before_publish: true
+  consumer_complete_before_reuse: true
+  fallback: host_staging

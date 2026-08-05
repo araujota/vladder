@@ -1,0 +1,18 @@
+hardware_identity: TEST-GPU-0001
+contract:
+  exact_observables: true
+baseline:
+  id: baseline
+  artifact: artifacts/baseline.json
+  counter_evidence: counters/baseline.yaml
+candidates:
+  - id: coalesced-vector
+    artifact: artifacts/candidate.json
+    counter_evidence: counters/candidate.yaml
+runner:
+  command: [python3, runner.py, "{artifact}"]
+  evidence_class: simulated-runner-fixture
+  processes: 10
+  minimum_effect_percent: 5
+  bootstrap_rounds: 500
+  seed: 17

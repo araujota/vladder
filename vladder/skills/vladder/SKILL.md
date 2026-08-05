@@ -5,10 +5,10 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc13`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc14`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v6`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v2`, and
-`bounded-julia-regions-v2` adapters. Use vLadder as a proof-gated workflow: semantic
+`bounded-julia-regions-v2` adapters and `heterogeneous-execution-v1`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
@@ -314,9 +314,14 @@ For application regions, use `vladder benchmark paired` and require exact observ
 Before reporting composed effects, use `vladder benchmark compose`; parent/child or otherwise
 overlapping regions cannot be compounded without an explicit interaction measurement.
 
-For GPU compute, read [gpu-workflow.md](references/gpu-workflow.md). `spirv-val` establishes
-structural validity only. Output parity and device timestamps are required; Vulkan/CUDA host,
-driver, queue, presentation, and topology behavior remains in the supplied runner contract.
+For GPU compute and device-resident flow, read [gpu-workflow.md](references/gpu-workflow.md) and
+start with `vladder gpu support`. The `gpu capture|synthesize|verify|rank` workflow separately
+models kernel semantics/resources, queue synchronization, DMA topology, and presentation
+ownership. `spirv-val`, static occupancy, launch-index proof, protocol proof, and counter imports
+are supporting evidence, not physical equivalence. Promotion requires an exact-output runner,
+matching device identity, clean device timestamps, and a confidence interval excluding the
+declared minimum effect. Driver scheduling, firmware, undeclared device loss, and external actors
+remain explicit claim boundaries.
 
 ### 7. Rewrite Production Source
 
@@ -354,6 +359,7 @@ result as `bounded_optimal_local` only after exhaustive coverage with sound prun
 - Projection complexes: `vladder projection analyze|profile|synthesize`
 - Attribution-gated kernels: `vladder sksf validate-attribution|synthesize`
 - Production Q4_K research: `vladder q4k ...`
+- Heterogeneous GPU execution: `vladder gpu support|capture|synthesize|verify|rank`
 - Lifetime-aware realization: `vladder lifetime analyze|synthesize|evaluate-corpus`
 
 These modes are contract-specific. Read their example manifests in the installed package before

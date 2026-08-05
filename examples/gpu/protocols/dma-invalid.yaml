@@ -1,0 +1,20 @@
+kind: dma
+name: unsafe-direct-dma
+devices:
+  - id: gpu0
+    type: gpu
+    capabilities: []
+  - id: nic0
+    type: nic
+    capabilities: []
+links: []
+transfer:
+  source: gpu0
+  destination: nic0
+  route: [gpu0, nic0]
+  bytes: 4096
+  direct: true
+  memory_registered: false
+  producer_complete_before_dma: false
+  dma_complete_before_publish: false
+  consumer_complete_before_reuse: false

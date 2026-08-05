@@ -18,6 +18,32 @@ device timing.
 The evidence plane changes orchestration and application closure. It does not replace expression,
 loop, operator, lifetime, LLVM, Alive2, Z3, or hardware-specific search layers.
 
+## Heterogeneous Execution Plane (rc14)
+
+`heterogeneous-execution-v1` extends `SemanticFlowGraph v2` across GPU kernels and bounded device
+protocols. It does not fork the semantic vocabulary by API or vendor. SPIR-V and PTX names remain
+provenance; their operations lower into common dispatch, workgroup, lane, memory-transaction,
+barrier, atomic, resource-use, and unsupported-operation nodes. CUDA source enters through pinned
+PTX lowering when `nvcc` is available.
+
+A hardware manifest supplies the exact device identity and finite resource model. Static search
+enumerates workgroup geometry and modeled memory/schedule alternatives, estimates occupancy,
+register and shared-memory limits, physical transactions, coalescing, and instruction work, and
+classifies each result as launch-only, source-rewritable, or adapter-required. Only unchanged
+lane-independent launch geometry and literal GLSL workgroup rewrites currently have executable
+generic realization; code-shape changes remain explicit adapter work.
+
+Host/device behavior is represented by separate but composable queue, DMA/topology, and
+presentation protocol graphs. Z3 checks declared execution dependencies, visibility, timeline
+ordering, ownership transfer, DMA registration/completion/reuse, and acquire/present/scanout
+lifecycle obligations. Those bounded models do not prove driver, firmware, NIC, display-engine,
+or undeclared failure behavior.
+
+Physical ranking randomizes baseline/candidate order and uses complete output hashes plus clean
+device timestamps. CUPTI, ROCprofiler, and Vulkan/runner counters normalize into shared categories
+for attribution. Replayed or serialized profiler timing, simulated runners, mismatched device
+identity, incomplete observables, or failed protocol obligations cannot promote a candidate.
+
 ## Optimization Boundary
 
 vLadder operates above LLVM. It extracts bounded C/C++/Rust/Zig/Julia regions into semantic and physical

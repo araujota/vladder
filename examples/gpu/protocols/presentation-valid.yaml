@@ -1,0 +1,11 @@
+kind: presentation
+name: double-buffered-scanout
+images: [image0]
+present_mode: fifo
+deadline_policy: next_vblank
+events:
+  - {type: acquire, image: image0}
+  - {type: render_complete, image: image0}
+  - {type: present, image: image0}
+  - {type: scanout, image: image0}
+  - {type: release, image: image0}

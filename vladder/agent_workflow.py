@@ -15,6 +15,7 @@ from .automatic import inspect_automatic_region
 from .cpp_regions import inspect_cpp_region, isolate_cpp_region, optimize_cpp_region
 from .lifetime_workflow import analyze_lifetime_flow, synthesize_lifetime_flow
 from .shader_workflow import inspect_shader, synthesize_shader
+from .gpu_workflow import capture_gpu_workflow, rank_gpu_workflow, synthesize_gpu_workflow, verify_gpu_workflow
 from .state_protocol import verify_state_protocol
 from .rust_adapter import RustRegionRequest, inspect_rust_region, isolate_rust_region, optimize_rust_region, synthesize_rust_region
 from .zig_adapter import ZigRegionRequest, inspect_zig_region, isolate_zig_region, optimize_zig_region, synthesize_zig_region
@@ -39,8 +40,8 @@ def _resolve(base: Path, value: str | Path) -> Path:
 
 
 def initialize_workflow_manifest(kind: str, output_path: Path) -> dict[str, Any]:
-    if kind not in {"c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "protocol"}:
-        raise ValueError("workflow kind must be c, cpp, rust, zig, julia, lifetime, shader, or protocol")
+    if kind not in {"c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "gpu", "protocol"}:
+        raise ValueError("workflow kind must be c, cpp, rust, zig, julia, lifetime, shader, gpu, or protocol")
     region: dict[str, Any]
     if kind == "c":
         region = {"kind": "c", "action": "inspect", "source": "TODO.c", "function": "transform"}
@@ -64,6 +65,8 @@ def initialize_workflow_manifest(kind: str, output_path: Path) -> dict[str, Any]
         region = {"kind": "lifetime", "action": "analyze", "manifest": "lifetime.yaml", "trace": "lifetime.jsonl"}
     elif kind == "shader":
         region = {"kind": "shader", "action": "inspect", "source": "kernel.comp", "target_env": "vulkan1.2", "runner_manifest": None}
+    elif kind == "gpu":
+        region = {"kind": "gpu", "action": "capture", "manifest": "gpu-workflow.yaml"}
     else:
         region = {"kind": "protocol", "action": "verify", "manifest": "state-protocol.yaml"}
     manifest = {
@@ -260,13 +263,26 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
         )
         report_path = stage_dir / ("shader-report.json" if action == "synthesize" else "shader-inspection.json")
         adapter = None
+    elif kind == "gpu":
+        gpu_manifest = _resolve(manifest_path.parent, str(region["manifest"]))
+        actions = {
+            "capture": capture_gpu_workflow,
+            "synthesize": synthesize_gpu_workflow,
+            "verify": verify_gpu_workflow,
+            "rank": rank_gpu_workflow,
+        }
+        if action not in actions:
+            raise ValueError(f"unsupported GPU workflow action: {action}")
+        report = actions[action](gpu_manifest, stage_dir)
+        report_path = stage_dir / "gpu-workflow.json"
+        adapter = None
     elif kind == "protocol":
         protocol_manifest = _resolve(manifest_path.parent, str(region["manifest"]))
         report = verify_state_protocol(protocol_manifest, stage_dir)
         report_path = stage_dir / "protocol-proof.json"
         adapter = None
     else:
-        raise ValueError("region.kind must be c, cpp, rust, zig, julia, lifetime, shader, or protocol")
+        raise ValueError("region.kind must be c, cpp, rust, zig, julia, lifetime, shader, gpu, or protocol")
 
     summary = build_promotion_summary(
         report,
@@ -425,6 +441,33 @@ def build_promotion_summary(
             blockers.append("no application GPU output oracle established candidate equivalence")
         next_action = str(report.get("next_action", "provide an output and timestamp runner"))
         candidate_identity = winner.get("module_sha256") if isinstance(winner, dict) else None
+    elif kind == "gpu":
+        kernel = report.get("kernel", {})
+        graph = kernel.get("graph", {}) if isinstance(kernel, dict) else {}
+        states["meaningful_semantic_coverage"] = bool(graph.get("nodes")) and not kernel.get("unsupported_operations")
+        states["candidate_generated"] = int(report.get("candidate_count", 0)) > 0 or bool(report.get("static_finalists"))
+        protocols = report.get("protocols", [])
+        protocols_pass = bool(protocols) and all(item.get("status") == "PASS" for item in protocols)
+        physical = report.get("physical", {})
+        winner = physical.get("winner") if isinstance(physical, dict) else None
+        states["candidate_proved"] = bool(
+            (report.get("status") == "PASS" or protocols_pass)
+            and (states["meaningful_semantic_coverage"] or report.get("kernel_capture_complete"))
+        )
+        states["physically_benchmarked"] = bool(physical.get("candidates")) if isinstance(physical, dict) else False
+        states["production_promoted"] = bool(report.get("promotion", {}).get("promotable"))
+        proof_class = str(report.get("proof_classification", "heterogeneous_kernel_and_bounded_device_protocol" if states["candidate_proved"] else "partial_heterogeneous_evidence"))
+        disposition = str(report.get("bounded_classification", report.get("status", "inspected")))
+        blockers.extend(str(item) for item in kernel.get("unsupported_operations", []))
+        for item in protocols:
+            blockers.extend(issue.get("message", issue.get("id", "protocol issue")) for issue in item.get("issues", []))
+        candidate_identity = winner.get("candidate_id") if isinstance(winner, dict) else None
+        next_action = str(report.get("next_action") or (
+            "integrate the promoted kernel and protocol plan, then run composed-system confirmation"
+            if states["production_promoted"] else
+            "run clean exact-output physical ranking" if states["candidate_proved"] else
+            "resolve unsupported kernel operations or device-protocol counterexamples"
+        ))
     elif kind == "protocol":
         states["meaningful_semantic_coverage"] = True
         states["candidate_proved"] = report.get("status") == "PASS"
@@ -514,6 +557,8 @@ def _infer_kind(report: dict[str, Any]) -> str:
         return "lifetime"
     if "shader" in schema or report.get("language") == "spirv-compute":
         return "shader"
+    if "gpu-workflow" in schema or "heterogeneous" in schema:
+        return "gpu"
     if "protocol" in schema:
         return "protocol"
     return "unknown"

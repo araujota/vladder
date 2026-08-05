@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.0rc14 - 2026-08-05
+
+- Add the shared `heterogeneous-execution-v1` model for SPIR-V, PTX, and CUDA-lowered kernel
+  capture, architecture-aware occupancy/register/shared-memory/transaction estimation, and
+  bounded launch or GLSL workgroup-source realization.
+- Add verified Vulkan-style queue/semaphore/barrier, GPU/NIC DMA/topology, and
+  acquire/present/scanout protocol graphs using the existing `SemanticFlowGraph v2` vocabulary.
+- Add counter normalization and randomized paired GPU ranking that requires exact output,
+  matching device identity, and clean device timestamps; profiler-replayed or simulated timing
+  remains attribution-only and cannot promote a candidate.
+- Add `vladder gpu support|capture|synthesize|verify|rank`, an agent-workflow GPU manifest, strict
+  OpenSpec requirements, fail-closed protocol fixtures, and heterogeneous end-to-end tests.
+
 ## 1.0.0rc13 - 2026-08-05
 
 - Add `bounded-cpp-regions-v6` and `RegionClosureGraph` for first-order C ABI capture, aggregate

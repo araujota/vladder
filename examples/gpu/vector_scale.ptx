@@ -1,0 +1,36 @@
+.version 8.0
+.target sm_80
+.address_size 64
+
+.visible .entry vector_scale(
+    .param .u64 output,
+    .param .u64 input,
+    .param .f32 scale,
+    .param .u32 count
+)
+.maxntid 256, 1, 1
+{
+    .reg .pred %p<2>;
+    .reg .b32 %r<8>;
+    .reg .b64 %rd<8>;
+    .reg .f32 %f<4>;
+
+    ld.param.u64 %rd1, [output];
+    ld.param.u64 %rd2, [input];
+    ld.param.f32 %f1, [scale];
+    ld.param.u32 %r1, [count];
+    mov.u32 %r2, %tid.x;
+    mov.u32 %r3, %ctaid.x;
+    mov.u32 %r4, %ntid.x;
+    mad.lo.s32 %r5, %r3, %r4, %r2;
+    setp.ge.u32 %p1, %r5, %r1;
+    @%p1 bra DONE;
+    mul.wide.u32 %rd3, %r5, 4;
+    add.s64 %rd4, %rd2, %rd3;
+    add.s64 %rd5, %rd1, %rd3;
+    ld.global.f32 %f2, [%rd4];
+    mul.f32 %f3, %f2, %f1;
+    st.global.f32 [%rd5], %f3;
+DONE:
+    ret;
+}

@@ -30,7 +30,7 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc13`, the C++ closure matrix is
+The package version is `1.0.0rc14`, the C++ closure matrix is
 `bounded-cpp-regions-v6`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
 `bounded-zig-regions-v2`, and `bounded-julia-regions-v2` adapters. The C frontend fully
@@ -84,6 +84,25 @@ rc6 adds a manifest-driven agent workflow and closes several application-promoti
 - GLSL/SPIR-V compute modules can be compiled, validated, transformed, and connected to exact
   output and device-timestamp runners. SPIR-V structural validation is not equivalence, and CUDA
   remains an external toolchain/runner boundary when unavailable.
+
+rc14 extends that evidence chain into heterogeneous execution without creating a separate GPU
+semantic ontology. `Q4KPhysicalExecutionGraph`-style machine resources, SPIR-V/PTX operations,
+queue synchronization, DMA topology, and presentation ownership lower into shared
+`SemanticFlowGraph v2` nodes, effects, obligations, and protocol transitions. The
+`heterogeneous-execution-v1` workflow provides:
+
+- SPIR-V, PTX, and CUDA-to-PTX capture with operation, resource, provenance, and claim-boundary
+  inventories;
+- architecture manifests and static occupancy, register, shared-memory, cache-transaction, and
+  coalescing estimates for pruning;
+- bounded launch-plan proof and GLSL local-workgroup source regeneration where the source and
+  recognized lane-independent semantics permit it;
+- queue/semaphore/barrier, GPU/NIC DMA/topology, and acquire/present/scanout protocol verification;
+- CUPTI, ROCprofiler, and runner-counter normalization with randomized paired physical ranking.
+
+Static models never promote. Exact output hashes, matching device identity, clean device
+timestamps, protocol closure, and confidence intervals are required for a physical win.
+Profiler-replayed, serialized, or simulated measurements remain attribution-only.
 
 This is not arbitrary-C++ or whole-device equivalence. RAII, allocation, exceptions, general
 concurrency, callbacks, syscalls, drivers, presentation, Vulkan/CUDA host protocols, and external
@@ -185,10 +204,10 @@ closed when source mode is requested.
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc13` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc14` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc13'
+python3 -m pip install --pre 'vladder==1.0.0rc14'
 vladder doctor
 ```
 
@@ -262,7 +281,7 @@ inputs resume deterministically and are classified as revalidation rather than a
 
 The operational decision tree is:
 
-1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `lifetime`, `shader`, or `protocol` from the region's actual semantic boundary.
+1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `lifetime`, `gpu`, `shader`, or `protocol` from the region's actual semantic boundary.
 2. Run inspection and read `meaningful_semantic_coverage`.
 3. If an adapter remains, generate or complete it; do not relabel local proof as wrapper proof.
 4. Require candidate proof and randomized paired physical evidence.
@@ -274,6 +293,10 @@ vladder protocol verify --manifest state-protocol.yaml --out-dir vladder-protoco
 vladder benchmark paired --manifest paired-benchmark.yaml --out-dir vladder-paired
 vladder benchmark compose --manifest regional-effects.yaml --out vladder-composition.json
 vladder shader synthesize --source kernel.comp --runner-manifest gpu-runner.yaml --out-dir vladder-shader-out
+vladder gpu capture --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-capture
+vladder gpu synthesize --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-candidates
+vladder gpu verify --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-proof
+vladder gpu rank --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-ranking
 ```
 
 For an automatically supported Rust region:
@@ -302,8 +325,10 @@ provenance; strict local proof composes source-derived schedule validation, para
 canonical schedule LLVM refinement. Do not report that canonical lowerer proof as direct proof of
 Zig frontend aliases or Julia's GC/safepoint ABI.
 
-The shader runner must emit exact output hashes and device timestamps. A candidate that only passes
-`spirv-val` remains non-promotable.
+The shader or heterogeneous GPU runner must emit exact output hashes and device timestamps. A
+candidate that only passes `spirv-val`, a bounded launch proof, a static cost model, or a simulated
+runner remains non-promotable. Use `vladder gpu support` to inspect available kernel, counter, and
+device tooling and see [GPU Compute Evidence](vladder/skills/vladder/references/gpu-workflow.md).
 
 For repository or runtime architecture work, begin with an explicit lifetime manifest and trace:
 

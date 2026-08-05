@@ -1,0 +1,10 @@
+kind: presentation
+name: present-before-render
+images: [image0]
+present_mode: fifo
+events:
+  - {type: acquire, image: image0}
+  - {type: present, image: image0}
+  - {type: render_complete, image: image0}
+  - {type: scanout, image: image0}
+  - {type: release, image: image0}

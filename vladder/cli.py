@@ -54,6 +54,13 @@ from .sksf_workflow import synthesize_kernel_v6, validate_attribution_v6
 from .skill_tools import install_skill, validate_skill
 from .verification_policy import VerificationPolicy, evaluate_promotion
 from .shader_workflow import gpu_support_matrix, inspect_shader, synthesize_shader
+from .gpu_workflow import (
+    capture_gpu_workflow,
+    gpu_support_matrix as heterogeneous_gpu_support_matrix,
+    rank_gpu_workflow,
+    synthesize_gpu_workflow,
+    verify_gpu_workflow,
+)
 from .state_protocol import verify_state_protocol
 from .rust_adapter import (
     RustRegionRequest,
@@ -1170,6 +1177,21 @@ def shader_command(args: argparse.Namespace) -> int:
     return 0 if report.get("status") == "pass" or args.shader_command == "support" else 2
 
 
+def gpu_command(args: argparse.Namespace) -> int:
+    if args.gpu_command == "support":
+        report = heterogeneous_gpu_support_matrix()
+    else:
+        actions = {
+            "capture": capture_gpu_workflow,
+            "synthesize": synthesize_gpu_workflow,
+            "verify": verify_gpu_workflow,
+            "rank": rank_gpu_workflow,
+        }
+        report = actions[args.gpu_command](Path(args.manifest), Path(args.out_dir))
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report.get("status") in {"pass", "PASS", "partial", "INCOMPLETE"} or args.gpu_command == "support" else 2
+
+
 def verify_application_command(args: argparse.Namespace) -> int:
     report = verify_applied_replacement(
         Path(args.report),
@@ -1223,7 +1245,7 @@ def build_parser() -> argparse.ArgumentParser:
     workflow = sub.add_parser("workflow", help="run and summarize the canonical agent optimization workflow")
     workflow_sub = workflow.add_subparsers(dest="workflow_command", required=True)
     workflow_init = workflow_sub.add_parser("init", help="create a canonical workflow manifest")
-    workflow_init.add_argument("--kind", choices=("c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "protocol"), required=True)
+    workflow_init.add_argument("--kind", choices=("c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "gpu", "protocol"), required=True)
     workflow_init.add_argument("--out", default="vladder-workflow.yaml")
     workflow_init.set_defaults(func=workflow_command)
     workflow_run = workflow_sub.add_parser("run", help="route one manifest and emit a promotion summary")
@@ -1532,6 +1554,20 @@ def build_parser() -> argparse.ArgumentParser:
         if action == "synthesize":
             command.add_argument("--runner-manifest", help="application output-hash and device-timestamp runner")
         command.set_defaults(func=shader_command)
+    gpu = sub.add_parser("gpu", help="capture, synthesize, verify, and rank heterogeneous GPU execution graphs")
+    gpu_sub = gpu.add_subparsers(dest="gpu_command", required=True)
+    gpu_support = gpu_sub.add_parser("support", help="show GPU kernel, protocol, cost-model, and counter capabilities")
+    gpu_support.set_defaults(func=gpu_command)
+    for action, help_text, default_out in (
+        ("capture", "capture SPIR-V/PTX/CUDA kernel and device protocol graphs", "vladder-gpu-capture"),
+        ("synthesize", "enumerate architecture-aware kernel and protocol realization plans", "vladder-gpu-synthesis"),
+        ("verify", "verify bounded kernel-capture and device-protocol obligations", "vladder-gpu-proof"),
+        ("rank", "rank exact candidates using clean device timing and counter support", "vladder-gpu-ranking"),
+    ):
+        command = gpu_sub.add_parser(action, help=help_text)
+        command.add_argument("--manifest", required=True)
+        command.add_argument("--out-dir", default=default_out)
+        command.set_defaults(func=gpu_command)
     skill = sub.add_parser("skill", help="validate or install the bundled coding-agent skill")
     skill_sub = skill.add_subparsers(dest="skill_command", required=True)
     skill_validate = skill_sub.add_parser("validate", help="validate the bundled or specified skill")
