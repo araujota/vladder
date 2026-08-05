@@ -7,7 +7,7 @@ from typing import Any
 
 from z3 import Int, Solver, Sum, unsat
 
-from .language_adapter import SemanticFlowEdge, SemanticFlowGraph, SemanticFlowNode
+from .language_adapter import SemanticFlowEdge, SemanticFlowGraph, SemanticFlowNode, obligation
 
 
 @dataclass(frozen=True)
@@ -125,7 +125,18 @@ def count_equal_graph(
     excluded_claims: tuple[str, ...],
 ) -> SemanticFlowGraph:
     def node(identifier: str, kind: str, operation: str, inputs: tuple[str, ...], output: str | None, obligations: tuple[str, ...] = ()) -> SemanticFlowNode:
-        return SemanticFlowNode(identifier, kind, operation, inputs, output, {}, source_provenance, obligations)
+        typed = tuple(
+            obligation(
+                f"{identifier}.{index}",
+                "bounds" if "bound" in statement or "valid" in statement else "numeric",
+                statement,
+                proof_method="z3-and-native-differential",
+                language=language,
+                native_construct=semantic_ir,
+            )
+            for index, statement in enumerate(obligations)
+        )
+        return SemanticFlowNode(identifier, kind, operation, inputs, output, {}, source_provenance, typed)
 
     nodes = (
         node("bytes", "Input", "borrowed-byte-sequence", (), "u8[]", ("valid for region lifetime",)),

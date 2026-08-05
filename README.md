@@ -30,7 +30,7 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc9`, the C++ closure matrix is
+The package version is `1.0.0rc10`, the C++ closure matrix is
 `bounded-cpp-regions-v5`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
 `bounded-zig-regions-v1`, and `bounded-julia-regions-v1` adapters. The C frontend fully
@@ -50,7 +50,10 @@ uses Clang's semantic AST to select a concrete mangled definition, and combines 
 with recursively summarized production LLVM effects. It models scalar, pointer, byte or typed
 span, borrowed vector, structured-reference, and compiler-lowered aggregate-result boundaries.
 It also inventories loops, helper closures, object-state projections, ownership, exceptions,
-synchronization, and external calls, then emits a deterministic C++ information-flow graph.
+synchronization, and external calls, then emits an authoritative `SemanticFlowGraph v2` with
+typed obligations, effects, protocol transitions, and claim boundaries. The C frontend attaches
+the same authoritative v2 graph to every admitted legacy `FlowGraph`; legacy classification
+fields remain compatibility views.
 
 Results expose independent capture, isolation, candidate-generation, local-proof, benchmark,
 source-rewrite, and protocol-equivalence capabilities. v5 can materialize whole local functions
@@ -107,13 +110,21 @@ The package also contains specialist operator, pipeline, projection, quantized-k
 weight-traversal research adapters. Use `vladder grammar` and `vladder lower list` to distinguish
 automatic source workflows from shape-specific routes, modeled plans, and research-only modes.
 
-rc8 adds `deep-v2`, the first shared grammar whose coverage is executable end to end rather than
+rc10 completes `deep-v2`, the first shared grammar whose coverage is executable end to end rather than
 only declarative. Its initial exact byte-predicate-reduction archetype searches scalar, packed-word
 SWAR, SIMD mask/popcount, bounded SIMD byte-accumulator, tail, traversal, fusion, constant, and
-runtime-dispatch realizations. The same derivation regenerates native C or Rust; language adapters
-contribute bounds, borrow, unsafe, panic, and ISA obligations without forking the information-flow
-vocabulary. Z3, compatible Alive2 core refinements, exhaustive boundary execution, normalized
-assembly identities, and randomized same-executable ranking are all required by the closed path.
+runtime- or deployment-dispatch realizations. The same derivation regenerates native C, C++20,
+Rust, Zig, or Julia source for every terminal. Language adapters contribute typed bounds,
+ownership, lifetime, exception, unsafe, numeric, and ISA obligations without forking the
+information-flow vocabulary. Z3, compatible Alive2 core refinements, exhaustive boundary
+execution, normalized assembly identities where available, and randomized paired ranking are all
+required by the closed path.
+
+`SemanticFlowGraph v2` is the common evidence contract. Obligations have stable IDs, categories,
+scopes, proof methods, and native-language bindings. Effects name memory, allocation, cleanup,
+exception, synchronization, external-call, publication, invalidation, and transfer behavior.
+Protocol transitions and claims are graph-hash inputs, and dangling effect/protocol references
+fail closed.
 
 The scope is intentionally precise. `deep-v2` does not enumerate every LLVM-equivalent program or
 every algorithm. A negative result is meaningful only after known expert realizations pass the
@@ -136,10 +147,10 @@ closed when source mode is requested.
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc9` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc10` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc9'
+python3 -m pip install --pre 'vladder==1.0.0rc10'
 vladder doctor
 ```
 

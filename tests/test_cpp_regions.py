@@ -123,6 +123,9 @@ attributes #0 = { nounwind nofree nosync }
                         self.assertIn("source-lowering-adapter", [item["kind"] for item in report["adapters"]])
                     self.assertNotIn("regenerated_cpp", report["artifacts"])
                     self.assertEqual(len(report["information_flow"]["graph_sha256"]), 64)
+                    self.assertEqual(report["information_flow"]["schema_version"], "semantic-flow-v2")
+                    self.assertTrue(report["information_flow"]["effects"])
+                    self.assertTrue(all("category" in item for item in report["information_flow"]["obligations"]))
                     self.assertTrue(Path(report["artifacts"]["information_flow"]).exists())
                     if name == "accepted_byte_parser.cpp":
                         self.assertEqual(report["helper_closure"]["disposition"]["read_be32"], "inlined_or_folded")
@@ -227,6 +230,7 @@ attributes #0 = { nounwind nofree nosync }
             )
             self.assertTrue(external["categorical_for_generic_ingestion"])
             self.assertIn("independently isolated local regions", external["does_not_block"])
+            self.assertTrue(any(effect["kind"] == "ExternalCall" for effect in report["information_flow"]["effects"]))
 
     def test_callback_loop_is_not_misclassified_as_a_closed_local_capsule(self):
         with tempfile.TemporaryDirectory() as directory:

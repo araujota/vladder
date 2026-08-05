@@ -102,11 +102,11 @@
     }
   ],
   "terminal_realizations": {
-    "scalar": {"emitter": "scalar", "languages": ["c", "rust"], "isa": "scalar", "vector_bytes": 1},
-    "word-swar": {"emitter": "word_swar", "languages": ["c", "rust"], "isa": "scalar", "vector_bytes": 8},
-    "simd-mask-popcount": {"emitter": "simd_mask_popcount", "languages": ["c", "rust"], "isa": "avx2", "vector_bytes": 32},
-    "simd-byte-accumulate-final": {"emitter": "simd_byte_accumulate", "languages": ["c", "rust"], "isa": "avx2", "vector_bytes": 32},
-    "guarded-avx2": {"emitter": "guarded_avx2", "languages": ["c", "rust"], "isa": "runtime", "vector_bytes": 32},
-    "guarded-avx2-byte": {"emitter": "guarded_avx2_byte", "languages": ["c", "rust"], "isa": "runtime", "vector_bytes": 32}
+    "scalar": {"emitter": "scalar", "languages": ["c", "cpp", "rust", "zig", "julia"], "isa": "scalar", "vector_bytes": 1},
+    "word-swar": {"emitter": "word_swar", "languages": ["c", "cpp", "rust", "zig", "julia"], "isa": "scalar", "vector_bytes": 8},
+    "simd-mask-popcount": {"emitter": "simd_mask_popcount", "languages": ["c", "cpp", "rust", "zig", "julia"], "isa": "avx2", "vector_bytes": 32},
+    "simd-byte-accumulate-final": {"emitter": "simd_byte_accumulate", "languages": ["c", "cpp", "rust", "zig", "julia"], "isa": "avx2", "vector_bytes": 32},
+    "guarded-avx2": {"emitter": "guarded_avx2", "languages": ["c", "cpp", "rust", "zig", "julia"], "isa": "runtime-or-deployment", "vector_bytes": 32},
+    "guarded-avx2-byte": {"emitter": "guarded_avx2_byte", "languages": ["c", "cpp", "rust", "zig", "julia"], "isa": "runtime-or-deployment", "vector_bytes": 32}
   }
 }

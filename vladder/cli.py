@@ -846,7 +846,8 @@ def deep_command(args: argparse.Namespace) -> int:
                 candidate = emit_deep_candidate(contract, derivation, args.language, args.function, grammar)
                 out_dir = Path(args.out_dir).resolve()
                 out_dir.mkdir(parents=True, exist_ok=True)
-                source_path = out_dir / ("candidate.rs" if args.language == "rust" else "candidate.c")
+                extensions = {"c": "c", "cpp": "cpp", "rust": "rs", "zig": "zig", "julia": "jl"}
+                source_path = out_dir / f"candidate.{extensions[args.language]}"
                 source_path.write_text(candidate.source)
                 proof = prove_deep_candidate(contract, derivation, candidate, out_dir / "proofs")
                 report = {
@@ -1227,7 +1228,7 @@ def build_parser() -> argparse.ArgumentParser:
     deep_neural.set_defaults(func=deep_command)
     deep_rank = deep_sub.add_parser("rank", help="prove, assembly-deduplicate, and physically rank every reachable terminal realization")
     deep_rank.add_argument("--predicate", choices=("equal-u8", "utf8-leading-byte"), default="equal-u8")
-    deep_rank.add_argument("--language", choices=("c", "rust"), default="c")
+    deep_rank.add_argument("--language", choices=("c", "cpp", "rust", "zig", "julia"), default="c")
     deep_rank.add_argument("--input-min", type=int, default=0)
     deep_rank.add_argument("--input-max", type=int, default=1 << 30)
     deep_rank.add_argument("--processes", type=int, default=10)
@@ -1241,12 +1242,12 @@ def build_parser() -> argparse.ArgumentParser:
     for action, help_text in (
         ("graph", "construct one shared physical realization graph"),
         ("search", "derive reachable terminal realizations from a scalar graph"),
-        ("emit", "derive and emit a native C or Rust candidate with proof"),
+        ("emit", "derive and emit a native C/C++/Rust/Zig/Julia candidate with proof"),
         ("benchmark", "derive, prove, differentially execute, and physically rank one candidate"),
     ):
         command = deep_sub.add_parser(action, help=help_text)
         command.add_argument("--predicate", choices=("equal-u8", "utf8-leading-byte"), default="equal-u8")
-        command.add_argument("--language", choices=("c", "cpp", "rust"), default="c")
+        command.add_argument("--language", choices=("c", "cpp", "rust", "zig", "julia"), default="c")
         command.add_argument("--function", default="deep_candidate")
         command.add_argument("--input-min", type=int, default=0)
         command.add_argument("--input-max", type=int, default=1 << 30)

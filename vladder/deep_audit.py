@@ -31,6 +31,21 @@ def _resolve_path(base: Path, value: str) -> Path:
 
 def extract_named_source_region(source: str, function: str, language: str) -> str:
     leaf = function.rsplit("::", 1)[-1]
+    if language == "julia":
+        pattern = re.compile(rf"(?:Base\.@noinline\s+)?function\s+{re.escape(leaf)}\s*\(")
+        match = pattern.search(source)
+        if not match:
+            raise ValueError(f"could not extract function {function!r} from {language} source")
+        depth = 0
+        token_pattern = re.compile(r"\b(function|for|while|if|begin|let|try|quote|do|end)\b")
+        for token in token_pattern.finditer(source, match.start()):
+            if token.group(1) == "end":
+                depth -= 1
+                if depth == 0:
+                    return source[match.start():token.end()]
+            else:
+                depth += 1
+        raise ValueError(f"unterminated Julia function {function!r}")
     if language == "rust":
         pattern = re.compile(rf"(?:pub(?:\([^)]*\))?\s+)?(?:unsafe\s+)?fn\s+{re.escape(leaf)}\s*(?:<[^{{;]*>)?\s*\(")
     else:
@@ -153,7 +168,8 @@ def audit_expert_manifest(
             if derivation:
                 try:
                     candidate = emit_deep_candidate(contract, derivation, language, "deep_candidate", grammar)
-                    (case_dir / ("candidate.rs" if language == "rust" else "candidate.c")).write_text(candidate.source)
+                    extensions = {"c": "c", "cpp": "cpp", "c++": "cpp", "rust": "rs", "zig": "zig", "julia": "jl"}
+                    (case_dir / f"candidate.{extensions.get(language, 'txt')}").write_text(candidate.source)
                     generated_graph = build_deep_realization_graph(contract, candidate.realization, source_language=language, function_identity="deep_candidate")
                     lowering_pass = generated_graph.semantic_shape_hash == expert_graph.semantic_shape_hash
                     stages["lowering"] = {

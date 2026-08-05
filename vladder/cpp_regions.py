@@ -750,7 +750,15 @@ def inspect_cpp_region(
         abi = describe_abi(str(node.get("type", {}).get("qualType", "")), parameters, effects["signature"])
         subregions = discover_subregions(node, source_text)
         closure = helper_closure(source_info["calls"], effects)
-        information_flow = build_cpp_information_flow(abi, source_info, effects, subregions)
+        information_flow = build_cpp_information_flow(
+            abi,
+            source_info,
+            effects,
+            subregions,
+            function_identity=str(report["selection"]["function_sha256"]),
+            compiler_identity=str(production_ir["compiler_version"]),
+            function_name=str(node.get("name") or function),
+        )
         report.update({
             "typed_abi": abi,
             "compiled_effects": effects,

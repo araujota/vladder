@@ -7,6 +7,15 @@ import json
 import re
 from typing import Any, Iterable
 
+from .language_adapter import (
+    ProtocolTransition,
+    SemanticEffect,
+    SemanticFlowEdge,
+    SemanticFlowGraph,
+    SemanticFlowNode,
+    obligation,
+)
+
 
 CPP_SEMANTIC_SCHEMA = "vladder-cpp-semantics-v3"
 
@@ -415,48 +424,142 @@ def classify_support_tier(
 
 
 def build_cpp_information_flow(
-    abi: dict[str, Any], source: dict[str, Any], effects: dict[str, Any], subregions: list[dict[str, Any]]
+    abi: dict[str, Any],
+    source: dict[str, Any],
+    effects: dict[str, Any],
+    subregions: list[dict[str, Any]],
+    *,
+    function_identity: str = "unknown-cpp-function",
+    compiler_identity: str = "clang-cpp-capture",
+    function_name: str = "cpp-region",
 ) -> dict[str, Any]:
-    nodes: list[dict[str, Any]] = []
-    edges: list[dict[str, str]] = []
+    nodes: list[SemanticFlowNode] = []
+    edges: list[SemanticFlowEdge] = []
+    graph_obligations = []
     for index, parameter in enumerate(abi["parameters"]):
         node_id = f"parameter-{index}"
-        nodes.append({"id": node_id, "kind": "InputBoundary", "type": parameter})
-        edges.append({"source": node_id, "destination": "compiled-region", "kind": "data_or_state"})
-    nodes.append({
-        "id": "compiled-region", "kind": "CompiledInformationFlow",
-        "attributes": {
-            "memory_effect": effects["memory_effect"],
-            "instruction_counts": effects["instruction_counts"],
-            "local_effects": effects["local_effects"],
-        },
-    })
-    nodes.append({"id": "result", "kind": "OutputBoundary", "type": abi["return"]})
-    edges.append({"source": "compiled-region", "destination": "result", "kind": "result"})
+        item_obligation = obligation(
+            f"cpp.abi.parameter.{index}",
+            "ownership" if parameter.get("borrowed") else "shape",
+            "parameter ownership, extent, and object lifetime match the selected C++ ABI",
+            proof_method="clang-ast-abi-and-adapter-proof",
+            language="cpp",
+            native_construct=str(parameter.get("spelling", "parameter")),
+            facts={"ownership": parameter.get("ownership"), "proof_model": parameter.get("proof_model")},
+        )
+        graph_obligations.append(item_obligation)
+        nodes.append(SemanticFlowNode(
+            node_id, "Input", "typed-parameter", (), str(parameter.get("spelling", "unknown")),
+            {"type_descriptor": parameter}, {"frontend": "clang-semantic-ast"}, (item_obligation,),
+        ))
+        edges.append(SemanticFlowEdge(
+            f"edge.{node_id}", node_id, "compiled-region", str(parameter.get("spelling", "unknown")),
+            str(parameter.get("ownership", "unknown")), f"parameter-{index}", "function-call", "sequenced",
+            memory_region="argument", validity_scope="selected-call",
+        ))
+
+    call_ids = []
     for index, call in enumerate(source["calls"]):
         node_id = f"source-call-{index}"
         disposition = "external_or_summarized" if effects["external_calls"] else "lowered_into_compiled_region"
-        nodes.append({"id": node_id, "kind": "SourceCall", "name": call, "disposition": disposition})
-        edges.append({"source": node_id, "destination": "compiled-region", "kind": "lowering_provenance"})
+        nodes.append(SemanticFlowNode(
+            node_id, "Call", "call", (), "call-result", {"callee": call, "disposition": disposition},
+            {"frontend": "clang-semantic-ast"}, (),
+        ))
+        edges.append(SemanticFlowEdge(
+            f"edge.{node_id}", node_id, "compiled-region", "call-result", "ephemeral", "call",
+            "expression", "lowering-provenance",
+        ))
+        call_ids.append(node_id)
     for region in subregions:
         node_id = region["id"]
-        nodes.append({
-            "id": node_id, "kind": "SourceSubregion", "source_range": region["source_range"],
-            "classification": region["classification"], "boundary": region["boundary"],
-        })
-        edges.append({"source": node_id, "destination": "compiled-region", "kind": "source_provenance"})
-    graph = {
-        "schema_version": "vladder-cpp-information-flow-v1",
-        "nodes": nodes,
-        "edges": edges,
-        "invariants": {
-            "compiler_build_specific": True,
-            "source_object_state": source["object_state"],
-            "remaining_external_calls": effects["external_calls"],
-            "unwind": effects["unwind_operations"],
-            "synchronization": effects["synchronization_operations"],
-        },
+        kind = "Loop" if "loop" in str(region.get("classification", "")).lower() else "View"
+        nodes.append(SemanticFlowNode(
+            node_id, kind, "bounded-source-subregion", (), "region",
+            {"source_range": region["source_range"], "classification": region["classification"], "boundary": region["boundary"]},
+            {"frontend": "clang-semantic-ast"}, (),
+        ))
+        edges.append(SemanticFlowEdge(
+            f"edge.{node_id}", node_id, "compiled-region", "region", "borrowed", "subregion",
+            "function-call", "source-provenance",
+        ))
+
+    nodes.append(SemanticFlowNode(
+        "compiled-region", "Map", "compiled-cpp-region",
+        tuple([f"parameter-{index}" for index in range(len(abi["parameters"]))] + call_ids + [item["id"] for item in subregions]),
+        str(abi["return"].get("spelling", "unknown")),
+        {"memory_effect": effects["memory_effect"], "instruction_counts": effects["instruction_counts"], "local_effects": effects["local_effects"]},
+        {"semantic_ir": "clang-llvm", "source_effects": effects.get("source")}, (),
+    ))
+    nodes.append(SemanticFlowNode(
+        "result", "Output", "typed-result", ("compiled-region",), str(abi["return"].get("spelling", "unknown")),
+        {"type_descriptor": abi["return"]}, {"frontend": "clang-semantic-ast"}, (),
+    ))
+    edges.append(SemanticFlowEdge(
+        "edge.result", "compiled-region", "result", str(abi["return"].get("spelling", "unknown")),
+        str(abi["return"].get("ownership", "value")), "return", "function-call", "sequenced",
+        memory_region="return", validity_scope="caller-observation",
+    ))
+
+    typed_effects: list[SemanticEffect] = []
+    protocols: list[ProtocolTransition] = []
+
+    def add_obligation(identifier: str, category: str, statement: str, construct: str, method: str = "project-protocol-proof") -> Any:
+        item = obligation(identifier, category, statement, proof_method=method, language="cpp", native_construct=construct)
+        graph_obligations.append(item)
+        return item
+
+    memory_text = str(effects.get("memory_effect", "unknown"))
+    if effects["instruction_counts"].get("loads", 0) or "read" in memory_text:
+        typed_effects.append(SemanticEffect("cpp.effect.read", "MemoryRead", "execute", "argument-or-object-state", "source-visible-through-result", "program-order", ("compiled-region",), (), {"llvm_memory": memory_text}))
+    if effects["instruction_counts"].get("stores", 0) or "write" in memory_text:
+        typed_effects.append(SemanticEffect("cpp.effect.write", "MemoryWrite", "execute", "argument-or-object-state", "source-observable", "program-order", ("compiled-region",), (), {"llvm_memory": memory_text}))
+    if effects["allocation_calls"]:
+        owned = add_obligation("cpp.ownership.allocate", "ownership", "allocation ownership and failure behavior are preserved", "allocation")
+        typed_effects.append(SemanticEffect("cpp.effect.allocate", "Allocate", "execute", "heap", "source-observable", "program-order", ("compiled-region",), (owned.id,), {"calls": effects["allocation_calls"]}))
+        protocols.append(ProtocolTransition("cpp.protocol.allocate", "Ownership", "unallocated", "allocate", "owned", "allocation-succeeds", (owned.id,), {"mechanism": effects["allocation_calls"]}))
+    if effects["deallocation_calls"]:
+        retired = add_obligation("cpp.ownership.retire", "cleanup", "destruction and retirement occur after final use", "destructor-or-deallocation")
+        typed_effects.extend([
+            SemanticEffect("cpp.effect.cleanup", "Cleanup", "exit", "owned-state", "source-observable", "C++ destruction order", ("compiled-region",), (retired.id,), {"calls": effects["deallocation_calls"]}),
+            SemanticEffect("cpp.effect.deallocate", "Deallocate", "exit", "heap", "source-observable", "after-cleanup", ("compiled-region",), (retired.id,), {"calls": effects["deallocation_calls"]}),
+        ])
+        protocols.append(ProtocolTransition("cpp.protocol.retire", "Cleanup", "owned", "scope-exit", "retired", "no-live-readers", (retired.id,), {"mechanism": "destructor/deallocation"}))
+    if effects["unwind_operations"] or not effects["nounwind"]:
+        unwind = add_obligation("cpp.exception.unwind", "exception", "exceptional exits and cleanup observables are preserved", "throw/invoke/unwind")
+        typed_effects.append(SemanticEffect("cpp.effect.exception", "ExceptionalExit", "exit", "exception-state", "source-observable", "C++ unwind order", ("compiled-region",), (unwind.id,), {}))
+        protocols.append(ProtocolTransition("cpp.protocol.exception", "Exception", "executing", "throw-or-unwind", "exceptional-exit", "exception-path", (unwind.id,), {"mechanism": "C++ exception"}))
+    if effects["synchronization_operations"] or effects["volatile_operations"]:
+        sync = add_obligation("cpp.concurrency.order", "concurrency", "atomic, volatile, and synchronization order is preserved", "C++ memory model")
+        typed_effects.append(SemanticEffect("cpp.effect.synchronize", "Synchronize", "execute", "shared-state", "inter-thread-observable", "C++ happens-before", ("compiled-region",), (sync.id,), {"volatile": effects["volatile_operations"]}))
+        protocols.append(ProtocolTransition("cpp.protocol.synchronize", "Concurrency", "unpublished", "synchronize", "visible", "memory-order-contract", (sync.id,), {"memory_model": "C++"}))
+    if effects["external_calls"] or effects["indirect_calls"]:
+        external = add_obligation("cpp.external.contract", "external-effect", "external call observables and callback behavior are preserved", "external-or-indirect-call")
+        typed_effects.append(SemanticEffect("cpp.effect.external", "ExternalCall", "execute", "external-system", "externally-observable", "call-order", tuple(call_ids) or ("compiled-region",), (external.id,), {"calls": effects["external_calls"], "indirect_count": effects["indirect_calls"]}))
+    if source["object_state"]:
+        add_obligation("cpp.object.invariant", "state", "reads and writes through this preserve the declared class invariant", "this-object")
+
+    graph = SemanticFlowGraph(
+        function_name,
+        "cpp",
+        compiler_identity,
+        "clang-ast-and-llvm",
+        function_identity,
+        tuple(nodes),
+        tuple(edges),
+        {"abi": abi, "local_effects": effects["local_effects"], "object_state": source["object_state"]},
+        ("arbitrary C++ equivalence", "unmodeled allocator, destructor, concurrency, and external protocols"),
+        tuple(graph_obligations),
+        tuple(typed_effects),
+        tuple(protocols),
+    )
+    result = graph.to_dict()
+    result["graph_sha256"] = graph.graph_hash
+    result["invariants"] = {
+        "compiler_build_specific": True,
+        "source_object_state": source["object_state"],
+        "remaining_external_calls": effects["external_calls"],
+        "unwind": effects["unwind_operations"],
+        "synchronization": effects["synchronization_operations"],
     }
-    canonical = json.dumps(graph, sort_keys=True, separators=(",", ":"))
-    graph["graph_sha256"] = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-    return graph
+    return result

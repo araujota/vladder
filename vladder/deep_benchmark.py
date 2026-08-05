@@ -12,7 +12,14 @@ import yaml
 
 from .deep_grammar import DeepDerivation
 from .deep_ir import DeepKernelContract
-from .deep_lowering import DeepCandidate, emit_c_candidate, emit_rust_candidate
+from .deep_lowering import (
+    DeepCandidate,
+    emit_c_candidate,
+    emit_cpp_candidate,
+    emit_julia_candidate,
+    emit_rust_candidate,
+    emit_zig_candidate,
+)
 from .paired_benchmark import run_paired_benchmark
 
 
@@ -132,6 +139,61 @@ fn main() {
 """
 
 
+JULIA_HARNESS = r"""
+function vladder_fill!(data::Vector{UInt8}, state::UInt64)
+    @inbounds for index in eachindex(data)
+        state = xor(state, state >> 12)
+        state = xor(state, state << 25)
+        state = xor(state, state >> 27)
+        state *= UInt64(2685821657736338717)
+        data[index] = UInt8(state & 0xff)
+    end
+end
+
+function vladder_verify()
+    data = zeros(UInt8, 521)
+    for value in 0:255
+        data[1] = UInt8(value)
+        single = data[1:1]
+        for needle in 0:255
+            deep_baseline(single, UInt8(needle)) == deep_candidate(single, UInt8(needle)) || exit(10)
+        end
+    end
+    needles = UInt8[0, 1, 17, 127, 128, 254, 255]
+    for n in 0:520
+        slice = zeros(UInt8, n)
+        vladder_fill!(slice, xor(UInt64(0x123456789abcdef0), UInt64(n)))
+        for needle in needles
+            deep_baseline(slice, needle) == deep_candidate(slice, needle) || exit(20)
+        end
+    end
+end
+
+function vladder_main()
+    vladder_verify()
+    candidate_mode = length(ARGS) >= 1 && ARGS[1] == "candidate"
+    n = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 1 << 20
+    inner = length(ARGS) >= 3 ? parse(Int, ARGS[3]) : 128
+    data = zeros(UInt8, n)
+    vladder_fill!(data, UInt64(0x5a17d33d))
+    fn = candidate_mode ? deep_candidate : deep_baseline
+    guard = 0
+    for warm in 0:7
+        guard += fn(data, UInt8(17 + warm))
+    end
+    begin_ns = time_ns()
+    for index in 0:(inner - 1)
+        guard += fn(data, UInt8(17 + (index & 15)))
+    end
+    elapsed = time_ns() - begin_ns
+    observable = fn(data, UInt8(17))
+    println("{\"ns_per_call\":", Float64(elapsed) / inner, ",\"observable\":\"", observable, "\",\"guard\":\"", guard, "\"}")
+end
+
+vladder_main()
+"""
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -181,21 +243,24 @@ def compile_deep_harness(
 ) -> dict[str, Any]:
     output_directory.mkdir(parents=True, exist_ok=True)
     if candidate.language in {"c", "cpp"}:
-        compiler = shutil.which("clang-20") or shutil.which("clang")
+        cpp = candidate.language == "cpp"
+        compiler = (shutil.which("clang++-20") or shutil.which("clang++")) if cpp else (shutil.which("clang-20") or shutil.which("clang"))
         if not compiler:
-            return {"status": "unavailable", "reason": "clang not found"}
-        source = output_directory / "paired.c"
+            return {"status": "unavailable", "reason": f"{'clang++' if cpp else 'clang'} not found"}
+        source = output_directory / ("paired.cpp" if cpp else "paired.c")
         binary = output_directory / "paired"
         assembly = output_directory / "paired.s"
         llvm = output_directory / "paired.ll"
-        baseline = emit_c_candidate(contract, "scalar", "deep_baseline")
-        text = "#define _GNU_SOURCE\n#include <immintrin.h>\n#include <stdint.h>\n#include <stddef.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n\n" + baseline + "\n" + candidate.source + "\n" + C_HARNESS
+        baseline = (emit_cpp_candidate if cpp else emit_c_candidate)(contract, "scalar", "deep_baseline")
+        feature_prefix = "" if cpp else "#define _GNU_SOURCE\n"
+        text = feature_prefix + "#include <immintrin.h>\n#include <stdint.h>\n#include <stddef.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n\n" + baseline + "\n" + candidate.source + "\n" + C_HARNESS
         source.write_text(text)
-        command = [compiler, "-std=c17", "-O3", "-march=native", str(source), "-o", str(binary)]
+        standard = "-std=c++20" if cpp else "-std=c17"
+        command = [compiler, standard, "-O3", "-march=native", str(source), "-o", str(binary)]
         completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if completed.returncode == 0:
-            subprocess.run([compiler, "-std=c17", "-O3", "-march=native", "-S", str(source), "-o", str(assembly)], check=True)
-            subprocess.run([compiler, "-std=c17", "-O3", "-march=native", "-S", "-emit-llvm", str(source), "-o", str(llvm)], check=True)
+            subprocess.run([compiler, standard, "-O3", "-march=native", "-S", str(source), "-o", str(assembly)], check=True)
+            subprocess.run([compiler, standard, "-O3", "-march=native", "-S", "-emit-llvm", str(source), "-o", str(llvm)], check=True)
     elif candidate.language == "rust":
         compiler = shutil.which("rustc")
         if not compiler:
@@ -211,6 +276,52 @@ def compile_deep_harness(
         if completed.returncode == 0:
             subprocess.run([compiler, "--edition", "2021", "-C", "opt-level=3", "-C", "target-cpu=native", "--emit", f"asm={assembly}", str(source)], check=True)
             subprocess.run([compiler, "--edition", "2021", "-C", "opt-level=3", "-C", "target-cpu=native", "--emit", f"llvm-ir={llvm}", str(source)], check=True)
+    elif candidate.language == "zig":
+        compiler = shutil.which("zig")
+        linker = shutil.which("clang-20") or shutil.which("clang")
+        if not compiler or not linker:
+            return {"status": "unavailable", "reason": "zig and clang are required"}
+        source = output_directory / "paired.zig"
+        harness = output_directory / "harness.c"
+        obj = output_directory / "paired.o"
+        binary = output_directory / "paired"
+        assembly = output_directory / "paired.s"
+        llvm = output_directory / "paired.ll"
+        baseline = emit_zig_candidate(contract, "scalar", "deep_baseline")
+        source.write_text(baseline + "\n" + candidate.source)
+        harness.write_text("#define _GNU_SOURCE\n#include <stdint.h>\n#include <stddef.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n\nextern size_t deep_baseline(const uint8_t *, size_t, uint8_t);\nextern size_t deep_candidate(const uint8_t *, size_t, uint8_t);\n\n" + C_HARNESS)
+        zig_command = [compiler, "build-obj", "-O", "ReleaseFast", "-mcpu", "native", f"-femit-bin={obj}", f"-femit-asm={assembly}", f"-femit-llvm-ir={llvm}", str(source)]
+        generated = subprocess.run(zig_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        command = [linker, "-std=c17", "-O3", "-march=native", str(harness), str(obj), "-o", str(binary)]
+        completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) if generated.returncode == 0 else generated
+        if generated.returncode != 0:
+            command = zig_command
+    elif candidate.language == "julia":
+        compiler = shutil.which("julia")
+        if not compiler:
+            return {"status": "unavailable", "reason": "julia not found"}
+        source = output_directory / "paired.jl"
+        binary = output_directory / "paired"
+        assembly = output_directory / "paired.s"
+        llvm = output_directory / "paired.ll"
+        baseline = emit_julia_candidate(contract, "scalar", "deep_baseline")
+        definitions = baseline + "\n" + candidate.source
+        source.write_text(definitions + "\n" + JULIA_HARNESS)
+        binary.write_text(f'#!/bin/sh\nexec "{compiler}" --startup-file=no -O3 --check-bounds=no "{source}" "$@"\n')
+        binary.chmod(0o755)
+        capture = output_directory / "capture.jl"
+        capture.write_text(
+            definitions
+            + "\nusing InteractiveUtils\n"
+            + f'open(raw"{llvm}", "w") do io; code_llvm(io, deep_candidate, (Vector{{UInt8}}, UInt8); optimize=true); end\n'
+            + f'open(raw"{assembly}", "w") do io; code_native(io, deep_candidate, (Vector{{UInt8}}, UInt8); syntax=:intel); end\n'
+        )
+        command = [compiler, "--startup-file=no", "-O3", "--check-bounds=no", str(source), "baseline", "521", "1"]
+        completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if completed.returncode == 0:
+            capture_result = subprocess.run([compiler, "--startup-file=no", "-O3", "--check-bounds=no", str(capture)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if capture_result.returncode != 0:
+                completed = capture_result
     else:
         raise ValueError(f"unsupported benchmark language: {candidate.language}")
     report = {

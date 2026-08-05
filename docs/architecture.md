@@ -24,15 +24,22 @@ vLadder operates above LLVM. It extracts bounded C/C++/Rust/Zig/Julia regions in
 information-flow representations, searches a finite implementation grammar, regenerates source,
 and delegates instruction selection and scheduling to an unmodified compiler.
 
-## Language Adapter Plane (rc9)
+## Semantic Flow And Language Adapter Plane (rc10)
 
 `LanguageAdapter` captures build identity, resolves one source region, emits a language semantic
-IR, classifies effects, lowers to the shared `SemanticFlowGraph`, regenerates native source, and
-binds proof and benchmark evidence. The graph vocabulary is language-neutral. C, C++, Rust, Zig,
-and Julia all
+IR, classifies effects, lowers to the shared `SemanticFlowGraph v2`, regenerates native source,
+and binds proof and benchmark evidence. C and C++ are authoritative v2 producers rather than
+legacy/coarse side channels. The graph vocabulary is language-neutral. C, C++, Rust, Zig, and Julia all
 use common value, state, control, materialization, transfer, ownership, and lifetime concepts;
 language-specific facts belong in provenance, contracts, and proof obligations unless they express
 a genuinely new semantic concept.
+
+V2 formalizes four evidence planes. `SemanticObligation` records a stable ID, category, statement,
+scope, proof method, and language binding. `SemanticEffect` records phase, resource,
+observability, ordering, participating nodes, and discharged obligations. `ProtocolTransition`
+models ownership, lifetime, cleanup, publication, invalidation, dispatch, exception, and
+concurrency state changes. `SemanticClaim` distinguishes proved, required, assumed, excluded, and
+unverified scope. All are deterministic graph-hash inputs; unresolved references are rejected.
 
 The first Rust adapter captures Cargo plus rustc MIR/LLVM/assembly and closes an exact borrowed-byte
 reduction. MIR establishes the source operation and generated schedule, Z3 proves the schedule and
@@ -57,12 +64,14 @@ provenance rather than being relabeled as direct frontend proofs.
 an exact byte predicate plus reduction; realizations include scalar lanes, packed words, SIMD
 masks/popcount, bounded byte-lane accumulation, and guarded dispatch. `LaneMap`, `Pack`,
 `MaskExtract`, `PopulationCount`, `HorizontalReduce`, `Tail`, `Fuse`, and `ComplexityBound` are
-shared graph nodes. C object bounds and Rust borrow/unsafe/panic facts attach to this graph as
-adapter contracts.
+shared graph nodes. C object bounds, C++ borrowed/noexcept contracts, Rust borrow/unsafe/panic
+facts, Zig many-pointer/safety facts, and Julia rooting/inbounds/specialization facts attach to
+this graph as typed adapter obligations.
 
 Search retains alternative acyclic derivations until saturation or an explicit budget. Each rule
 records preconditions, physical parameters, complexity deltas, proof obligations, and cost
-signals. Native emitters reconstruct C or Rust from the selected terminal graph. Z3 proves lane,
+signals. Native emitters reconstruct C, C++20, Rust, Zig, or Julia from every selected terminal
+graph. Z3 proves lane,
 bit-vector, reduction, no-wrap, traversal, tail, and dispatch obligations; Alive2 validates
 compatible vector cores; differential execution checks native memory behavior; hardware ranking
 uses randomized same-executable pairs. Normalized assembly identities prevent compiler-equivalent

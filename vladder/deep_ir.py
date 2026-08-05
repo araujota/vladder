@@ -6,7 +6,7 @@ import json
 import re
 from typing import Any
 
-from .language_adapter import SemanticFlowEdge, SemanticFlowGraph, SemanticFlowNode, canonical_hash
+from .language_adapter import SemanticFlowEdge, SemanticFlowGraph, SemanticFlowNode, canonical_hash, obligation
 
 
 DEEP_GRAPH_SCHEMA_VERSION = "vladder-deep-realization-graph-v1"
@@ -105,6 +105,25 @@ def _node(
     obligations: tuple[str, ...] = (),
     **attributes: Any,
 ) -> SemanticFlowNode:
+    categories = {
+        "object-bounds": "bounds", "unaligned-load-legality": "memory",
+        "word-equality-identity": "representation", "lane-predicate": "representation",
+        "pack-bijection": "representation", "mask-population": "representation",
+        "bounded-lane-accumulator": "numeric", "reduction-equivalence": "numeric",
+        "no-overflow": "numeric", "tail-partition": "bounds", "footprint-coverage": "bounds",
+        "no-intermediate-observer": "representation", "guard-completeness": "dispatch",
+        "fallback-equivalence": "dispatch", "observable-equivalence": "validation",
+    }
+    typed_obligations = tuple(
+        obligation(
+            f"deep.{node_id}.{item}",
+            categories.get(item, "validation"),
+            item.replace("-", " "),
+            proof_method="deep-v2-proof-registry",
+            native_construct=operation,
+        )
+        for item in obligations
+    )
     return SemanticFlowNode(
         node_id,
         kind,
@@ -113,7 +132,7 @@ def _node(
         output_type,
         {"realization": realization, **attributes},
         {"adapter": "deep-v2", "semantic_source": "exact-byte-predicate-reduction"},
-        obligations,
+        typed_obligations,
     )
 
 
@@ -267,7 +286,12 @@ def build_deep_realization_graph(
         "archetype": contract.archetype,
         "predicate": contract.predicate,
         "realization": realization,
-        "nodes": [(node.kind, node.operation, node.output_type, sorted(node.semantic_obligations)) for node in nodes],
+        "nodes": [(
+            node.kind,
+            node.operation,
+            node.output_type,
+            sorted((item.id, item.category, item.statement) for item in node.semantic_obligations),
+        ) for node in nodes],
         "edges": [(edge.source, edge.destination, edge.value_type, edge.logical_shape, edge.physical_shape) for edge in edges],
         "complexity": complexity.to_dict(),
     }
@@ -287,7 +311,7 @@ def inspect_source_realization(source: str, language: str, function: str) -> Sou
     normalized = re.sub(r"\s+", " ", source)
     evidence: list[str] = []
     blockers: list[str] = []
-    if language not in {"c", "cpp", "rust"}:
+    if language not in {"c", "cpp", "rust", "zig", "julia"}:
         blockers.append(f"unsupported source language: {language}")
     predicate: str | None = None
     utf8_shift_predicate = bool(re.search(
@@ -297,22 +321,22 @@ def inspect_source_realization(source: str, language: str, function: str) -> Sou
     if utf8_shift_predicate or any(token in source for token in ("0b1100_0000", "0xC0", "0xC0u8", "is_leading_utf8_byte", "vladder_utf8_leading")):
         predicate = "utf8-leading-byte"
         evidence.append("UTF-8 leading-byte predicate" if not utf8_shift_predicate else "normalized shift-and-compare UTF-8 leading-byte predicate")
-    elif any(token in source for token in ("== needle", "==needle", "simd_eq", "cmpeq_epi8", "bytewise_equal", "vladder_word_equal")):
+    elif any(token in source for token in ("== needle", "==needle", "== needles", "simd_eq", "cmpeq_epi8", "bytewise_equal", "vladder_word_equal", "vladder_mask_popcount", "vladder_lane_byte_accumulate")):
         predicate = "equal-u8"
         evidence.append("byte equality predicate")
     else:
         blockers.append("no supported exact byte predicate detected")
     realization: str | None
-    if "is_x86_feature_detected" in source or "__builtin_cpu_supports" in source:
-        realization = "guarded-avx2-byte" if "sad_epu8" in source else "guarded-avx2"
-        evidence.append("runtime ISA dispatch")
-    elif any(token in source for token in ("_mm256_sad_epu8", "_mm256_sub_epi8")):
+    if any(token in source for token in ("is_x86_feature_detected", "__builtin_cpu_supports", "vladder_deployment_avx2")):
+        realization = "guarded-avx2-byte" if any(token in source for token in ("sad_epu8", "vladder_lane_byte_accumulate")) else "guarded-avx2"
+        evidence.append("runtime or deployment ISA dispatch")
+    elif any(token in source for token in ("_mm256_sad_epu8", "_mm256_sub_epi8", "vladder_lane_byte_accumulate")):
         realization = "simd-byte-accumulate-final"
         evidence.append("AVX2 lane-byte accumulation and horizontal SAD")
-    elif any(token in source for token in ("_mm256_movemask_epi8", "movemask_epi8", "to_bitmask")):
+    elif any(token in source for token in ("_mm256_movemask_epi8", "movemask_epi8", "to_bitmask", "vladder_mask_popcount")):
         realization = "simd-mask-popcount"
         evidence.append("SIMD comparison mask and population reduction")
-    elif any(token in source for token in ("usize_load_unchecked", "uint64_t", "bytewise_equal", "zero_byte", "is_leading_utf8_byte", "u64::from_ne_bytes")) and any(token in source for token in ("count_ones", "popcount", "sum_usize", "bytewise_equal", "is_leading_utf8_byte")):
+    elif any(token in source for token in ("usize_load_unchecked", "uint64_t", "UInt64", "u64", "bytewise_equal", "zero_byte", "is_leading_utf8_byte", "u64::from_ne_bytes", "vladder_word_equal")) and any(token in source for token in ("count_ones", "@popCount", "popcount", "sum_usize", "bytewise_equal", "is_leading_utf8_byte", "vladder_word_equal")):
         realization = "word-swar"
         evidence.append("packed-word lane predicate")
     elif any(token in normalized for token in (".filter(", ".fold(", "for (", "for ", "while ")):

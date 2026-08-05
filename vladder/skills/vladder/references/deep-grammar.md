@@ -29,8 +29,10 @@ satisfying either equality or the UTF-8 leading-byte predicate.
 - direct ISA-specific and guarded fallback realizations
 - explicit one-pass `O(n)` complexity and byte/materialization models
 
-C and Rust consume the same graph. Rust borrow, unsafe, panic, and monomorphization facts and C
-object-bound/alias facts are proof contracts, not separate semantic operations.
+C, C++20, Rust, Zig, and Julia consume the same graph and every terminal has a native emitter.
+C/C++ object-bound, alias, ownership, and exception facts; Rust borrow, unsafe, panic, and
+monomorphization facts; Zig pointer/safety/target facts; and Julia rooting, bounds-elision, numeric,
+and specialization facts are typed proof obligations, not separate semantic operations.
 
 ## Proof Envelope
 

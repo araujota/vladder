@@ -36,12 +36,16 @@ class DeepGrammarTests(unittest.TestCase):
         cls.derivations = {item.target: item for item in cls.search.derivations}
 
     def test_shared_graph_vocabulary_is_language_neutral(self) -> None:
-        c_graph = build_deep_realization_graph(self.contract, "simd-mask-popcount", source_language="c")
-        rust_graph = build_deep_realization_graph(self.contract, "simd-mask-popcount", source_language="rust")
-        self.assertEqual(c_graph.semantic_shape_hash, rust_graph.semantic_shape_hash)
+        graphs = {
+            language: build_deep_realization_graph(self.contract, "simd-mask-popcount", source_language=language)
+            for language in ("c", "cpp", "rust", "zig", "julia")
+        }
+        self.assertEqual({graph.semantic_shape_hash for graph in graphs.values()}, {graphs["c"].semantic_shape_hash})
+        c_graph = graphs["c"]
         kinds = {node.kind for node in c_graph.semantic_graph.nodes}
         self.assertTrue({"LaneMap", "Pack", "MaskExtract", "PopulationCount", "HorizontalReduce", "Tail", "Fuse", "ComplexityBound"} <= kinds)
-        self.assertNotEqual(c_graph.semantic_graph.graph_hash, rust_graph.semantic_graph.graph_hash)
+        self.assertEqual(c_graph.semantic_graph.to_dict()["schema_version"], "semantic-flow-v2")
+        self.assertEqual(len({graph.semantic_graph.graph_hash for graph in graphs.values()}), 5)
 
     def test_all_high_value_families_participate_in_reachable_realizations(self) -> None:
         observed = {rule.family for derivation in self.search.derivations for rule in derivation.rules}
@@ -86,18 +90,48 @@ class DeepGrammarTests(unittest.TestCase):
             proof = prove_vector_byte_accumulate_alive2(Path(directory))
         self.assertEqual(proof.status, "PASS")
 
-    def test_native_c_and_rust_candidates_compile_and_differentially_execute(self) -> None:
+    def test_native_candidates_compile_and_differentially_execute_in_all_languages(self) -> None:
         derivation = self.derivations["simd-mask-popcount"]
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for language in ("c", "rust"):
+            tools = {
+                "c": shutil.which("clang-20") or shutil.which("clang"),
+                "cpp": shutil.which("clang++-20") or shutil.which("clang++"),
+                "rust": shutil.which("rustc"),
+                "zig": shutil.which("zig"),
+                "julia": shutil.which("julia"),
+            }
+            for language in ("c", "cpp", "rust", "zig", "julia"):
+                if not tools[language]:
+                    continue
                 candidate = emit_deep_candidate(self.contract, derivation, language, "deep_candidate", self.grammar)
+                self.assertTrue(candidate.language_obligations)
+                self.assertTrue(all(item.proof_method for item in candidate.language_obligations))
                 build = compile_deep_harness(self.contract, candidate, root / language)
                 self.assertEqual(build["status"], "pass", build.get("stderr"))
                 completed = subprocess.run([str(build["binary"]), "candidate", "4096", "2"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 self.assertEqual(completed.returncode, 0, completed.stderr)
                 payload = json.loads(completed.stdout.splitlines()[-1])
                 self.assertIn("observable", payload)
+
+    @unittest.skipUnless(shutil.which("zig") and shutil.which("julia") and (shutil.which("clang++-20") or shutil.which("clang++")), "new native emitter toolchains are optional in generic CI")
+    def test_cpp_zig_and_julia_emit_every_terminal(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for language in ("cpp", "zig", "julia"):
+                for realization, derivation in self.derivations.items():
+                    with self.subTest(language=language, realization=realization):
+                        candidate = emit_deep_candidate(self.contract, derivation, language, "deep_candidate", self.grammar)
+                        proof = prove_deep_candidate(
+                            self.contract,
+                            derivation,
+                            candidate,
+                            root / "proof" / language / realization,
+                            require_alive2_for_vector_mask=False,
+                        )
+                        self.assertEqual(proof["status"], "PASS", proof["obligations"])
+                        build = compile_deep_harness(self.contract, candidate, root / "build" / language / realization)
+                        self.assertEqual(build["status"], "pass", build.get("stderr"))
 
     @unittest.skipUnless(shutil.which("alive-tv"), "expert vector proof audit requires Alive2")
     def test_expert_audit_closes_all_five_stages_without_benchmark(self) -> None:

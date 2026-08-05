@@ -7,6 +7,7 @@ from typing import Any
 
 from .deep_grammar import DeepDerivation, DeepGrammar, load_deep_grammar
 from .deep_ir import DeepKernelContract, build_deep_realization_graph
+from .language_adapter import SemanticObligation, obligation
 
 
 @dataclass(frozen=True)
@@ -20,10 +21,29 @@ class DeepCandidate:
     derivation_hash: str
     graph_hash: str
     compiler_flags: tuple[str, ...]
-    language_obligations: tuple[str, ...]
+    language_obligations: tuple[SemanticObligation, ...]
 
     def to_dict(self) -> dict[str, Any]:
-        return {**asdict(self), "compiler_flags": list(self.compiler_flags), "language_obligations": list(self.language_obligations)}
+        return {
+            **asdict(self),
+            "compiler_flags": list(self.compiler_flags),
+            "language_obligations": [asdict(item) for item in self.language_obligations],
+        }
+
+
+def _emitter_obligations(language: str, statements: tuple[tuple[str, str, str], ...]) -> tuple[SemanticObligation, ...]:
+    return tuple(
+        obligation(
+            f"deep.emitter.{language}.{identifier}",
+            category,
+            statement,
+            scope="generated-function",
+            proof_method="native-source-binding-and-differential-execution",
+            language=language,
+            native_construct=identifier,
+        )
+        for identifier, category, statement in statements
+    )
 
 
 def _safe_identifier(value: str) -> str:
@@ -210,6 +230,20 @@ def emit_c_candidate(contract: DeepKernelContract, realization: str, function: s
     raise ValueError(f"no C emitter for realization: {realization}")
 
 
+def emit_cpp_candidate(contract: DeepKernelContract, realization: str, function: str) -> str:
+    """Emit the C physical realization through a C++20, noexcept ABI boundary."""
+    source = emit_c_candidate(contract, realization, function)
+    exported = re.compile(rf"(?m)^size_t\s+{re.escape(function)}\s*\(")
+    source, count = exported.subn(f'extern "C" size_t {function}(', source, count=1)
+    if count != 1:
+        raise ValueError(f"could not identify exported C++ function {function}")
+    signature_end = re.compile(rf'(extern "C" size_t\s+{re.escape(function)}\s*\([^)]*\))\s*\{{')
+    source, count = signature_end.subn(r"\1 noexcept {", source, count=1)
+    if count != 1:
+        raise ValueError(f"could not attach noexcept to exported C++ function {function}")
+    return source
+
+
 def _rust_scalar(contract: DeepKernelContract, function: str) -> str:
     predicate = _rust_predicate(contract, "value")
     needle_use = "" if contract.predicate == "equal-u8" else "\n    let _ = needle;"
@@ -372,6 +406,297 @@ def emit_rust_candidate(contract: DeepKernelContract, realization: str, function
     raise ValueError(f"no Rust emitter for realization: {realization}")
 
 
+def _zig_predicate(contract: DeepKernelContract, value: str) -> str:
+    if contract.predicate == "equal-u8":
+        return f"({value} == needle)"
+    return f"(({value} & 0xC0) != 0x80)"
+
+
+def _zig_scalar(contract: DeepKernelContract, function: str) -> str:
+    predicate = _zig_predicate(contract, "data[i]")
+    return f"""
+export fn {function}(data_ptr: [*]const u8, n: usize, needle: u8) callconv(.c) usize {{
+    const data = data_ptr[0..n];
+    var count: usize = 0;
+    var i: usize = 0;
+    while (i < data.len) : (i += 1) {{
+        count += @intFromBool({predicate});
+    }}
+    return count;
+}}
+""".strip() + "\n"
+
+
+def _zig_word(contract: DeepKernelContract, function: str) -> str:
+    suffix = _safe_identifier(function)
+    if contract.predicate == "equal-u8":
+        helper = f"""
+inline fn vladder_word_equal_{suffix}(lhs: u64, rhs: u64) u64 {{
+    const lo: u64 = 0x0101010101010101;
+    const hi: u64 = 0x8080808080808080;
+    const x = lhs ^ rhs;
+    return ~((((x & ~hi) +% ~hi) | x) >> 7) & lo;
+}}
+"""
+        packed = f"vladder_word_equal_{suffix}(word, splat)"
+        splat = "const splat: u64 = @as(u64, needle) * 0x0101010101010101;"
+    else:
+        helper = f"""
+inline fn vladder_utf8_leading_{suffix}(values: u64) u64 {{
+    return ((~values >> 7) | (values >> 6)) & 0x0101010101010101;
+}}
+"""
+        packed = f"vladder_utf8_leading_{suffix}(word)"
+        splat = "_ = needle;"
+    tail = _zig_predicate(contract, "data[i]")
+    return f"""
+{helper.strip()}
+
+export fn {function}(data_ptr: [*]const u8, n: usize, needle: u8) callconv(.c) usize {{
+    const data = data_ptr[0..n];
+    var count: usize = 0;
+    var i: usize = 0;
+    {splat}
+    while (data.len - i >= 8) : (i += 8) {{
+        // vladder_unaligned_load: indexed assembly preserves the admitted byte footprint.
+        var word: u64 = 0;
+        inline for (0..8) |lane| word |= @as(u64, data[i + lane]) << @intCast(lane * 8);
+        count += @popCount({packed});
+    }}
+    while (i < data.len) : (i += 1) count += @intFromBool({tail});
+    return count;
+}}
+""".strip() + "\n"
+
+
+def _zig_vector_predicate(contract: DeepKernelContract, values: str, needles: str) -> str:
+    if contract.predicate == "equal-u8":
+        return f"({values} == {needles})"
+    return f"(({values} & @as(@Vector(32, u8), @splat(0xC0))) != @as(@Vector(32, u8), @splat(0x80)))"
+
+
+def _zig_simd(contract: DeepKernelContract, function: str, *, guarded: bool, byte_accumulate: bool) -> str:
+    suffix = _safe_identifier(function)
+    helper = f"{suffix}_vector"
+    scalar = _zig_scalar(contract, f"{suffix}_scalar") if guarded else ""
+    predicate = _zig_vector_predicate(contract, "values", "needles")
+    tail = _zig_predicate(contract, "data[i]")
+    if byte_accumulate:
+        loop = f"""
+    // vladder_lane_byte_accumulate
+    while (data.len - i >= 32) {{
+        var blocks = (data.len - i) / 32;
+        if (blocks > 255) blocks = 255;
+        var lanes: @Vector(32, u8) = @splat(0);
+        var block: usize = 0;
+        while (block < blocks) : (block += 1) {{
+            const values: @Vector(32, u8) = data[i..][0..32].*;
+            const matches = {predicate};
+            lanes +%= @select(u8, matches, @as(@Vector(32, u8), @splat(1)), @as(@Vector(32, u8), @splat(0)));
+            i += 32;
+        }}
+        const partial: [32]u8 = lanes;
+        inline for (partial) |value| count += value;
+    }}
+"""
+    else:
+        loop = f"""
+    // vladder_mask_popcount
+    while (data.len - i >= 32) : (i += 32) {{
+        const values: @Vector(32, u8) = data[i..][0..32].*;
+        const matches = {predicate};
+        const mask: u32 = @bitCast(matches);
+        count += @popCount(mask);
+    }}
+"""
+    helper_source = f"""
+inline fn {helper}(data: []const u8, needle: u8) usize {{
+    var count: usize = 0;
+    var i: usize = 0;
+    const needles: @Vector(32, u8) = @splat(needle);
+{loop.rstrip()}
+    while (i < data.len) : (i += 1) count += @intFromBool({tail});
+    return count;
+}}
+"""
+    if guarded:
+        wrapper = f"""
+export fn {function}(data_ptr: [*]const u8, n: usize, needle: u8) callconv(.c) usize {{
+    const vladder_deployment_avx2 = @import("builtin").cpu.arch == .x86_64;
+    if (vladder_deployment_avx2) return {helper}(data_ptr[0..n], needle);
+    return {suffix}_scalar(data_ptr, n, needle);
+}}
+"""
+    else:
+        wrapper = f"""
+export fn {function}(data_ptr: [*]const u8, n: usize, needle: u8) callconv(.c) usize {{
+    return {helper}(data_ptr[0..n], needle);
+}}
+"""
+    return f"{scalar.strip()}\n\n{helper_source.strip()}\n\n{wrapper.strip()}\n".lstrip()
+
+
+def emit_zig_candidate(contract: DeepKernelContract, realization: str, function: str) -> str:
+    if realization == "scalar":
+        return _zig_scalar(contract, function)
+    if realization == "word-swar":
+        return _zig_word(contract, function)
+    if realization == "simd-mask-popcount":
+        return _zig_simd(contract, function, guarded=False, byte_accumulate=False)
+    if realization == "simd-byte-accumulate-final":
+        return _zig_simd(contract, function, guarded=False, byte_accumulate=True)
+    if realization == "guarded-avx2":
+        return _zig_simd(contract, function, guarded=True, byte_accumulate=False)
+    if realization == "guarded-avx2-byte":
+        return _zig_simd(contract, function, guarded=True, byte_accumulate=True)
+    raise ValueError(f"no Zig emitter for realization: {realization}")
+
+
+def _julia_predicate(contract: DeepKernelContract, value: str) -> str:
+    if contract.predicate == "equal-u8":
+        return f"({value} == needle)"
+    return f"(({value} & 0xc0) != 0x80)"
+
+
+def _julia_scalar(contract: DeepKernelContract, function: str) -> str:
+    predicate = _julia_predicate(contract, "data[i]")
+    return f"""
+Base.@noinline function {function}(data::Vector{{UInt8}}, needle::UInt8)::Int
+    count = 0
+    @inbounds for i in eachindex(data)
+        count += {predicate}
+    end
+    return count
+end
+""".strip() + "\n"
+
+
+def _julia_word(contract: DeepKernelContract, function: str) -> str:
+    suffix = _safe_identifier(function)
+    if contract.predicate == "equal-u8":
+        helper = f"""
+@inline function vladder_word_equal_{suffix}(lhs::UInt64, rhs::UInt64)::UInt64
+    lo = UInt64(0x0101010101010101)
+    hi = UInt64(0x8080808080808080)
+    x = xor(lhs, rhs)
+    return ~((((x & ~hi) + ~hi) | x) >> 7) & lo
+end
+"""
+        packed = f"vladder_word_equal_{suffix}(word, splat)"
+        splat = "splat = UInt64(needle) * UInt64(0x0101010101010101)"
+    else:
+        helper = f"""
+@inline function vladder_utf8_leading_{suffix}(values::UInt64)::UInt64
+    return ((~values >> 7) | (values >> 6)) & UInt64(0x0101010101010101)
+end
+"""
+        packed = f"vladder_utf8_leading_{suffix}(word)"
+        splat = "nothing"
+    tail = _julia_predicate(contract, "data[i]")
+    lane_lines = "\n".join(f"        word |= UInt64(data[i + {lane}]) << {lane * 8}" for lane in range(8))
+    return f"""
+{helper.strip()}
+
+Base.@noinline function {function}(data::Vector{{UInt8}}, needle::UInt8)::Int
+    count = 0
+    i = 1
+    {splat}
+    while length(data) - i + 1 >= 8
+        # vladder_unaligned_load
+        word = UInt64(0)
+{lane_lines}
+        count += count_ones({packed})
+        i += 8
+    end
+    @inbounds while i <= length(data)
+        count += {tail}
+        i += 1
+    end
+    return count
+end
+""".strip() + "\n"
+
+
+def _julia_simd(contract: DeepKernelContract, function: str, *, guarded: bool, byte_accumulate: bool) -> str:
+    suffix = _safe_identifier(function)
+    helper = f"{suffix}_vector"
+    scalar = _julia_scalar(contract, f"{suffix}_scalar") if guarded else ""
+    lane_predicates = [_julia_predicate(contract, f"data[i + {lane}]") for lane in range(32)]
+    if byte_accumulate:
+        declarations = "\n".join(f"        lane_{lane} = UInt8(0)" for lane in range(32))
+        updates = "\n".join(f"            lane_{lane} += UInt8({predicate})" for lane, predicate in enumerate(lane_predicates))
+        reductions = " + ".join(f"Int(lane_{lane})" for lane in range(32))
+        loop = f"""
+    # vladder_lane_byte_accumulate
+    while length(data) - i + 1 >= 32
+        blocks = min(div(length(data) - i + 1, 32), 255)
+{declarations}
+        for _ in 1:blocks
+            @inbounds begin
+{updates}
+            end
+            i += 32
+        end
+        count += {reductions}
+    end
+"""
+    else:
+        mask_lines = "\n".join(f"            mask |= UInt32({predicate}) << {lane}" for lane, predicate in enumerate(lane_predicates))
+        loop = f"""
+    # vladder_mask_popcount
+    while length(data) - i + 1 >= 32
+        mask = UInt32(0)
+        @inbounds begin
+{mask_lines}
+        end
+        count += count_ones(mask)
+        i += 32
+    end
+"""
+    helper_source = f"""
+@inline function {helper}(data::Vector{{UInt8}}, needle::UInt8)::Int
+    count = 0
+    i = 1
+{loop.rstrip()}
+    @inbounds while i <= length(data)
+        count += {_julia_predicate(contract, "data[i]")}
+        i += 1
+    end
+    return count
+end
+"""
+    if guarded:
+        wrapper = f"""
+Base.@noinline function {function}(data::Vector{{UInt8}}, needle::UInt8)::Int
+    vladder_deployment_avx2 = Sys.ARCH === :x86_64
+    return vladder_deployment_avx2 ? {helper}(data, needle) : {suffix}_scalar(data, needle)
+end
+"""
+    else:
+        wrapper = f"""
+Base.@noinline function {function}(data::Vector{{UInt8}}, needle::UInt8)::Int
+    return {helper}(data, needle)
+end
+"""
+    return f"{scalar.strip()}\n\n{helper_source.strip()}\n\n{wrapper.strip()}\n".lstrip()
+
+
+def emit_julia_candidate(contract: DeepKernelContract, realization: str, function: str) -> str:
+    if realization == "scalar":
+        return _julia_scalar(contract, function)
+    if realization == "word-swar":
+        return _julia_word(contract, function)
+    if realization == "simd-mask-popcount":
+        return _julia_simd(contract, function, guarded=False, byte_accumulate=False)
+    if realization == "simd-byte-accumulate-final":
+        return _julia_simd(contract, function, guarded=False, byte_accumulate=True)
+    if realization == "guarded-avx2":
+        return _julia_simd(contract, function, guarded=True, byte_accumulate=False)
+    if realization == "guarded-avx2-byte":
+        return _julia_simd(contract, function, guarded=True, byte_accumulate=True)
+    raise ValueError(f"no Julia emitter for realization: {realization}")
+
+
 def emit_deep_candidate(
     contract: DeepKernelContract,
     derivation: DeepDerivation,
@@ -382,16 +707,52 @@ def emit_deep_candidate(
     grammar = grammar or load_deep_grammar()
     terminal = grammar.terminal(derivation.target)
     normalized_language = "cpp" if language == "c++" else language
-    if normalized_language not in terminal["languages"] and not (normalized_language == "cpp" and "c" in terminal["languages"]):
+    if normalized_language not in terminal["languages"]:
         raise ValueError(f"{derivation.target} has no {language} emitter")
-    if normalized_language in {"c", "cpp"}:
+    if normalized_language == "c":
         source = emit_c_candidate(contract, derivation.target, function)
-        obligations = ("object bounds", "unaligned access through memcpy or intrinsic", "target-feature guard or deployment ISA")
+        obligations = _emitter_obligations("c", (
+            ("object-bounds", "bounds", "the pointer extent contains every scalar and wide load"),
+            ("unaligned-load", "memory", "wide loads use memcpy or an ISA-defined unaligned intrinsic"),
+            ("target-feature", "target", "the AVX2 guard or deployment target dominates vector execution"),
+        ))
         flags = ("-std=c17", "-O3", "-march=native")
+    elif normalized_language == "cpp":
+        source = emit_cpp_candidate(contract, derivation.target, function)
+        obligations = _emitter_obligations("cpp", (
+            ("borrowed-pointer", "ownership", "the borrowed pointer extent remains valid for the call"),
+            ("noexcept-boundary", "exception", "the generated function does not throw across its noexcept boundary"),
+            ("unaligned-load", "memory", "wide loads use memcpy or an ISA-defined unaligned intrinsic"),
+            ("target-feature", "target", "the AVX2 guard or deployment target dominates vector execution"),
+        ))
+        flags = ("-std=c++20", "-O3", "-march=native")
     elif normalized_language == "rust":
         source = emit_rust_candidate(contract, derivation.target, function)
-        obligations = ("borrowed slice remains live", "bounds guard dominates wide load", "unsafe block limited to target-feature helper", "panic-free admitted path")
+        obligations = _emitter_obligations("rust", (
+            ("borrowed-slice", "ownership", "the borrowed slice remains live for the function call"),
+            ("wide-load-guard", "bounds", "the slice length guard dominates every wide load"),
+            ("unsafe-scope", "safety", "unsafe operations are confined to the target-feature helper"),
+            ("panic-free", "exception", "the admitted execution path is panic-free"),
+        ))
         flags = ("-C", "opt-level=3", "-C", "target-cpu=native")
+    elif normalized_language == "zig":
+        source = emit_zig_candidate(contract, derivation.target, function)
+        obligations = _emitter_obligations("zig", (
+            ("borrowed-many-pointer", "ownership", "the many-pointer extent remains valid for the function call"),
+            ("wide-load-guard", "bounds", "the slice length guard dominates every indexed wide load"),
+            ("deployment-cpu", "target", "the deployment CPU matches the compiled vector realization"),
+            ("total-function", "exception", "the generated kernel allocates nothing and has no error-union exit"),
+        ))
+        flags = ("-O", "ReleaseFast", "-mcpu", "native")
+    elif normalized_language == "julia":
+        source = emit_julia_candidate(contract, derivation.target, function)
+        obligations = _emitter_obligations("julia", (
+            ("rooted-vector", "lifetime", "the Vector{UInt8} remains rooted during generated execution"),
+            ("inbounds-guard", "bounds", "each @inbounds access is dominated by its scalar or width guard"),
+            ("fixed-uint", "numeric", "UInt8, UInt32, and UInt64 operations retain fixed-width modular semantics"),
+            ("deployment-cpu", "target", "the Julia CPU specialization and deployment architecture are recorded"),
+        ))
+        flags = ("--startup-file=no", "-O3", "--check-bounds=no")
     else:
         raise ValueError(f"unsupported native emitter language: {language}")
     source_hash = hashlib.sha256(source.encode()).hexdigest()

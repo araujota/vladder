@@ -5,7 +5,7 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc9`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc10`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v5`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v1`, and
 `bounded-julia-regions-v1` adapters. Use vLadder as a proof-gated workflow: semantic
@@ -13,6 +13,11 @@ identity and lifetime -> realization and placement -> compiled IR -> information
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
 chooses which verified realization and implementation graph should exist.
+
+All supported frontends converge on `SemanticFlowGraph v2`. Read typed `obligations`, `effects`,
+`protocols`, and `claims` before interpreting a graph. An obligation is actionable through its ID,
+scope, proof method, and language binding; do not recover semantics by parsing its human-readable
+statement. A successful graph build with an excluded or unverified claim is not proof of it.
 
 ## Non-Negotiable Rules
 
@@ -208,11 +213,14 @@ For exact byte predicates/reductions or a grammar-depth investigation, read
 ```bash
 vladder deep coverage
 vladder deep audit --manifest examples/deep_grammar/expert-audit.yaml --out-dir vladder-deep-audit
-vladder deep rank --language c --predicate equal-u8 --processes 10 --repetitions 3 --cpu 0 --out-dir vladder-deep-ranking
+vladder deep rank --language cpp --predicate equal-u8 --processes 10 --repetitions 3 --cpu 0 --out-dir vladder-deep-ranking
 ```
 
 Inspect the earliest failed audit stage. Use `bounded_optimal_local` only when finite search is
 saturated and all unique terminal realizations are lowered, proved, and measured.
+Every `deep-v2` terminal has native C, C++20, Rust, Zig, and Julia emission. Select the production
+language; do not translate through C merely to access a deeper grammar. Language runtime scopes
+remain explicit typed obligations rather than claims of arbitrary-language equivalence.
 
 Use strict mode for replacements:
 

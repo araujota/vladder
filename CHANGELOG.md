@@ -4,6 +4,27 @@ All notable changes to vLadder are documented here.
 
 ## Unreleased
 
+## 1.0.0rc10 - 2026-08-05
+
+### Added
+
+- `SemanticFlowGraph v2` with typed, hash-bound obligations, effects, protocol transitions, and
+  claims plus fail-closed reference validation and deterministic v1 string normalization.
+- Authoritative v2 graph production for the bounded C frontend and Clang/LLVM C++ closure
+  frontend, including typed memory, allocation, cleanup, exception, synchronization, ownership,
+  state, and external-call evidence.
+- Native C++20, Zig, and Julia emitters for every executable `deep-v2` terminal, including scalar,
+  packed-word SWAR, SIMD mask/popcount, bounded byte-lane accumulation, and guarded realizations.
+- Five-language source reconstruction, typed emitter obligations, native differential harnesses,
+  LLVM/assembly capture, and CLI ranking support.
+
+### Boundaries
+
+- Shared semantic shape does not erase language runtime contracts. C++ `noexcept`/ownership, Zig
+  pointer/safety/target, and Julia rooting/world/specialization obligations remain explicit.
+- Alive2 proves compatible canonical LLVM cores; native frontend, runtime, and external protocol
+  semantics retain their typed proof boundaries and differential/project evidence.
+
 ## 1.0.0rc9 - 2026-08-05
 
 ### Added

@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc9"
+__version__ = "1.0.0rc10"
 
 from .api import (
     AgentWorkflowRequest,

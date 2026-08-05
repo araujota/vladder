@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+import hashlib
 import math
 from pathlib import Path
 import re
@@ -8,6 +9,13 @@ from typing import Any
 
 from .extractor import ExtractedFunction
 from .llvm_ir import IRSlice, classify_slice, extract_output_slice
+from .language_adapter import (
+    SemanticEffect,
+    SemanticFlowEdge,
+    SemanticFlowGraph,
+    SemanticFlowNode,
+    obligation,
+)
 from .report import write_json
 from .toolchain import Toolchain, compiler_version, cpu_model, run
 
@@ -37,9 +45,12 @@ class FlowGraph:
     grammar: list[str]
     source_pattern: dict[str, Any]
     ir_stats: dict[str, Any]
+    semantic_graph: SemanticFlowGraph
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["semantic_graph"] = self.semantic_graph.to_dict()
+        return payload
 
 
 FLOAT = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)f?"
@@ -186,7 +197,8 @@ def build_flow_graph(fn: ExtractedFunction, ir_stats: dict[str, Any] | None = No
         invariants.update(ir_slice.invariants)
         invariants["pointwise_independent"] = family in {"pointwise_map", "guarded_pointwise_map"} and not ir_slice.invariants["loop_carried_dependence"]
         invariants["parallel_iteration_space"] = invariants["pointwise_independent"] or family == "stencil"
-        return FlowGraph(family, canonical, nodes, edges, invariants, grammar_for_family(family, canonical), pattern, ir_stats or {})
+        semantic = _build_c_semantic_graph(fn, family, canonical, nodes, edges, invariants, pattern, ir_stats or {})
+        return FlowGraph(family, canonical, nodes, edges, invariants, grammar_for_family(family, canonical), pattern, ir_stats or {}, semantic)
 
     nodes = [
         FlowNode("arg.dst", "argument", "float*"),
@@ -218,7 +230,128 @@ def build_flow_graph(fn: ExtractedFunction, ir_stats: dict[str, Any] | None = No
             edges.append(FlowEdge(nid, "op.root", "neighbor"))
     invariants = _invariants(pattern)
     grammar = grammar_for_family(family, canonical)
-    return FlowGraph(family, canonical, nodes, edges, invariants, grammar, pattern, ir_stats or {})
+    semantic = _build_c_semantic_graph(fn, family, canonical, nodes, edges, invariants, pattern, ir_stats or {})
+    return FlowGraph(family, canonical, nodes, edges, invariants, grammar, pattern, ir_stats or {}, semantic)
+
+
+def _build_c_semantic_graph(
+    fn: ExtractedFunction,
+    family: str,
+    canonical: str,
+    legacy_nodes: list[FlowNode],
+    legacy_edges: list[FlowEdge],
+    invariants: dict[str, Any],
+    pattern: dict[str, Any],
+    ir_stats: dict[str, Any],
+) -> SemanticFlowGraph:
+    incoming: dict[str, list[str]] = {node.id: [] for node in legacy_nodes}
+    for edge in legacy_edges:
+        if edge.dst in incoming and edge.src in incoming:
+            incoming[edge.dst].append(edge.src)
+
+    kind_map = {
+        "argument": "Input", "load": "Load", "store": "Store", "induction": "Loop",
+        "phi": "StateRead", "icmp": "Compare", "fcmp": "Compare", "select": "Select",
+        "br": "Control", "switch": "Control", "call": "Call", "getelementptr": "Address",
+        "and": "Bitwise", "or": "Bitwise", "xor": "Bitwise", "shl": "Bitwise",
+        "lshr": "Bitwise", "ashr": "Bitwise",
+    }
+    semantic_nodes: list[SemanticFlowNode] = []
+    for item in legacy_nodes:
+        kind = kind_map.get(item.opcode, "Map")
+        typed = []
+        if kind in {"Load", "Store"}:
+            typed.append(obligation(
+                f"c.{item.id}.bounds",
+                "bounds",
+                "memory access remains within the captured C object extent",
+                proof_method="llvm-footprint-and-native-differential",
+                language="c",
+                native_construct=item.opcode,
+            ))
+        if kind == "StateRead":
+            typed.append(obligation(
+                f"c.{item.id}.recurrence",
+                "state",
+                "loop-carried state preserves source iteration ordering",
+                proof_method="llvm-dependence-and-z3",
+                language="c",
+                native_construct="phi",
+            ))
+        semantic_nodes.append(SemanticFlowNode(
+            item.id,
+            kind,
+            item.opcode if kind != "Map" else canonical,
+            tuple(incoming[item.id]),
+            item.type,
+            dict(item.attrs),
+            {"source": fn.name, "source_range": [fn.start, fn.end], "legacy_opcode": item.opcode},
+            tuple(typed),
+        ))
+    observable_inputs = tuple(node.id for node in semantic_nodes if node.kind == "Store")
+    if not observable_inputs:
+        observable_inputs = tuple(node.id for node in semantic_nodes if not any(edge.src == node.id for edge in legacy_edges))
+    semantic_nodes.append(SemanticFlowNode(
+        "output.observable",
+        "Output",
+        "function-observables",
+        observable_inputs,
+        "void" if "void" in fn.signature else "value",
+        {},
+        {"signature": fn.signature},
+        (),
+    ))
+
+    semantic_edges: list[SemanticFlowEdge] = []
+    for index, edge in enumerate(legacy_edges):
+        semantic_edges.append(SemanticFlowEdge(
+            f"c.edge.{index}", edge.src, edge.dst, "value", "borrowed" if edge.kind == "memory" else "ephemeral",
+            "c-object" if edge.kind == "memory" else "local", "function-call", edge.kind,
+            memory_region="argument" if edge.kind == "memory" else "register",
+        ))
+    for index, source in enumerate(observable_inputs):
+        semantic_edges.append(SemanticFlowEdge(
+            f"c.observable.{index}", source, "output.observable", "observable", "ephemeral", "output",
+            "function-call", "sequenced", memory_region="output",
+        ))
+
+    effects: list[SemanticEffect] = []
+    for node in semantic_nodes:
+        if node.kind not in {"Load", "Store", "Call"}:
+            continue
+        effect_kind = "MemoryRead" if node.kind == "Load" else "MemoryWrite" if node.kind == "Store" else "ExternalCall"
+        effects.append(SemanticEffect(
+            f"effect.{node.id}", effect_kind, "execute", str(node.attributes.get("array", node.id)),
+            "source-observable" if node.kind in {"Store", "Call"} else "internal-read", "program-order",
+            (node.id,), tuple(item.id for item in node.semantic_obligations), {"source_language": "c"},
+        ))
+    alias_obligation = obligation(
+        "c.alias.contract",
+        "aliasing",
+        "candidate preserves the captured C pointer alias relation",
+        proof_method="llvm-refinement-and-footprint-proof",
+        language="c",
+        native_construct="pointer-object-model",
+    )
+    return SemanticFlowGraph(
+        fn.name,
+        "c",
+        "clang-llvm-capture" if ir_stats else "source-capture",
+        "clang-llvm" if ir_stats else "c-source",
+        hashlib.sha256(fn.source.encode()).hexdigest(),
+        tuple(semantic_nodes),
+        tuple(semantic_edges),
+        {
+            "family": family,
+            "canonical": canonical,
+            "invariants": invariants,
+            "source_pattern": pattern,
+            "ir_stats": ir_stats,
+        },
+        ("whole-program equivalence", "undefined-behavior repair"),
+        (alias_obligation,),
+        tuple(effects),
+    )
 
 
 def _classify_source(body: str) -> dict[str, Any]:

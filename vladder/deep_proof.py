@@ -292,6 +292,8 @@ def prove_deep_candidate(
         guard_tokens = (
             f"n-i>={native_width}",
             f"data.len()-i>={native_width}",
+            f"data.len-i>={native_width}",
+            f"length(data)-i+1>={native_width}",
         )
         width_token = next((token for token in guard_tokens if token in compact_source), "")
         source_binding_pass = source_binding_pass and bool(width_token) and f"i+={native_width}" in compact_source
@@ -323,8 +325,8 @@ def prove_deep_candidate(
         elif obligation == "target-width":
             obligations.append(_structural_obligation(obligation, width in {8, 32}, "declared terminal width", f"physical width is {width} bytes"))
         elif obligation == "unaligned-load-legality":
-            tokens = ("memcpy", "loadu_si256", "from_ne_bytes")
-            obligations.append(_structural_obligation(obligation, any(token in candidate.source for token in tokens), "native source load operation", "wide load uses memcpy or an unaligned intrinsic behind a dominating length guard"))
+            tokens = ("memcpy", "loadu_si256", "from_ne_bytes", "vladder_unaligned_load", "data[i..][0..32]", "@inbounds")
+            obligations.append(_structural_obligation(obligation, any(token in candidate.source for token in tokens), "native source load operation", "wide load uses a language-defined indexed load, memcpy, or an unaligned intrinsic behind a dominating length guard"))
         elif obligation == "no-intermediate-observer":
             obligations.append(_structural_obligation(obligation, all(node.operation != "materialize" for node in graph.semantic_graph.nodes), "selected bounded function observables", "graph has no materialized predicate buffer or external intermediate observer"))
         elif obligation == "complexity-bound":

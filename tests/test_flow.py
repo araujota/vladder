@@ -20,6 +20,10 @@ class FlowTests(unittest.TestCase):
         self.assertEqual(graph.family, "pointwise_map")
         self.assertEqual(graph.canonical, "affine")
         self.assertTrue(graph.invariants["pointwise_independent"])
+        semantic = graph.semantic_graph.to_dict()
+        self.assertEqual(semantic["schema_version"], "semantic-flow-v2")
+        self.assertTrue(semantic["obligations"])
+        self.assertTrue(any(effect["kind"] == "MemoryWrite" for effect in semantic["effects"]))
 
     def test_clamp_shape(self):
         graph = graph_for(

@@ -5,7 +5,7 @@ import hashlib
 import re
 from typing import Any
 
-from .language_adapter import SemanticFlowEdge, SemanticFlowGraph, SemanticFlowNode
+from .language_adapter import SemanticFlowEdge, SemanticFlowGraph, SemanticFlowNode, obligation
 
 
 RUST_SUPPORT_VERSION = "bounded-rust-regions-v1"
@@ -260,15 +260,25 @@ def build_semantic_flow_graph(
     mir: MirFunction,
     compiler_identity: str,
 ) -> SemanticFlowGraph:
+    def rust_obligation(identifier: str, category: str, statement: str, construct: str) -> tuple[Any, ...]:
+        return (obligation(
+            identifier,
+            category,
+            statement,
+            proof_method="mir-z3-native",
+            language="rust",
+            native_construct=construct,
+        ),)
+
     nodes = (
-        SemanticFlowNode("input.slice", "Input", "borrowed sequence", (), "slice<u8>", {"parameter": model.slice_parameter}, {"source": function.source_name, "mir": mir.name}, ("borrow remains valid for the call",)),
+        SemanticFlowNode("input.slice", "Input", "borrowed sequence", (), "slice<u8>", {"parameter": model.slice_parameter}, {"source": function.source_name, "mir": mir.name}, rust_obligation("rust.borrow.call", "ownership", "borrow remains valid for the call", "shared-reference")),
         SemanticFlowNode("input.needle", "Input", "scalar value", (), "u8", {"parameter": model.needle_parameter}, {"source": function.source_name, "mir": mir.name}, ()),
-        SemanticFlowNode("borrow.slice", "Borrow", "shared borrow", ("input.slice",), "borrowed<u8>", {}, {"mir_operations": ["Len", "Load"]}, ("no mutation through the shared borrow",)),
-        SemanticFlowNode("load.byte", "Load", "stream element load", ("borrow.slice",), "u8", {"traversal": "ordered"}, {"mir_operations": list(model.mir_operations)}, ("index or iterator remains in bounds",)),
+        SemanticFlowNode("borrow.slice", "Borrow", "shared borrow", ("input.slice",), "borrowed<u8>", {}, {"mir_operations": ["Len", "Load"]}, rust_obligation("rust.borrow.shared", "ownership", "no mutation through the shared borrow", "shared-reference")),
+        SemanticFlowNode("load.byte", "Load", "stream element load", ("borrow.slice",), "u8", {"traversal": "ordered"}, {"mir_operations": list(model.mir_operations)}, rust_obligation("rust.load.bounds", "bounds", "index or iterator remains in bounds", "slice-index")),
         SemanticFlowNode("compare.eq", "Compare", "equal", ("load.byte", "input.needle"), "bool", {}, {"mir_operation": "Eq"}, ()),
         SemanticFlowNode("map.indicator", "Map", "bool to usize", ("compare.eq",), "usize", {"false": 0, "true": 1}, {"mir_operation": "IntToInt"}, ()),
-        SemanticFlowNode("reduce.count", "Reduce", "ordered sum", ("map.indicator",), "usize", {"algebra": "sum", "overflow": model.overflow_policy}, {"mir_operations": ["Add", "CheckedAdd"]}, ("panic and overflow contract is preserved",)),
-        SemanticFlowNode("control.loop", "Control", "sequence traversal", ("borrow.slice", "reduce.count"), None, {"source_form": model.source_form}, {"basic_blocks": mir.basic_blocks}, ("every element is visited exactly once",)),
+        SemanticFlowNode("reduce.count", "Reduce", "ordered sum", ("map.indicator",), "usize", {"algebra": "sum", "overflow": model.overflow_policy}, {"mir_operations": ["Add", "CheckedAdd"]}, rust_obligation("rust.reduce.overflow", "numeric", "panic and overflow contract is preserved", "usize-add")),
+        SemanticFlowNode("control.loop", "Control", "sequence traversal", ("borrow.slice", "reduce.count"), None, {"source_form": model.source_form}, {"basic_blocks": mir.basic_blocks}, rust_obligation("rust.loop.coverage", "bounds", "every element is visited exactly once", model.source_form)),
         SemanticFlowNode("output.count", "Output", "return reduction", ("reduce.count",), "usize", {}, {"return_type": function.return_type}, ()),
     )
     edge_pairs = (
