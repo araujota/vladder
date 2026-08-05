@@ -1,5 +1,23 @@
 # vLadder Architecture
 
+## Agent Evidence Plane (rc6)
+
+`AgentWorkflow` is the default control plane above the existing optimization hierarchy. One
+manifest freezes the region, source/compiler identity, contract, attribution, workload, and
+promotion policy. Deterministic stages are keyed by those inputs and may be resumed. Every run emits
+one promotion summary with independent completion, semantic coverage, candidate, proof, physical,
+integration, promotion, and retained-revalidation states.
+
+Artifact lineage is a DAG from source through extraction, candidate, proof, benchmark, and final
+disposition. C++ closure can generate incomplete application adapters; two finite retained-state
+protocols have direct Z3 encodings. All other external protocols remain plugin/runner boundaries.
+Paired physical evidence is randomized and overlap-aware. GPU compute enters through a portable
+SPIR-V module workflow whose structural validation remains distinct from output equivalence and
+device timing.
+
+The evidence plane changes orchestration and application closure. It does not replace expression,
+loop, operator, lifetime, LLVM, Alive2, Z3, or hardware-specific search layers.
+
 ## Optimization Boundary
 
 vLadder operates above LLVM. It extracts bounded C/C++ regions into semantic and physical
@@ -76,7 +94,7 @@ state ownership, layouts, quantization blocks, resource pressure, or token/seque
 
 ## Bounded C++ Closure Frontend
 
-`bounded-cpp-regions-v4` treats semantic capture, local closure, proof, candidate generation,
+`bounded-cpp-regions-v5` treats semantic capture, local closure, proof, candidate generation,
 benchmarking, source realization, and protocol equivalence as separate facts.
 It selects a concrete definition with Clang and the production compilation database, preserves
 source-level ownership and exception hazards, and recursively summarizes definition-visible LLVM

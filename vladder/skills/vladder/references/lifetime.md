@@ -46,6 +46,11 @@ vladder lifetime synthesize \
 Inspect `lifetime-attribution.json`, `lifetime-candidates.json`, each candidate's
 `verification.json`, `realization-contract.json`, and `AGENT_REALIZATION.md`.
 
+Inspect `trace-quality.json` first. `insufficient_attribution` means the trace lacks construction
+or transfer, consumption, and repeated-use or complete residency evidence. No candidates are
+generated in that state. Mutation observations improve confidence but never authorize an invariant;
+the manifest remains semantic authority.
+
 ## Initial Grammar
 
 - `repeated-derivation-elimination`: construct once per valid containing scope.

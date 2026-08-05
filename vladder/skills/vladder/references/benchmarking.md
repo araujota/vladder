@@ -27,3 +27,12 @@ Estimate the maximum end-to-end value before search:
 Do not promote a local win unless its confidence interval excludes the minimum effect and the full
 application improves within declared regression limits. Report every important workload
 separately; an aggregate must not hide latency, memory, or correctness regressions.
+
+Use `vladder benchmark paired --manifest paired.yaml` for the canonical application runner. The
+manifest supplies one executable, baseline and candidate arguments, metric direction, complete
+observable key, process/repetition counts, seed, and minimum effect. Use an in-process harness when
+process startup would dominate the region.
+
+Use `vladder benchmark compose` before reporting combined gains. Declare every physical region an
+effect covers. Overlapping parent/child measurements are rejected unless a measured interaction run
+is supplied; do not add percentages or multiply speedup factors for overlapping work.

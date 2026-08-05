@@ -17,6 +17,8 @@ from . import __version__
 from .candidates import Candidate, generate_candidates
 from .automatic import inspect_automatic_region
 from .cpp_regions import inspect_cpp_matrix, inspect_cpp_region, isolate_cpp_region, optimize_cpp_region
+from .cpp_adapters import generate_cpp_adapter_bundle
+from .agent_workflow import initialize_workflow_manifest, query_lineage, run_agent_workflow, summarize_report
 from .capabilities import load_registry
 from .diagnostics import doctor_report
 from .extractor import extract_function
@@ -43,6 +45,7 @@ from .q4k_model_verify import verify_regenerated_q4k_model
 from .q4k_v8 import run_q4k_v8
 from .weight_traversal_v9 import run_weight_traversal_v9
 from .portfolio_v6 import rank_portfolio
+from .paired_benchmark import compose_benchmark_effects, run_paired_benchmark
 from .proofs import proof_to_dict, prove_candidate, write_smt2_stub
 from .report import write_csv, write_html, write_json
 from .replacement import verify_applied_replacement
@@ -50,6 +53,8 @@ from .toolchain import alive2_check, compile_c, compiler_version, cpu_flags, cpu
 from .sksf_workflow import synthesize_kernel_v6, validate_attribution_v6
 from .skill_tools import install_skill, validate_skill
 from .verification_policy import VerificationPolicy, evaluate_promotion
+from .shader_workflow import gpu_support_matrix, inspect_shader, synthesize_shader
+from .state_protocol import verify_state_protocol
 
 
 HARNESS = r"""
@@ -797,6 +802,10 @@ def automatic_region_command(args: argparse.Namespace) -> int:
 
 
 def cpp_region_command(args: argparse.Namespace) -> int:
+    if args.cpp_command == "adapter":
+        report = generate_cpp_adapter_bundle(Path(args.report), Path(args.out_dir))
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
     if args.cpp_command == "audit":
         report = inspect_cpp_matrix(
             Path(args.manifest), Path(args.out_dir), materialize_isolation=args.materialize_isolation
@@ -846,6 +855,49 @@ def cpp_region_command(args: argparse.Namespace) -> int:
     )
     print(json.dumps(report, indent=2, sort_keys=True))
     return return_code
+
+
+def workflow_command(args: argparse.Namespace) -> int:
+    if args.workflow_command == "init":
+        report = initialize_workflow_manifest(args.kind, Path(args.out).resolve())
+    elif args.workflow_command == "run":
+        report = run_agent_workflow(Path(args.manifest), Path(args.out_dir), force=args.force)
+    elif args.workflow_command == "summarize":
+        report = summarize_report(Path(args.report), Path(args.out).resolve() if args.out else None)
+    else:
+        report = query_lineage(Path(args.summary), args.artifact)
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def benchmark_command(args: argparse.Namespace) -> int:
+    if args.benchmark_command == "paired":
+        report = run_paired_benchmark(Path(args.manifest), Path(args.out_dir))
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report.get("status") == "pass" else 2
+    report = compose_benchmark_effects(Path(args.manifest), Path(args.out))
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report.get("status") == "pass" else 2
+
+
+def protocol_command(args: argparse.Namespace) -> int:
+    report = verify_state_protocol(Path(args.manifest), Path(args.out_dir))
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report["status"] == "PASS" else 2
+
+
+def shader_command(args: argparse.Namespace) -> int:
+    if args.shader_command == "support":
+        report = gpu_support_matrix()
+    elif args.shader_command == "inspect":
+        report = inspect_shader(Path(args.source), Path(args.out_dir), target_env=args.target_env)
+    else:
+        report = synthesize_shader(
+            Path(args.source), Path(args.out_dir), target_env=args.target_env,
+            runner_manifest=Path(args.runner_manifest) if args.runner_manifest else None,
+        )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report.get("status") == "pass" or args.shader_command == "support" else 2
 
 
 def verify_application_command(args: argparse.Namespace) -> int:
@@ -898,6 +950,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
+    workflow = sub.add_parser("workflow", help="run and summarize the canonical agent optimization workflow")
+    workflow_sub = workflow.add_subparsers(dest="workflow_command", required=True)
+    workflow_init = workflow_sub.add_parser("init", help="create a canonical workflow manifest")
+    workflow_init.add_argument("--kind", choices=("c", "cpp", "lifetime", "shader", "protocol"), required=True)
+    workflow_init.add_argument("--out", default="vladder-workflow.yaml")
+    workflow_init.set_defaults(func=workflow_command)
+    workflow_run = workflow_sub.add_parser("run", help="route one manifest and emit a promotion summary")
+    workflow_run.add_argument("--manifest", required=True)
+    workflow_run.add_argument("--out-dir", default="vladder-workflow-out")
+    workflow_run.add_argument("--force", action="store_true", help="ignore a matching resumable stage record")
+    workflow_run.set_defaults(func=workflow_command)
+    workflow_summary = workflow_sub.add_parser("summarize", help="summarize an existing stage report")
+    workflow_summary.add_argument("--report", required=True)
+    workflow_summary.add_argument("--out")
+    workflow_summary.set_defaults(func=workflow_command)
+    workflow_query = workflow_sub.add_parser("query", help="query artifact ancestors and descendants")
+    workflow_query.add_argument("--summary", required=True)
+    workflow_query.add_argument("--artifact", required=True)
+    workflow_query.set_defaults(func=workflow_command)
     doctor = sub.add_parser("doctor", help="validate compilers, solvers, validators, and performance tools")
     doctor.add_argument("--strict", action="store_true", help="require Alive2 and perf in addition to the core toolchain")
     doctor.add_argument("--out", help="also write the JSON report to this path")
@@ -964,6 +1035,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="compile and prove predicted local proof units without applying source changes",
     )
     cpp_audit.set_defaults(func=cpp_region_command)
+    cpp_adapter = cpp_sub.add_parser("adapter", help="generate an explicit application adapter bundle from C++ closure evidence")
+    cpp_adapter.add_argument("--report", required=True, help="cpp-support.json from inspect or isolate")
+    cpp_adapter.add_argument("--out-dir", default="vladder-cpp-adapter")
+    cpp_adapter.set_defaults(func=cpp_region_command)
     for action, help_text, default_out in (
         ("inspect", "classify a concrete C++ definition and emit adapter requirements", "vladder-cpp-inspect"),
         ("isolate", "extract production IR, isolate the kernel, prove its adapter, and regenerate C++", "vladder-cpp-isolation"),
@@ -991,6 +1066,37 @@ def build_parser() -> argparse.ArgumentParser:
     verify_application.add_argument("--compile-arg", action="append", default=[], help="additional compiler argument for project headers or defines")
     verify_application.add_argument("--out", help="also write the JSON verification report")
     verify_application.set_defaults(func=verify_application_command)
+    benchmark = sub.add_parser("benchmark", help="collect paired evidence or compose disjoint regional effects")
+    benchmark_sub = benchmark.add_subparsers(dest="benchmark_command", required=True)
+    benchmark_paired = benchmark_sub.add_parser("paired", help="run randomized baseline/candidate process pairs")
+    benchmark_paired.add_argument("--manifest", required=True)
+    benchmark_paired.add_argument("--out-dir", default="vladder-paired-benchmark")
+    benchmark_paired.set_defaults(func=benchmark_command)
+    benchmark_compose = benchmark_sub.add_parser("compose", help="compose only disjoint or interaction-measured effects")
+    benchmark_compose.add_argument("--manifest", required=True)
+    benchmark_compose.add_argument("--out", default="vladder-composition.json")
+    benchmark_compose.set_defaults(func=benchmark_command)
+    protocol = sub.add_parser("protocol", help="verify bounded retained-state protocol projections")
+    protocol_sub = protocol.add_subparsers(dest="protocol_command", required=True)
+    protocol_verify = protocol_sub.add_parser("verify", help="prove versioned-cache or transactional-publication obligations")
+    protocol_verify.add_argument("--manifest", required=True)
+    protocol_verify.add_argument("--out-dir", default="vladder-protocol-proof")
+    protocol_verify.set_defaults(func=protocol_command)
+    shader = sub.add_parser("shader", help="inspect and synthesize portable compute shader evidence")
+    shader_sub = shader.add_subparsers(dest="shader_command", required=True)
+    shader_support = shader_sub.add_parser("support", help="show portable GPU toolchain and proof boundaries")
+    shader_support.set_defaults(func=shader_command)
+    for action, help_text, default_out in (
+        ("inspect", "compile/import and validate a SPIR-V compute module", "vladder-shader-inspect"),
+        ("synthesize", "generate bounded SPIR-V optimizer candidates", "vladder-shader-out"),
+    ):
+        command = shader_sub.add_parser(action, help=help_text)
+        command.add_argument("--source", required=True)
+        command.add_argument("--target-env", default="vulkan1.2")
+        command.add_argument("--out-dir", default=default_out)
+        if action == "synthesize":
+            command.add_argument("--runner-manifest", help="application output-hash and device-timestamp runner")
+        command.set_defaults(func=shader_command)
     skill = sub.add_parser("skill", help="validate or install the bundled coding-agent skill")
     skill_sub = skill.add_subparsers(dest="skill_command", required=True)
     skill_validate = skill_sub.add_parser("validate", help="validate the bundled or specified skill")

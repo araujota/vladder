@@ -30,8 +30,8 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version remains `1.0.0rc5` while the source tree validates the C++ closure matrix,
-`bounded-cpp-regions-v4`; it retains the
+The package version is `1.0.0rc6` and the C++ closure matrix is
+`bounded-cpp-regions-v5`; it retains the
 `bounded-regions-v1` C frontend. The C frontend fully
 automates extraction, LLVM-derived classification, transformation, C source regeneration,
 formal refinement, differential execution, hardware benchmarking, and proof-gated patch
@@ -52,13 +52,31 @@ It also inventories loops, helper closures, object-state projections, ownership,
 synchronization, and external calls, then emits a deterministic C++ information-flow graph.
 
 Results expose independent capture, isolation, candidate-generation, local-proof, benchmark,
-source-rewrite, and protocol-equivalence capabilities. v4 can materialize whole local functions
+source-rewrite, and protocol-equivalence capabilities. v5 can materialize whole local functions
 and eligible nested loops as proof units, and can emit bounded source schedule candidates for the
 latter. It still requires a workload adapter before ranking a noncanonical C++ candidate. Alive2
 can prove local LLVM rewrites; it does not prove RAII, allocation, object invariants, exception,
 concurrency, Vulkan/OpenUSD, callback, or other owning protocols. These categorical protocol
 limits do not block independently closed subregions or the attribution, lifetime, placement, and
 contract-bounded parts of vLadder.
+
+rc6 adds a manifest-driven agent workflow and closes several application-promotion gaps:
+
+- one `promotion-summary.json` distinguishes inspection, meaningful semantic coverage, candidate
+  generation, proof, physical benchmarking, integration, promotion, and retained revalidation;
+- C++ closure reports generate benchmark, observable, state-projection, and agent-task adapters
+  with unresolved semantics as explicit blockers;
+- versioned-cache and transactional-publication state projections receive bounded Z3 proofs;
+- paired same-executable measurements use randomized process order and bootstrap confidence
+  intervals, while overlapping regional speedups are rejected unless an interaction run exists;
+- weak lifetime traces return `insufficient_attribution` and generate no candidates;
+- GLSL/SPIR-V compute modules can be compiled, validated, transformed, and connected to exact
+  output and device-timestamp runners. SPIR-V structural validation is not equivalence, and CUDA
+  remains an external toolchain/runner boundary when unavailable.
+
+This is not arbitrary-C++ or whole-device equivalence. RAII, allocation, exceptions, general
+concurrency, callbacks, syscalls, drivers, presentation, Vulkan/CUDA host protocols, and external
+libraries are proved only through explicit finite adapters over their actual observables.
 
 The package also contains specialist operator, pipeline, projection, quantized-kernel, and
 weight-traversal research adapters. Use `vladder grammar` and `vladder lower list` to distinguish
@@ -79,10 +97,10 @@ closed when source mode is requested.
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc5` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc6` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc5'
+python3 -m pip install --pre 'vladder==1.0.0rc6'
 vladder doctor
 ```
 
@@ -134,6 +152,38 @@ The deprecated `silicontune` console alias remains for one release. The Python i
 is `vladder` only.
 
 ## CLI Workflow
+
+Start an agent investigation from one manifest:
+
+```bash
+vladder workflow init --kind cpp --out vladder-workflow.yaml
+# Fill every TODO and record attribution, contract, and workload identity.
+vladder workflow run --manifest vladder-workflow.yaml --out-dir vladder-workflow-out
+```
+
+Read `promotion-summary.json` first. It contains the proof class, meaningful-coverage state,
+candidate/proof/benchmark/integration states, blockers, one next action, five decisive artifacts,
+and a queryable artifact lineage. Matching source, compiler, grammar, contract, workload, and tool
+inputs resume deterministically and are classified as revalidation rather than a new discovery.
+
+The operational decision tree is:
+
+1. Choose `c`, `cpp`, `lifetime`, `shader`, or `protocol` from the region's actual semantic boundary.
+2. Run inspection and read `meaningful_semantic_coverage`.
+3. If an adapter remains, generate or complete it; do not relabel local proof as wrapper proof.
+4. Require candidate proof and randomized paired physical evidence.
+5. Require project integration and composed-system confirmation before retention.
+
+```bash
+vladder cpp adapter --report vladder-cpp-inspect/cpp-support.json --out-dir vladder-cpp-adapter
+vladder protocol verify --manifest state-protocol.yaml --out-dir vladder-protocol-proof
+vladder benchmark paired --manifest paired-benchmark.yaml --out-dir vladder-paired
+vladder benchmark compose --manifest regional-effects.yaml --out vladder-composition.json
+vladder shader synthesize --source kernel.comp --runner-manifest gpu-runner.yaml --out-dir vladder-shader-out
+```
+
+The shader runner must emit exact output hashes and device timestamps. A candidate that only passes
+`spirv-val` remains non-promotable.
 
 For repository or runtime architecture work, begin with an explicit lifetime manifest and trace:
 
@@ -273,7 +323,7 @@ proves predicted local units but still performs no optimization, benchmark, or s
 `--command-index N` when the compilation database contains multiple configurations for one file.
 Inspect `closure.disposition`, each independent `closure.capabilities` entry, categorical
 `protocol_scopes`, `compiled-effects.json`, `typed-abi.json`, `subregions.json`,
-`cpp-information-flow.json`, and `proof-envelope.json`. `bounded-cpp-regions-v4` can emit whole
+`cpp-information-flow.json`, and `proof-envelope.json`. `bounded-cpp-regions-v5` can emit whole
 local-function proof units and source-preserving lambda capsules for eligible loops inside owning
 C++ methods. Its bounded schedule grammar emits guarded Clang unroll candidates with identity and
 Z3 schedule evidence, but requires an application benchmark adapter before ranking or applying

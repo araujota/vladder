@@ -1,8 +1,21 @@
 """vLadder: verified information-flow superoptimization for C and C++."""
 
-__version__ = "1.0.0rc5"
+__version__ = "1.0.0rc6"
 
-from .api import AutomaticRegionRequest, BenchmarkPolicy, CppAuditRequest, CppRegionRequest, LifetimeRequest, OptimizationRequest, OptimizationResult, VelocityLadder
+from .api import (
+    AgentWorkflowRequest,
+    AutomaticRegionRequest,
+    BenchmarkPolicy,
+    CppAuditRequest,
+    CppRegionRequest,
+    LifetimeRequest,
+    OptimizationRequest,
+    OptimizationResult,
+    PairedBenchmarkRequest,
+    StateProtocolRequest,
+    VelocityLadder,
+)
+from .agent_workflow import build_promotion_summary, run_agent_workflow
 from .automatic import AdapterRequirement, AutomaticSupport
 from .cpp_closure import classify_cpp_closure
 from .cpp_regions import CPP_SUPPORT_VERSION, CppAdapterRequirement, inspect_cpp_matrix, inspect_cpp_region, isolate_cpp_region
@@ -13,6 +26,7 @@ from .verification_policy import VerificationPolicy
 
 __all__ = [
     "BenchmarkPolicy",
+    "AgentWorkflowRequest",
     "CPP_SUPPORT_VERSION",
     "CppAdapterRequirement",
     "CppAuditRequest",
@@ -32,6 +46,8 @@ __all__ = [
     "LifetimeRequest",
     "OptimizationRequest",
     "OptimizationResult",
+    "PairedBenchmarkRequest",
+    "StateProtocolRequest",
     "VelocityLadder",
     "VerificationPolicy",
     "__version__",
@@ -41,4 +57,6 @@ __all__ = [
     "inspect_cpp_matrix",
     "isolate_cpp_region",
     "classify_cpp_closure",
+    "build_promotion_summary",
+    "run_agent_workflow",
 ]

@@ -70,6 +70,8 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertIn(source_digest, formula)
         self.assertIn('depends_on "cmake" => :build', formula)
         self.assertIn('depends_on "llvm@20"', formula)
+        self.assertIn('depends_on "glslang"', formula)
+        self.assertIn('depends_on "spirv-tools"', formula)
         with tempfile.TemporaryDirectory() as directory:
             formula_path = Path(directory) / "vladder.rb"
             formula_path.write_text(formula)

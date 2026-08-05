@@ -184,6 +184,37 @@ class LifetimeRequest:
         ]
 
 
+@dataclass(frozen=True)
+class AgentWorkflowRequest:
+    manifest: Path
+    output_directory: Path
+    force: bool = False
+
+    def argv(self) -> list[str]:
+        args = ["workflow", "run", "--manifest", str(self.manifest), "--out-dir", str(self.output_directory)]
+        if self.force:
+            args.append("--force")
+        return args
+
+
+@dataclass(frozen=True)
+class PairedBenchmarkRequest:
+    manifest: Path
+    output_directory: Path
+
+    def argv(self) -> list[str]:
+        return ["benchmark", "paired", "--manifest", str(self.manifest), "--out-dir", str(self.output_directory)]
+
+
+@dataclass(frozen=True)
+class StateProtocolRequest:
+    manifest: Path
+    output_directory: Path
+
+    def argv(self) -> list[str]:
+        return ["protocol", "verify", "--manifest", str(self.manifest), "--out-dir", str(self.output_directory)]
+
+
 class VelocityLadder:
     """Stable embedding facade for vLadder's optimization workflow."""
 
@@ -244,5 +275,32 @@ class VelocityLadder:
             "evaluate-corpus": "lifetime-evaluation.json",
         }[request.action]
         report_path = request.output_directory / report_name
+        report = json.loads(report_path.read_text()) if report_path.exists() else {}
+        return OptimizationResult(return_code, report_path, report)
+
+    def workflow(self, request: AgentWorkflowRequest) -> OptimizationResult:
+        from .cli import main
+
+        request.output_directory.mkdir(parents=True, exist_ok=True)
+        return_code = main(request.argv())
+        report_path = request.output_directory / "promotion-summary.json"
+        report = json.loads(report_path.read_text()) if report_path.exists() else {}
+        return OptimizationResult(return_code, report_path, report)
+
+    def paired_benchmark(self, request: PairedBenchmarkRequest) -> OptimizationResult:
+        from .cli import main
+
+        request.output_directory.mkdir(parents=True, exist_ok=True)
+        return_code = main(request.argv())
+        report_path = request.output_directory / "paired-benchmark.json"
+        report = json.loads(report_path.read_text()) if report_path.exists() else {}
+        return OptimizationResult(return_code, report_path, report)
+
+    def state_protocol(self, request: StateProtocolRequest) -> OptimizationResult:
+        from .cli import main
+
+        request.output_directory.mkdir(parents=True, exist_ok=True)
+        return_code = main(request.argv())
+        report_path = request.output_directory / "protocol-proof.json"
         report = json.loads(report_path.read_text()) if report_path.exists() else {}
         return OptimizationResult(return_code, report_path, report)

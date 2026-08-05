@@ -42,6 +42,10 @@ def doctor_report(strict: bool = False) -> dict[str, Any]:
         DependencyStatus("cbmc", False, bool(tc.cbmc), tc.cbmc, tool_version(tc.cbmc)),
         DependencyStatus("perf", strict, bool(tc.perf), tc.perf, _command_version(tc.perf, ("--version",))),
         DependencyStatus("objdump", True, bool(tc.objdump), tc.objdump, _command_version(tc.objdump)),
+        DependencyStatus("glslangValidator", False, bool(shutil.which("glslangValidator")), shutil.which("glslangValidator"), _command_version(shutil.which("glslangValidator"))),
+        DependencyStatus("spirv-val", False, bool(shutil.which("spirv-val")), shutil.which("spirv-val"), _command_version(shutil.which("spirv-val"))),
+        DependencyStatus("spirv-opt", False, bool(shutil.which("spirv-opt")), shutil.which("spirv-opt"), _command_version(shutil.which("spirv-opt"))),
+        DependencyStatus("nvcc", False, bool(shutil.which("nvcc")), shutil.which("nvcc"), _command_version(shutil.which("nvcc"))),
     ]
     python_dependencies = []
     for distribution in ("PyYAML",):

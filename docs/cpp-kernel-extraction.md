@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`bounded-cpp-regions-v4` expands C++ coverage without claiming arbitrary C++ equivalence. It
+`bounded-cpp-regions-v5` expands C++ coverage without claiming arbitrary C++ equivalence. It
 distinguishes three jobs that were previously conflated:
 
 1. capture the production translation unit, concrete definition, ABI, and compiled effects;
@@ -116,7 +116,7 @@ while whole-boundary protocol equivalence remains false.
 
 `extractable_subregions`
 : One or more bounded loop/container regions are identified inside an owning, allocating,
-  exception-capable, or externally interacting function. v4 wraps eligible loops in immediately
+  exception-capable, or externally interacting function. v5 wraps eligible loops in immediately
   invoked noinline `[&]` lambda capsules, compiles them using the production command, identifies
   the emitted symbol, and proves the local identity unit. Escaping `return`, `goto`, coroutine,
   unresolved macro, volatile, synchronization, and local exception behavior fail closed.
@@ -131,7 +131,7 @@ They describe what can happen now rather than treating a whole function as one s
 
 ## Bounded Candidate Grammar
 
-For an eligible nested loop, v4 emits guarded Clang unroll hints for factors 2 and 4. The proof
+For an eligible nested loop, v5 emits guarded Clang unroll hints for factors 2 and 4. The proof
 build removes the hint, compiles an identity capsule, and emits a Z3 loop-partition obligation.
 The physical candidate is compiled and hashed separately. This is a source scheduling contract,
 not an Alive2 proof of the physically unrolled CFG and not evidence of a speedup. Ranking requires

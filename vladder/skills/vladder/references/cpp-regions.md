@@ -13,6 +13,7 @@ vladder cpp isolate --source target.cpp --function transform --compile-commands 
 vladder cpp synthesize --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-synthesis
 vladder cpp optimize --source target.cpp --function transform --compile-commands build --out-dir vladder-cpp-out
 vladder cpp audit --manifest cpp-regions.yaml --materialize-isolation --out-dir vladder-cpp-audit
+vladder cpp adapter --report vladder-cpp-inspect/cpp-support.json --out-dir vladder-cpp-adapter
 ```
 
 Add `--symbol _Z...` for overloads and concrete template specializations. Add
@@ -72,6 +73,25 @@ This limitation applies to the protocol claim, not the entire source file. Indep
 subregions remain eligible. Escaping control, volatile/synchronization, local exception behavior,
 and ambiguous source ranges reject a capsule rather than weakening its contract.
 
+## Recovery Recipes
+
+- Overload: inspect `candidate_symbols`, select one exact mangled symbol, and preserve its type.
+- Template: select an emitted concrete specialization or add a production-equivalent explicit
+  instantiation; a template pattern without an emitted symbol is not a proof target.
+- Member function: isolate local computation, declare a finite observable state projection, and
+  separately prove class-state transitions. `this` identity proof is not a class invariant proof.
+- Span/vector/string: keep owning construction outside the proof unit; include size, capacity,
+  alias, lifetime, encoding, and mutation effects in the adapter contract.
+- Callback/coroutine: isolate only regions whose control and live values close locally. Model
+  callback order, suspension, cancellation, exceptions, and destruction through an explicit
+  protocol adapter and sequence oracle.
+- External GPU/syscall/library orchestration: use local kernel proof plus application output,
+  ordering, error, and state-transition evidence. Do not infer external state from local LLVM IR.
+
+The generated adapter bundle is a typed incomplete contract. Its C++ skeleton returns failure until
+the observable oracle is implemented. This prevents generation from being confused with proof or
+benchmark readiness.
+
 ## Proof Boundary
 
 Read `typed-abi.json`, `compiled-effects.json`, `subregions.json`,
@@ -91,7 +111,7 @@ boundary/state relations, optional CBMC for explicitly bounded aggregate or exce
 differential tests for complete observables, and project tests for ownership and external APIs.
 Do not infer whole-function equivalence from a subregion proof.
 
-The v4 loop scheduler uses a source-level Clang hint. Its proof build removes the hint and proves
+The v5 loop scheduler uses a source-level Clang hint. Its proof build removes the hint and proves
 capsule IR identity; Z3 proves loop partition coverage. `physical_candidate_alive2: NOT_RUN` is an
 explicit boundary, not a passed Alive2 result. Require differential application checks and
 physical measurement before promotion.

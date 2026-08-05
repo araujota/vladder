@@ -1,0 +1,13 @@
+protocol: versioned_cache
+state:
+  source_version: integer
+  cache_version: integer
+  cache_valid: boolean
+mutations: [topology_change, transform_change]
+invalidators: [topology_change]
+non_invalidators: [transform_change]
+policy:
+  on_invalidating_mutation: invalidate
+  on_non_invalidating_mutation: retain
+  publish_atomic: true
+  retire_after_readers: true

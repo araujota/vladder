@@ -53,7 +53,7 @@ if ((INSTALL_SYSTEM)); then
     run "${SUDO[@]}" apt-get install -y \
       build-essential ca-certificates cmake curl git ninja-build pkg-config \
       python3 python3-pip python3-venv clang-20 llvm-20 llvm-20-dev llvm-20-tools \
-      lld-20 z3 libz3-dev linux-tools-common binutils
+      lld-20 z3 libz3-dev linux-tools-common binutils glslang-tools spirv-tools
   else
     printf '%s\n' "No apt-get found; validating an existing toolchain instead."
   fi

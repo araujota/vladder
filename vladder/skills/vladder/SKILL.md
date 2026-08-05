@@ -5,9 +5,9 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc5`, grammar `vladder-v1`,
+This skill targets vLadder `1.0.0rc6`, grammar `vladder-v1`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v4`. Use vLadder as a proof-gated workflow: semantic
+`bounded-cpp-regions-v5`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
@@ -32,6 +32,27 @@ chooses which verified realization and implementation graph should exist.
    cost; the contract alone authorizes lifetime extension.
 
 ## Workflow
+
+### Canonical Agent Entry
+
+Read [agent-workflow.md](references/agent-workflow.md), then begin with one manifest rather than
+assembling subcommands from memory:
+
+```bash
+vladder workflow init --kind cpp --out vladder-workflow.yaml
+vladder workflow run --manifest vladder-workflow.yaml --out-dir vladder-workflow-out
+```
+
+Read `promotion-summary.json` first. Answer, in order:
+
+1. What region kind and semantic boundary were selected?
+2. Is semantic coverage meaningful or merely syntactic/selection-level?
+3. Was a candidate generated and proved?
+4. Was it measured with complete observables and paired physical evidence?
+5. Was it integrated and retained, or is this only a new hypothesis/revalidation?
+
+Follow `next_action`; inspect only the five decisive artifacts before expanding into full lineage.
+Do not confuse `workflow_completed` with any later evidence state.
 
 ### 1. Establish Environment And Attribution
 
@@ -92,7 +113,7 @@ vladder cpp audit --manifest cpp-regions.yaml --materialize-isolation --out-dir 
 
 Use `--symbol` to select an overload or concrete template specialization. Read
 `closure.disposition` and the independent semantic-capture, isolation, candidate-generation,
-local-proof, benchmark, source-rewrite, and protocol-equivalence capabilities. The v4 frontend
+local-proof, benchmark, source-rewrite, and protocol-equivalence capabilities. The v5 frontend
 can emit whole local-function proof units and noinline lambda capsules for eligible nested loops,
 then produce guarded schedule candidates without editing the repository. It must not rank or
 apply a noncanonical C++ candidate without an application workload adapter.
@@ -174,9 +195,29 @@ and explicit benchmark requirements. Canonical runs also emit
 Require `kernel_proved_adapter_bounded` plus a passing regenerated source before considering the
 local rewrite.
 
+When an application boundary remains, generate its explicit starting point rather than inventing
+a harness from prose:
+
+```bash
+vladder cpp adapter --report vladder-cpp-inspect/cpp-support.json --out-dir vladder-cpp-adapter
+```
+
+Complete every manifest TODO and observable hook. For retained class state, use a bounded
+`versioned_cache` or `transactional_publication` projection with `vladder protocol verify` only
+when that protocol matches exactly. Other ownership, callback, coroutine, driver, syscall, and
+external-library protocols remain explicitly scoped adapters.
+
 Reject a result when the optimized region is not load-bearing, the confidence interval includes
 the minimum effect, the benchmark changes workload semantics, or the proof excludes production
 behavior.
+
+For application regions, use `vladder benchmark paired` and require exact observable hashes.
+Before reporting composed effects, use `vladder benchmark compose`; parent/child or otherwise
+overlapping regions cannot be compounded without an explicit interaction measurement.
+
+For GPU compute, read [gpu-workflow.md](references/gpu-workflow.md). `spirv-val` establishes
+structural validity only. Output parity and device timestamps are required; Vulkan/CUDA host,
+driver, queue, presentation, and topology behavior remains in the supplied runner contract.
 
 ### 7. Rewrite Production Source
 

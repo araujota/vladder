@@ -4,6 +4,33 @@ All notable changes to vLadder are documented here.
 
 ## Unreleased
 
+## 1.0.0rc6 - 2026-08-04
+
+### Added
+
+- Manifest-driven agent workflow with resumable content identities, queryable artifact lineage,
+  five decisive artifacts, one next action, and a unified promotion state machine.
+- Deterministic C++ application adapter bundles generated from closure metadata, plus concrete
+  recovery recipes for overloads, templates, member state, owning views, callbacks, coroutines,
+  and external protocols.
+- Bounded Z3 verification for versioned-cache and transactional-publication state projections.
+- Randomized same-executable paired-process benchmarks with bootstrap intervals, exact observable
+  checks, retained-revalidation classification, and overlap-safe effect composition.
+- Lifetime trace sufficiency gating that reports `insufficient_attribution` instead of producing
+  a technically successful empty search.
+- Portable GLSL/SPIR-V compute inspection and bounded synthesis with structural validation,
+  explicit output-oracle/device-timestamp promotion gates, and CUDA toolchain disposition.
+- Content-addressed C++ matrix reuse keyed by source, compilation database, selected symbol,
+  support version, and isolation mode.
+
+### Boundaries
+
+- Generated application adapters are incomplete contracts, not proof or benchmark evidence.
+- SPIR-V validation and optimizer provenance do not establish shader output equivalence.
+- Generic whole-function C++ proof remains unavailable when relevant ownership, exception,
+  concurrency, callback, syscall, driver, or external protocol state is outside the modeled
+  finite boundary.
+
 ### Added
 
 - `bounded-cpp-regions-v4` capability vectors separating semantic capture, actual isolation,

@@ -26,7 +26,7 @@ from .report import write_json
 from .toolchain import compiler_version, discover_toolchain, run
 
 
-CPP_SUPPORT_VERSION = "bounded-cpp-regions-v4"
+CPP_SUPPORT_VERSION = "bounded-cpp-regions-v5"
 
 
 @dataclass(frozen=True)
@@ -1073,6 +1073,8 @@ def inspect_cpp_matrix(manifest: Path, out_dir: Path, *, materialize_isolation: 
     adapter_counts: Counter[str] = Counter()
     accepted = 0
     transform_ready = 0
+    reused_count = 0
+    computed_count = 0
     closures: list[dict[str, Any]] = []
     for index, item in enumerate(raw["regions"]):
         if not isinstance(item, dict) or not item.get("source") or not item.get("function"):
@@ -1090,14 +1092,39 @@ def inspect_cpp_matrix(manifest: Path, out_dir: Path, *, materialize_isolation: 
             "symbol": str(item["symbol"]) if item.get("symbol") else None,
             "command_index": int(item["command_index"]) if item.get("command_index") is not None else None,
         }
-        if materialize_isolation:
+        region_dir = out_dir / safe_id
+        report_path = region_dir / "cpp-support.json"
+        cache_path = region_dir / "audit-cache-key.json"
+        database_file = database / "compile_commands.json" if database.is_dir() else database
+        cache_identity = {
+            "support_version": CPP_SUPPORT_VERSION,
+            "source_sha256": _sha256(source.resolve().read_bytes()),
+            "compile_database_sha256": _sha256(database_file.resolve().read_bytes()),
+            "function": str(item["function"]),
+            "symbol": arguments["symbol"],
+            "command_index": arguments["command_index"],
+            "materialize_isolation": materialize_isolation,
+        }
+        cache_key = _sha256(json.dumps(cache_identity, sort_keys=True, separators=(",", ":")))
+        cached = False
+        if report_path.exists() and cache_path.exists():
+            previous = json.loads(cache_path.read_text())
+            if previous.get("cache_key") == cache_key:
+                report = json.loads(report_path.read_text())
+                cached = True
+                reused_count += 1
+        if not cached and materialize_isolation:
             _, report = isolate_cpp_region(
-                source, str(item["function"]), database, out_dir / safe_id, **arguments
+                source, str(item["function"]), database, region_dir, **arguments
             )
-        else:
+            computed_count += 1
+        elif not cached:
             report = inspect_cpp_region(
-                source, str(item["function"]), database, out_dir / safe_id, **arguments
+                source, str(item["function"]), database, region_dir, **arguments
             )
+            computed_count += 1
+        if not cached:
+            write_json(cache_path, {"schema_version": "vladder-cpp-audit-cache-v1", "cache_key": cache_key, "identity": cache_identity})
         closure = report.get("closure", classify_cpp_closure(report))
         closures.append(closure)
         summary = {
@@ -1123,6 +1150,8 @@ def inspect_cpp_matrix(manifest: Path, out_dir: Path, *, materialize_isolation: 
                 if scope.get("categorical_for_generic_ingestion")
             ],
             "report": str((out_dir / safe_id / "cpp-support.json").resolve()),
+            "evidence_origin": "revalidated_cache" if cached else "newly_computed",
+            "cache_key": cache_key,
         }
         reports.append(summary)
         tier_counts[summary["support_tier"]] += 1
@@ -1145,6 +1174,15 @@ def inspect_cpp_matrix(manifest: Path, out_dir: Path, *, materialize_isolation: 
         "optimization_performed": False,
         "isolation_materialized": materialize_isolation,
         "source_changes_performed": False,
+        "cache": {
+            "schema_version": "vladder-cpp-audit-cache-v1",
+            "reused_regions": reused_count,
+            "computed_regions": computed_count,
+            "key_fields": [
+                "source", "compilation_database", "symbol", "command_index",
+                "support_version", "materialization_mode",
+            ],
+        },
     }
     write_json(out_dir / "cpp-audit.json", result)
     return result

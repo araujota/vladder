@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-08-04
+goal: Close the gap between local proof and application promotion without
+  overstating arbitrary C++ or external protocol support.

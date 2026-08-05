@@ -9,7 +9,13 @@ import statistics
 import time
 from typing import Any, Callable
 
-from .lifetime_attribution import attribution_report, attribute_lifetimes, load_lifetime_trace
+from .lifetime_attribution import (
+    assess_trace_quality,
+    attribution_report,
+    attribute_lifetimes,
+    load_lifetime_trace,
+    trace_quality_report,
+)
 from .lifetime_grammar import LifetimeCandidate, discover_lifetime_candidates
 from .lifetime_graph import emit_lifetime_dot, load_lifetime_flow_graph
 from .lifetime_realization import build_agent_realization_contract, write_agent_realization_bundle
@@ -20,11 +26,17 @@ def analyze_lifetime_flow(manifest: Path, trace: Path, output_directory: Path) -
     graph = load_lifetime_flow_graph(manifest)
     events = load_lifetime_trace(trace, graph)
     attribution = attribute_lifetimes(graph, events)
-    candidates = discover_lifetime_candidates(graph, attribution)
+    quality = assess_trace_quality(graph, events)
+    quality_report = trace_quality_report(quality)
+    candidates = [
+        candidate for candidate in discover_lifetime_candidates(graph, attribution)
+        if quality[candidate.information_id].status == "sufficient"
+    ]
     output_directory.mkdir(parents=True, exist_ok=True)
     _write_json(output_directory / "lifetime-flow-graph.json", graph.to_dict())
     (output_directory / "lifetime-flow-graph.dot").write_text(emit_lifetime_dot(graph))
     _write_json(output_directory / "lifetime-attribution.json", attribution_report(attribution))
+    _write_json(output_directory / "trace-quality.json", quality_report)
     _write_json(output_directory / "lifetime-candidates.json", {
         "schema_version": "vladder-lifetime-candidates-v1",
         "grammar_version": "lifetime-v1",
@@ -33,12 +45,13 @@ def analyze_lifetime_flow(manifest: Path, trace: Path, output_directory: Path) -
     })
     return {
         "schema_version": "vladder-lifetime-analysis-v1",
-        "status": "pass",
+        "status": "pass" if quality_report["status"] == "sufficient" else "insufficient_attribution",
         "graph_hash": graph.graph_hash,
         "manifest_hash": graph.manifest_hash,
         "information_count": len(graph.information),
         "candidate_count": len(candidates),
         "attribution": attribution_report(attribution),
+        "trace_quality": quality_report,
         "candidates": [candidate.to_dict() for candidate in candidates],
     }
 
@@ -47,11 +60,36 @@ def synthesize_lifetime_flow(manifest: Path, trace: Path, output_directory: Path
     graph = load_lifetime_flow_graph(manifest)
     events = load_lifetime_trace(trace, graph)
     attribution = attribute_lifetimes(graph, events)
-    candidates = discover_lifetime_candidates(graph, attribution)
+    quality = assess_trace_quality(graph, events)
+    quality_report = trace_quality_report(quality)
+    candidates = [
+        candidate for candidate in discover_lifetime_candidates(graph, attribution)
+        if quality[candidate.information_id].status == "sufficient"
+    ]
     output_directory.mkdir(parents=True, exist_ok=True)
     _write_json(output_directory / "lifetime-flow-graph.json", graph.to_dict())
     (output_directory / "lifetime-flow-graph.dot").write_text(emit_lifetime_dot(graph))
     _write_json(output_directory / "lifetime-attribution.json", attribution_report(attribution))
+    _write_json(output_directory / "trace-quality.json", quality_report)
+
+    if not candidates:
+        report = {
+            "schema_version": "vladder-lifetime-synthesis-v2",
+            "status": "insufficient_attribution",
+            "claim_boundary": "no lifetime candidate was generated because observed cost evidence is insufficient",
+            "graph_hash": graph.graph_hash,
+            "manifest_hash": graph.manifest_hash,
+            "grammar_version": "lifetime-v1",
+            "candidate_count": 0,
+            "accepted_count": 0,
+            "winner": None,
+            "candidates": [],
+            "attribution": attribution_report(attribution),
+            "trace_quality": quality_report,
+            "next_action": "capture construction/transfer, consumption, and residency or repeated-use events for at least one information identity",
+        }
+        _write_json(output_directory / "lifetime-report.json", report)
+        return report
 
     audit: list[dict[str, Any]] = []
     accepted: list[dict[str, Any]] = []
@@ -74,7 +112,7 @@ def synthesize_lifetime_flow(manifest: Path, trace: Path, output_directory: Path
             accepted.append(row)
     accepted.sort(key=lambda row: float(row["candidate"]["estimated_improvement_percent"]), reverse=True)
     report = {
-        "schema_version": "vladder-lifetime-synthesis-v1",
+        "schema_version": "vladder-lifetime-synthesis-v2",
         "status": "pass" if all(row["verification"]["status"] == "PASS" for row in accepted) else "fail",
         "claim_boundary": "best_verified_found within lifetime-v1; repository source realization remains an agent adapter",
         "graph_hash": graph.graph_hash,
@@ -85,6 +123,7 @@ def synthesize_lifetime_flow(manifest: Path, trace: Path, output_directory: Path
         "winner": accepted[0] if accepted else None,
         "candidates": audit,
         "attribution": attribution_report(attribution),
+        "trace_quality": quality_report,
     }
     _write_json(output_directory / "lifetime-report.json", report)
     return report

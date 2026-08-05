@@ -49,6 +49,22 @@ class LifetimeAttribution:
         return asdict(self)
 
 
+@dataclass(frozen=True)
+class TraceQuality:
+    information_id: str
+    status: str
+    score: float
+    event_count: int
+    semantic_identity_count: int
+    observed_event_kinds: tuple[str, ...]
+    evidence_modes: tuple[str, ...]
+    missing_evidence: tuple[str, ...]
+    warnings: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
 def load_lifetime_trace(path: Path | str, graph: LifetimeFlowGraph) -> tuple[LifetimeEvent, ...]:
     path = Path(path)
     events: list[LifetimeEvent] = []
@@ -99,6 +115,74 @@ def attribute_lifetimes(graph: LifetimeFlowGraph, events: Iterable[LifetimeEvent
         item_events = tuple(event for event in all_events if event.information_id == item.id)
         result[item.id] = _attribute_item(graph, item, item_events)
     return result
+
+
+def assess_trace_quality(
+    graph: LifetimeFlowGraph,
+    events: Iterable[LifetimeEvent],
+) -> dict[str, TraceQuality]:
+    """Assess whether traces can support cost attribution, never semantic authority."""
+    all_events = tuple(events)
+    result: dict[str, TraceQuality] = {}
+    for item in graph.information:
+        observed = tuple(event for event in all_events if event.information_id == item.id)
+        kinds = {event.event for event in observed}
+        identities = {event.semantic_identity for event in observed if event.semantic_identity}
+        modes: list[str] = []
+        if sum(event.event == "construct" for event in observed) > 1:
+            modes.append("repeated_realization")
+        if sum(event.event == "transfer" for event in observed) > 1:
+            modes.append("repeated_transfer")
+        if _retention_waste(observed) > 0.0 or ({"construct", "consume", "retire"} <= kinds):
+            modes.append("residency_interval")
+        if sum(event.event == "consume" for event in observed) > 1:
+            modes.append("repeated_consumption")
+
+        score = 0.0
+        score += 0.2 if "construct" in kinds or "transfer" in kinds else 0.0
+        score += 0.2 if "consume" in kinds else 0.0
+        score += 0.2 if "publish" in kinds or "transfer" in kinds else 0.0
+        score += 0.2 if "retire" in kinds or "destroy" in kinds or "mutate" in kinds else 0.0
+        score += 0.1 if modes else 0.0
+        score += 0.1 if identities else 0.0
+
+        missing: list[str] = []
+        if not observed:
+            missing.append("no events for the information identity")
+        if "construct" not in kinds and "transfer" not in kinds:
+            missing.append("no construction or transfer event")
+        if "consume" not in kinds:
+            missing.append("no consumer observation")
+        if not modes:
+            missing.append("no repeated realization, transfer, consumption, or complete residency interval")
+        warnings: list[str] = []
+        if item.mutations and "mutate" not in kinds:
+            warnings.append("no mutation was observed; invalidation legality remains manifest-conditional")
+        status = "sufficient" if score >= 0.7 and not missing else "insufficient_attribution"
+        result[item.id] = TraceQuality(
+            item.id,
+            status,
+            round(score, 3),
+            len(observed),
+            len(identities),
+            tuple(sorted(kinds)),
+            tuple(sorted(set(modes))),
+            tuple(missing),
+            tuple(warnings),
+        )
+    return result
+
+
+def trace_quality_report(quality: dict[str, TraceQuality]) -> dict[str, Any]:
+    sufficient = sum(item.status == "sufficient" for item in quality.values())
+    return {
+        "schema_version": "vladder-lifetime-trace-quality-v1",
+        "status": "sufficient" if sufficient else "insufficient_attribution",
+        "sufficient_items": sufficient,
+        "insufficient_items": len(quality) - sufficient,
+        "items": {key: value.to_dict() for key, value in sorted(quality.items())},
+        "semantic_authority": "none; trace quality authorizes attribution and search effort only",
+    }
 
 
 def _attribute_item(

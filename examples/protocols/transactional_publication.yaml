@@ -1,0 +1,7 @@
+protocol: transactional_publication
+policy:
+  prepare_private: true
+  commit_atomic: true
+  rollback_restores: true
+  readers_committed_only: true
+  retire_after_readers: true
