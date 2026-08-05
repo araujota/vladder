@@ -33,6 +33,8 @@ PARAMETER_VALUES = {
     "flags": ["-funroll-loops"],
     "token_count": 4,
     "sequence_count": 4,
+    "vector_bytes": 32,
+    "flush_period": 255,
 }
 
 
@@ -58,7 +60,7 @@ class LoweringEngineTests(unittest.TestCase):
         coverage = validate_lowering_registry(self.registry)
         declared = sum(len(family["rules"]) for family in self.registry.families)
         self.assertEqual(coverage["status"], "pass")
-        self.assertEqual(coverage["family_count"], 13)
+        self.assertEqual(coverage["family_count"], 14)
         self.assertEqual(coverage["rule_count"], declared)
         self.assertEqual(coverage["plan_coverage"], declared)
 
@@ -76,7 +78,7 @@ class LoweringEngineTests(unittest.TestCase):
                 self.assertEqual(first.plan.rule, rule)
                 self.assertEqual(len(first.plan.operations), 4)
                 seen.add((str(family["id"]), str(rule)))
-        self.assertEqual(len(seen), 80)
+        self.assertEqual(len(seen), 84)
 
     def test_missing_contract_facts_reject_before_lowering(self) -> None:
         result = self.engine.lower(
@@ -119,19 +121,22 @@ class LoweringEngineTests(unittest.TestCase):
         data = json.loads(source.read_text())
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "capabilities.json"
-            data["families"][0]["lowerer"] = "vladder.missing:NoLowerer"
+            expression = next(item for item in data["families"] if item["id"] == "expression-algebra")
+            expression["lowerer"] = "vladder.missing:NoLowerer"
             path.write_text(json.dumps(data))
             with self.assertRaisesRegex(ValueError, "cannot import lowerer"):
                 load_registry(path)
 
             data = json.loads(source.read_text())
-            data["families"][0]["source_routes"]["strength-reduce"] = "vladder.missing:no_backend"
+            expression = next(item for item in data["families"] if item["id"] == "expression-algebra")
+            expression["source_routes"]["strength-reduce"] = "vladder.missing:no_backend"
             path.write_text(json.dumps(data))
             with self.assertRaisesRegex(ValueError, "cannot import backend route"):
                 load_registry(path)
 
             data = json.loads(source.read_text())
-            data["families"][0]["rules"].append("unimplemented-rule")
+            expression = next(item for item in data["families"] if item["id"] == "expression-algebra")
+            expression["rules"].append("unimplemented-rule")
             path.write_text(json.dumps(data))
             with self.assertRaisesRegex(ValueError, "rule coverage mismatch"):
                 load_registry(path)
@@ -141,7 +146,7 @@ class LoweringEngineTests(unittest.TestCase):
         with redirect_stdout(output):
             status = main(["lower", "validate"])
         self.assertEqual(status, 0)
-        self.assertEqual(json.loads(output.getvalue())["plan_coverage"], 80)
+        self.assertEqual(json.loads(output.getvalue())["plan_coverage"], 84)
 
         output = io.StringIO()
         with redirect_stdout(output):

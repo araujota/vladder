@@ -2,7 +2,7 @@
 
 ## One Entry Point
 
-Create a manifest with `vladder workflow init --kind c|cpp|lifetime|shader|protocol`. Record source,
+Create a manifest with `vladder workflow init --kind c|cpp|rust|lifetime|shader|protocol`. Record source,
 compiler configuration, semantic contract, attribution report, workload identity, held-out policy,
 and minimum effect. Run `vladder workflow run` and read `promotion-summary.json` before any detailed
 artifact.
@@ -27,6 +27,9 @@ lineage. A matching resumable key reports `revalidated`; it is not a new optimiz
 
 - Selection ambiguity: select the exact compilation command and mangled overload/template symbol.
 - Local C++ closure only: run `cpp isolate`, then generate an application adapter.
+- Rust closure failure: inspect the named unsafe, ownership, destruction, panic, async,
+  concurrency, FFI, call, or operation boundary. Isolate a safe borrowed region or add a
+  compositional contract; do not translate it through C merely to make the frontend accept it.
 - Object state: define a finite observable projection; use the built-in versioned-cache or
   transactional-publication verifier when semantics match exactly.
 - External call, callback, coroutine, syscall, or driver: define input, output, ordering, failure,

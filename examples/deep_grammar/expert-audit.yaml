@@ -1,0 +1,73 @@
+schema_version: vladder-expert-grammar-audit-v1
+benchmark_policy:
+  processes: 10
+  repetitions_per_process: 3
+  n: 1048576
+  inner: 128
+  minimum_effect_percent: 1.0
+cases:
+  - id: c-scalar-to-word-count
+    language: c
+    contract:
+      archetype: exact-byte-predicate-reduction
+      predicate: equal-u8
+    baseline:
+      source: c_byte_kernels.c
+      function: c_scalar_count
+      realization: scalar
+    expert:
+      source: c_byte_kernels.c
+      function: c_word_count
+      realization: word-swar
+  - id: c-scalar-to-avx2-count
+    language: c
+    contract:
+      archetype: exact-byte-predicate-reduction
+      predicate: equal-u8
+    baseline:
+      source: c_byte_kernels.c
+      function: c_scalar_count
+      realization: scalar
+    expert:
+      source: c_byte_kernels.c
+      function: c_avx2_count
+      realization: simd-mask-popcount
+  - id: rust-scalar-to-word-count
+    language: rust
+    contract:
+      archetype: exact-byte-predicate-reduction
+      predicate: equal-u8
+    baseline:
+      source: rust_byte_kernels.rs
+      function: rust_scalar_count
+      realization: scalar
+    expert:
+      source: rust_byte_kernels.rs
+      function: rust_word_count
+      realization: word-swar
+  - id: rust-scalar-to-avx2-count
+    language: rust
+    contract:
+      archetype: exact-byte-predicate-reduction
+      predicate: equal-u8
+    baseline:
+      source: rust_byte_kernels.rs
+      function: rust_scalar_count
+      realization: scalar
+    expert:
+      source: rust_byte_kernels.rs
+      function: rust_avx2_count
+      realization: simd-mask-popcount
+  - id: rust-scalar-to-word-utf8
+    language: rust
+    contract:
+      archetype: exact-byte-predicate-reduction
+      predicate: utf8-leading-byte
+    baseline:
+      source: rust_byte_kernels.rs
+      function: rust_scalar_utf8
+      realization: scalar
+    expert:
+      source: rust_byte_kernels.rs
+      function: rust_word_utf8
+      realization: word-swar

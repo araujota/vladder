@@ -1,0 +1,112 @@
+{
+  "version": "deep-v2",
+  "schema_version": "vladder-deep-grammar-v1",
+  "archetypes": ["exact-byte-predicate-reduction"],
+  "default_preconditions": ["exact-observable-contract", "bounded-contiguous-byte-input", "no-external-intermediate-observer"],
+  "complexity_models": {
+    "preserve-linear": {
+      "baseline_work": "O(n)",
+      "candidate_work": "O(n)",
+      "baseline_passes": 1,
+      "candidate_passes": 1,
+      "logical_bytes_per_element_delta": 0.0,
+      "temporary_bytes_per_element_delta": 0.0
+    },
+    "linear-to-linear": {
+      "baseline_work": "O(n)",
+      "candidate_work": "O(n)",
+      "baseline_passes": 1,
+      "candidate_passes": 1,
+      "logical_bytes_per_element_delta": 0.0,
+      "temporary_bytes_per_element_delta": 0.0,
+      "physical_operations_per_element": "reduced-by-lane-width"
+    }
+  },
+  "families": [
+    {
+      "id": "lane-decomposition",
+      "rules": [
+        {"id": "scalar-to-word", "from": "scalar", "to": "word-lanes", "proof": ["lane-partition"], "cost_signals": ["loads", "lanes-per-load"], "complexity": "preserve-linear"},
+        {"id": "scalar-to-simd", "from": "scalar", "to": "simd-lanes", "proof": ["lane-partition", "target-width"], "cost_signals": ["vector-width", "loads"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "lane-mask-population",
+      "rules": [
+        {"id": "pack-word-lanes", "from": "word-lanes", "to": "word-packed", "proof": ["pack-bijection"], "cost_signals": ["pack-cost"], "complexity": "preserve-linear"},
+        {"id": "vector-compare-mask", "from": "simd-lanes", "to": "simd-mask", "proof": ["lane-predicate"], "cost_signals": ["compare-throughput", "mask-cost"], "complexity": "preserve-linear"},
+        {"id": "mask-popcount", "from": "simd-mask", "to": "simd-popcount", "proof": ["mask-population"], "cost_signals": ["mask-extract", "popcount-throughput"], "complexity": "preserve-linear"},
+        {"id": "lane-byte-accumulate", "from": "simd-mask", "to": "simd-byte-accumulate", "proof": ["bounded-lane-accumulator"], "cost_signals": ["lane-accumulator-depth"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "bitvector-algebra",
+      "rules": [
+        {"id": "xor-zero-byte-detect", "from": "word-packed", "to": "word-mask", "proof": ["word-equality-identity"], "cost_signals": ["bitwise-instructions", "critical-path"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "reduction-topology",
+      "rules": [
+        {"id": "word-mask-popcount", "from": "word-mask", "to": "word-reduced", "proof": ["mask-population", "reduction-equivalence"], "cost_signals": ["popcount-throughput", "recurrence-depth"], "complexity": "preserve-linear"},
+        {"id": "horizontal-mask-reduce", "from": "simd-popcount", "to": "simd-reduced", "proof": ["reduction-equivalence"], "cost_signals": ["horizontal-reduction-depth"], "complexity": "preserve-linear"},
+        {"id": "periodic-byte-flush", "from": "simd-byte-accumulate", "to": "simd-byte-reduced", "proof": ["bounded-lane-accumulator", "reduction-equivalence"], "cost_signals": ["flush-period", "register-pressure"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "alignment-tail",
+      "rules": [
+        {"id": "scalar-remainder", "from": "word-reduced", "to": "word-tail", "proof": ["tail-partition"], "cost_signals": ["tail-branches"], "complexity": "preserve-linear"},
+        {"id": "scalar-vector-remainder", "from": "simd-reduced", "to": "simd-tail", "proof": ["tail-partition"], "cost_signals": ["tail-branches"], "complexity": "preserve-linear"},
+        {"id": "scalar-vector-remainder-byte", "from": "simd-byte-reduced", "to": "simd-byte-tail", "proof": ["tail-partition"], "cost_signals": ["tail-branches"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "load-traversal",
+      "rules": [
+        {"id": "contiguous-word-load", "from": "word-tail", "to": "word-stream", "proof": ["footprint-coverage", "unaligned-load-legality"], "cost_signals": ["logical-bytes", "cache-lines"], "complexity": "preserve-linear"},
+        {"id": "contiguous-vector-load", "from": "simd-tail", "to": "simd-stream", "proof": ["footprint-coverage", "unaligned-load-legality"], "cost_signals": ["logical-bytes", "cache-lines"], "complexity": "preserve-linear"},
+        {"id": "contiguous-vector-load-byte", "from": "simd-byte-tail", "to": "simd-byte-stream", "proof": ["footprint-coverage", "unaligned-load-legality"], "cost_signals": ["logical-bytes", "cache-lines"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "table-constant-synthesis",
+      "rules": [
+        {"id": "splat-and-tail-constants", "from": "word-stream", "to": "word-constants", "proof": ["constant-synthesis"], "cost_signals": ["constant-materialization"], "complexity": "preserve-linear"},
+        {"id": "vector-splat-constants", "from": "simd-stream", "to": "simd-constants", "proof": ["constant-synthesis"], "cost_signals": ["constant-materialization"], "complexity": "preserve-linear"},
+        {"id": "vector-splat-constants-byte", "from": "simd-byte-stream", "to": "simd-byte-constants", "proof": ["constant-synthesis"], "cost_signals": ["constant-materialization"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "fusion-materialization",
+      "rules": [
+        {"id": "fuse-predicate-reduction-word", "from": "word-constants", "to": "word-fused", "proof": ["no-intermediate-observer"], "cost_signals": ["temporary-bytes", "passes"], "complexity": "preserve-linear"},
+        {"id": "fuse-predicate-reduction-simd", "from": "simd-constants", "to": "simd-fused", "proof": ["no-intermediate-observer"], "cost_signals": ["temporary-bytes", "passes"], "complexity": "preserve-linear"},
+        {"id": "fuse-predicate-reduction-byte", "from": "simd-byte-constants", "to": "simd-byte-fused", "proof": ["no-intermediate-observer"], "cost_signals": ["temporary-bytes", "passes"], "complexity": "preserve-linear"}
+      ]
+    },
+    {
+      "id": "algorithmic-representation",
+      "rules": [
+        {"id": "linear-to-word-parallel", "from": "word-fused", "to": "word-swar", "proof": ["observable-equivalence", "complexity-bound"], "cost_signals": ["operations-per-byte", "passes"], "complexity": "linear-to-linear"},
+        {"id": "linear-to-vector-mask", "from": "simd-fused", "to": "simd-mask-popcount", "proof": ["observable-equivalence", "complexity-bound"], "cost_signals": ["operations-per-byte", "passes"], "complexity": "linear-to-linear"},
+        {"id": "linear-to-vector-lane-accumulate", "from": "simd-byte-fused", "to": "simd-byte-accumulate-final", "proof": ["observable-equivalence", "complexity-bound"], "cost_signals": ["operations-per-byte", "passes"], "complexity": "linear-to-linear"}
+      ]
+    },
+    {
+      "id": "isa-dispatch",
+      "rules": [
+        {"id": "guard-avx2-with-fallback", "from": "simd-mask-popcount", "to": "guarded-avx2", "proof": ["dispatch-completeness", "fallback-equivalence"], "cost_signals": ["dispatch-overhead", "code-size"], "complexity": "preserve-linear"},
+        {"id": "guard-avx2-byte-with-fallback", "from": "simd-byte-accumulate-final", "to": "guarded-avx2-byte", "proof": ["dispatch-completeness", "fallback-equivalence"], "cost_signals": ["dispatch-overhead", "code-size"], "complexity": "preserve-linear"}
+      ]
+    }
+  ],
+  "terminal_realizations": {
+    "scalar": {"emitter": "scalar", "languages": ["c", "rust"], "isa": "scalar", "vector_bytes": 1},
+    "word-swar": {"emitter": "word_swar", "languages": ["c", "rust"], "isa": "scalar", "vector_bytes": 8},
+    "simd-mask-popcount": {"emitter": "simd_mask_popcount", "languages": ["c", "rust"], "isa": "avx2", "vector_bytes": 32},
+    "simd-byte-accumulate-final": {"emitter": "simd_byte_accumulate", "languages": ["c", "rust"], "isa": "avx2", "vector_bytes": 32},
+    "guarded-avx2": {"emitter": "guarded_avx2", "languages": ["c", "rust"], "isa": "runtime", "vector_bytes": 32},
+    "guarded-avx2-byte": {"emitter": "guarded_avx2_byte", "languages": ["c", "rust"], "isa": "runtime", "vector_bytes": 32}
+  }
+}

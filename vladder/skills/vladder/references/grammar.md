@@ -24,6 +24,9 @@ benchmark a candidate before source promotion.
 
 ## Families
 
+- `deep-information-realization`: executable scalar/word/SIMD lane, mask, reduction, traversal,
+  tail, fusion, complexity, and ISA-dispatch realizations. Use `vladder deep`, not the generic plan
+  route, for source, proof, and physical evidence.
 - `expression-algebra`: scalar DAG, bit-vector, constants, strength reduction, selects.
 - `control-flow`: branches, masks, predicates, fast paths, dispatch.
 - `loop-schedule`: unroll, tile, fusion/fission, interchange, software pipeline.

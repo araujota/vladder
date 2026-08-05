@@ -1,0 +1,13 @@
+regions:
+  - id: supported-count
+    project: byte_count
+    source: byte_count/src/VLadderJuliaFixture.jl
+    module: VLadderJuliaFixture
+    function: count_equal
+    signature: Vector{UInt8},UInt8
+  - id: allocation-boundary
+    project: byte_count
+    source: byte_count/src/VLadderJuliaFixture.jl
+    module: VLadderJuliaFixture
+    function: allocating_copy
+    signature: Vector{UInt8},UInt8

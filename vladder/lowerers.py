@@ -14,6 +14,10 @@ from .lowering import (
 
 
 FACT_OVERRIDES: dict[str, tuple[str, ...]] = {
+    "scalar-to-word-swar": ("exact observable contract", "bounded contiguous byte input", "integer overflow policy", "no external intermediate observer"),
+    "scalar-to-simd-mask-popcount": ("exact observable contract", "bounded contiguous byte input", "integer overflow policy", "target ISA and fallback", "no external intermediate observer"),
+    "scalar-to-simd-byte-accumulate": ("exact observable contract", "bounded contiguous byte input", "integer overflow policy", "target ISA and fallback", "no external intermediate observer"),
+    "runtime-isa-dispatch": ("exact observable contract", "bounded contiguous byte input", "target ISA and fallback", "no external intermediate observer"),
     "bounded-reassociate": ("floating-point policy", "determinism"),
     "dispatch-reorder": ("branch distribution", "side-effect freedom"),
     "interchange": ("iteration independence", "dependence distance"),
@@ -51,6 +55,10 @@ FACT_OVERRIDES: dict[str, tuple[str, ...]] = {
 
 
 PARAMETER_REQUIREMENTS: dict[str, tuple[str, ...]] = {
+    "scalar-to-word-swar": ("predicate",),
+    "scalar-to-simd-mask-popcount": ("predicate", "vector_bytes"),
+    "scalar-to-simd-byte-accumulate": ("predicate", "vector_bytes", "flush_period"),
+    "runtime-isa-dispatch": ("predicate", "vector_bytes"),
     "unroll": ("factor",),
     "tile": ("tile_size",),
     "interchange": ("permutation",),
@@ -166,6 +174,17 @@ class DeclarativeFamilyLowerer:
                 ("source generation requires the specialized backend and its shape-specific input",),
             )
         return LoweringResult(LoweringStatus.PLANNED, plan)
+
+
+class DeepInformationRealizationLowerer(DeclarativeFamilyLowerer):
+    family_id = "deep-information-realization"
+    region_kind = "exact-byte-predicate-reduction"
+    rules = {
+        "scalar-to-word-swar": "derive packed word lanes, a proved bit-vector predicate, and exact horizontal reduction",
+        "scalar-to-simd-mask-popcount": "derive SIMD lane predicates, mask extraction, population reduction, and scalar tail",
+        "scalar-to-simd-byte-accumulate": "derive bounded byte-lane accumulators, periodic exact reduction, and scalar tail",
+        "runtime-isa-dispatch": "guard an ISA-specific realization with a proved scalar fallback",
+    }
 
 
 class ExpressionAlgebraLowerer(DeclarativeFamilyLowerer):

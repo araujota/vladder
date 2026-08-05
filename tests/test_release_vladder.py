@@ -6,7 +6,7 @@ import tempfile
 import unittest
 
 import vladder
-from vladder.api import BenchmarkPolicy, OptimizationRequest
+from vladder.api import BenchmarkPolicy, DeepGrammarRankRequest, OptimizationRequest
 from vladder.capabilities import load_registry, require_executable
 from vladder.replacement import verify_applied_replacement
 from vladder.skill_tools import install_skill, validate_skill
@@ -15,7 +15,7 @@ from vladder.verification_policy import VerificationPolicy, evaluate_promotion
 
 class ReleaseSurfaceTests(unittest.TestCase):
     def test_public_identity_and_registry(self):
-        self.assertEqual(vladder.__version__, "1.0.0rc6")
+        self.assertEqual(vladder.__version__, "1.0.0rc9")
         registry = load_registry()
         self.assertEqual(registry.version, "vladder-v1")
         self.assertGreaterEqual(len(registry.families), 10)
@@ -49,6 +49,12 @@ class ReleaseSurfaceTests(unittest.TestCase):
         self.assertIn("--alive2", argv)
         self.assertIn("--graph-inner-loop", argv)
         self.assertIn("strict", argv)
+
+    def test_deep_rank_request_uses_one_canonical_workflow(self):
+        argv = DeepGrammarRankRequest(Path("deep-out"), language="rust", cpu=2).argv()
+        self.assertEqual(argv[:2], ["deep", "rank"])
+        self.assertIn("rust", argv)
+        self.assertIn("--cpu", argv)
 
     def test_bundled_skill_validates_and_installs_idempotently(self):
         self.assertEqual(validate_skill()["status"], "pass")

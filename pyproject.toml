@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vladder"
-version = "1.0.0rc6"
-description = "Verified hardware-aware information-flow superoptimization for C and C++"
+version = "1.0.0rc9"
+description = "Verified hardware-aware information-flow superoptimization for systems languages"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{name = "vLadder contributors"}]
 license = "MIT"
 license-files = ["LICENSE"]
-keywords = ["superoptimization", "LLVM", "Alive2", "Z3", "C", "C++", "performance"]
+keywords = ["superoptimization", "LLVM", "Alive2", "Z3", "C", "C++", "Rust", "Zig", "Julia", "performance"]
 classifiers = [
   "Development Status :: 4 - Beta",
   "Environment :: Console",
@@ -20,6 +20,7 @@ classifiers = [
   "Programming Language :: Python :: 3",
   "Programming Language :: C",
   "Programming Language :: C++",
+  "Programming Language :: Rust",
   "Topic :: Software Development :: Compilers",
 ]
 dependencies = [

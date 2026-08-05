@@ -10,6 +10,7 @@ class Vladder < Formula
   depends_on "cmake" => :build
   depends_on "llvm@20"
   depends_on "python@3.13"
+  depends_on "rust"
   depends_on "glslang"
   depends_on "spirv-tools"
   depends_on "z3"
@@ -28,7 +29,7 @@ class Vladder < Formula
     virtualenv_install_with_resources
     bin.env_script_all_files(
       libexec/"bin",
-      PATH: "#{Formula["llvm@20"].opt_bin}:#{Formula["glslang"].opt_bin}:#{Formula["spirv-tools"].opt_bin}:$PATH",
+      PATH: "#{Formula["llvm@20"].opt_bin}:#{Formula["rust"].opt_bin}:#{Formula["glslang"].opt_bin}:#{Formula["spirv-tools"].opt_bin}:$PATH",
     )
   end
 

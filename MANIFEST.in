@@ -1,7 +1,8 @@
 include CHANGELOG.md LICENSE README.md
 recursive-include vladder/grammars *.json
 recursive-include vladder/skills *.md *.yaml
-recursive-include examples *.c *.cpp *.comp *.json *.md *.yaml
+recursive-include examples *.c *.cpp *.comp *.rs *.zig *.jl *.toml *.json *.md *.yaml
+recursive-include studies *.rs *.zig *.jl *.md
 recursive-include docs *.md
 recursive-include openspec *.md *.yaml
 recursive-include packaging *.in

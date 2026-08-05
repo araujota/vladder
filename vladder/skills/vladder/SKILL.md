@@ -1,13 +1,14 @@
 ---
 name: vladder
-description: Attribute, synthesize, formally verify, benchmark, and safely rewrite performance-critical C or C++ systems with vLadder. Use for semantic realization lifetime, caching, serialization, GPU residency, intermediate elimination, latency, throughput, cache, memory traffic, SIMD, loops, reductions, layouts, fusion, state, quantized kernels, or runtime plans where explicit invalidation, semantic equivalence, and physical evidence are required.
+description: Attribute, synthesize, formally verify, benchmark, and safely rewrite performance-critical C, C++, Rust, Zig, or Julia systems with vLadder. Use for semantic realization lifetime, caching, serialization, GPU residency, intermediate elimination, latency, throughput, cache, memory traffic, SIMD, loops, reductions, layouts, fusion, state, quantized kernels, or runtime plans where explicit invalidation, semantic equivalence, and physical evidence are required.
 ---
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc6`, grammar `vladder-v1`,
+This skill targets vLadder `1.0.0rc9`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v5`. Use vLadder as a proof-gated workflow: semantic
+`bounded-cpp-regions-v5`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v1`, and
+`bounded-julia-regions-v1` adapters. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
@@ -30,6 +31,9 @@ chooses which verified realization and implementation graph should exist.
 8. Report negative results. The baseline winning is a valid outcome.
 9. Never infer a semantic invariant from observed non-mutation. Runtime traces quantify reuse and
    cost; the contract alone authorizes lifetime extension.
+10. A baseline win is bounded by grammar coverage. Before saying no faster equivalent was found,
+    audit known expert forms through representation, derivation, lowering, proof, and performance.
+    A pre-performance failure is a grammar/tooling gap, not a negative hardware result.
 
 ## Workflow
 
@@ -126,6 +130,47 @@ domain contracts. Never call identity-capsule proof whole-wrapper equivalence, a
 source scheduling contract an Alive2 proof of the physical candidate. Read
 [cpp-regions.md](references/cpp-regions.md).
 
+For Rust, preserve native ownership and panic semantics and start from Cargo rather than a C FFI
+capsule. Read [rust-regions.md](references/rust-regions.md), then run:
+
+```bash
+vladder rust inspect --manifest-path Cargo.toml --source src/lib.rs --function module::count --out-dir vladder-rust-inspect
+vladder rust synthesize --manifest-path Cargo.toml --source src/lib.rs --function module::count --out-dir vladder-rust-synthesis
+vladder rust optimize --manifest-path Cargo.toml --source src/lib.rs --function module::count --out-dir vladder-rust-out
+```
+
+Rust uses the same `SemanticFlowGraph` vocabulary as C/C++. MIR, borrow, panic, `Drop`, unsafe, and
+monomorphization facts are language-bound proof obligations and provenance, not a parallel
+information-flow ontology. R1 closes safe, monomorphic, allocation-free scalar/array/borrowed-slice
+regions with a registered common operation. Unsafe code, owning allocation, custom destruction,
+async, atomics, FFI, and external effects remain explicit adapter boundaries. Require native Rust
+regeneration, MIR recapture, parametric schedule/Z3 proof, bounded LLVM refinement, differential
+execution, and physical ranking before promotion.
+
+For Zig, read [zig-regions.md](references/zig-regions.md), preserve the compiler safety mode, and
+start from native source:
+
+```bash
+vladder zig inspect --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-inspect
+vladder zig synthesize --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-synthesis
+vladder zig optimize --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-out
+```
+
+For Julia, read [julia-regions.md](references/julia-regions.md). Always provide one exact module,
+method, and tuple signature; a generic function name is not a proof boundary:
+
+```bash
+vladder julia inspect --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-inspect
+vladder julia synthesize --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-synthesis
+vladder julia optimize --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-out
+```
+
+Zig and Julia use the shared graph and source-derived exact-reduction schedule proof. Native LLVM
+is compiler provenance; the strict Alive2 artifact validates the canonical schedule lowerer. Do
+not claim direct whole-frontend refinement. Zig allocator/error/defer/atomic/FFI protocols and
+Julia other methods/worlds, GC allocation, dynamic dispatch, tasks, globals, `ccall`, and external
+effects remain named adapters.
+
 ### 3. Select Realization Lifetime And Placement
 
 Before local IR search, ask whether expensive information is constructed too often, retained after
@@ -156,6 +201,18 @@ with `vladder lower plan`. Plan coverage does not imply generic source emission;
 request still requires its specialized backend, proof chain, and physical benchmark.
 
 ### 5. Search And Measure
+
+For exact byte predicates/reductions or a grammar-depth investigation, read
+[deep-grammar.md](references/deep-grammar.md) and run the closed shared-grammar path first:
+
+```bash
+vladder deep coverage
+vladder deep audit --manifest examples/deep_grammar/expert-audit.yaml --out-dir vladder-deep-audit
+vladder deep rank --language c --predicate equal-u8 --processes 10 --repetitions 3 --cpu 0 --out-dir vladder-deep-ranking
+```
+
+Inspect the earliest failed audit stage. Use `bounded_optimal_local` only when finite search is
+saturated and all unique terminal realizations are lowered, proved, and measured.
 
 Use strict mode for replacements:
 

@@ -1,7 +1,7 @@
 # vLadder
 
 vLadder, short for **Velocity Ladder**, is a proof-gated, hardware-grounded information-flow
-superoptimization library for performance-sensitive C and C++ development.
+superoptimization library for performance-sensitive C, C++, Rust, Zig, and Julia development.
 
 Its workflow is deliberately hierarchical:
 
@@ -30,9 +30,10 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc6` and the C++ closure matrix is
+The package version is `1.0.0rc9`, the C++ closure matrix is
 `bounded-cpp-regions-v5`; it retains the
-`bounded-regions-v1` C frontend. The C frontend fully
+`bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
+`bounded-zig-regions-v1`, and `bounded-julia-regions-v1` adapters. The C frontend fully
 automates extraction, LLVM-derived classification, transformation, C source regeneration,
 formal refinement, differential execution, hardware benchmarking, and proof-gated patch
 promotion for canonical functions with this ABI:
@@ -78,9 +79,47 @@ This is not arbitrary-C++ or whole-device equivalence. RAII, allocation, excepti
 concurrency, callbacks, syscalls, drivers, presentation, Vulkan/CUDA host protocols, and external
 libraries are proved only through explicit finite adapters over their actual observables.
 
+The Rust frontend captures one exact Cargo package/target/profile, compiler identity, source, MIR,
+LLVM IR, and assembly. It lowers supported functions into the same language-neutral
+`SemanticFlowGraph` used by the existing frontends; Rust borrow, panic, `Drop`, unsafe, and
+monomorphization facts remain proof contracts and provenance rather than a separate semantic
+vocabulary. R1 automatically regenerates and verifies safe, monomorphic, allocation-free
+borrowed-slice reductions. It emits native Rust, recaptures MIR, proves the schedule with Z3,
+checks fixed-bound LLVM refinement with Alive2, runs adversarial differential tests, and ranks
+candidates in a randomized same-executable benchmark. Unsafe contracts, owning allocation,
+custom destruction, async, concurrency, FFI, unresolved calls, and external protocols fail closed
+with explicit adapter requirements.
+
+The Zig frontend captures a selected native function, compiler/build identity, safety mode, LLVM
+IR, and assembly. Z1 closes allocation-free exact byte reductions over borrowed slices, regenerates
+Zig, derives the realized schedule back from source, proves it with Z3 and canonical Alive2 LLVM,
+runs differential tests, and ranks variants in one executable. Allocator ownership, error unions,
+`defer`, volatile/atomic effects, assembly, FFI, and unresolved calls remain explicit boundaries.
+
+The Julia frontend captures one concrete module/method/tuple specialization, Julia version,
+project/manifest, world counter, inferred effects and allocation, lowered/typed IR, LLVM IR, and
+native assembly. J1 closes type-stable zero-allocation exact byte reductions and ranks warmed
+steady-state native Julia candidates in independent processes. Other methods/worlds, dynamic
+dispatch, GC-visible allocation, globals, exceptions, tasks, `ccall`, nondeterminism, and external
+effects fail closed.
+
 The package also contains specialist operator, pipeline, projection, quantized-kernel, and
 weight-traversal research adapters. Use `vladder grammar` and `vladder lower list` to distinguish
 automatic source workflows from shape-specific routes, modeled plans, and research-only modes.
+
+rc8 adds `deep-v2`, the first shared grammar whose coverage is executable end to end rather than
+only declarative. Its initial exact byte-predicate-reduction archetype searches scalar, packed-word
+SWAR, SIMD mask/popcount, bounded SIMD byte-accumulator, tail, traversal, fusion, constant, and
+runtime-dispatch realizations. The same derivation regenerates native C or Rust; language adapters
+contribute bounds, borrow, unsafe, panic, and ISA obligations without forking the information-flow
+vocabulary. Z3, compatible Alive2 core refinements, exhaustive boundary execution, normalized
+assembly identities, and randomized same-executable ranking are all required by the closed path.
+
+The scope is intentionally precise. `deep-v2` does not enumerate every LLVM-equivalent program or
+every algorithm. A negative result is meaningful only after known expert realizations pass the
+five-stage audit: representation, derivation, lowering, proof, and physical performance. A failure
+before performance identifies missing grammar/tooling coverage rather than a physically inferior
+semantic equivalent.
 
 Semantic realization lifetime is also a first-class graph and grammar dimension.
 `LifetimeFlowGraph` models when information becomes valid, how often it is constructed, where it
@@ -97,17 +136,20 @@ closed when source mode is requested.
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc6` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc9` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc6'
+python3 -m pip install --pre 'vladder==1.0.0rc9'
 vladder doctor
 ```
 
-PyPI installs Python dependencies, not Clang/LLVM, llvm-mca, Alive2, or Linux perf.
+PyPI installs Python dependencies, not Clang/LLVM, llvm-mca, Alive2, Linux perf, or native language
+toolchains. Use the installer, pin rustc/Cargo with the target project's `rust-toolchain.toml`, and
+retain the exact Zig and Julia identities recorded in each capture.
 
-On Ubuntu, the installer provisions an isolated Python environment and validates Clang/LLVM,
-llvm-mca, Z3, Alive2, perf, and the bundled coding-agent skill:
+On Ubuntu x86_64, the installer provisions an isolated Python environment, installs pinned Zig and
+Julia releases with checksum verification when absent, and validates Clang/LLVM, llvm-mca, Z3,
+Alive2, perf, rustc/Cargo/rustfmt, and the bundled coding-agent skill:
 
 ```bash
 ./scripts/install.sh --prefix "$HOME/.local/share/vladder"
@@ -129,6 +171,9 @@ Reuse an existing system toolchain:
 
 Alive2 is pinned to a revision compatible with LLVM 20 when it must be built. Use
 `--without-alive2` only for non-promoting analysis; strict source promotion requires it.
+Use `--without-language-tools` only when Zig and Julia are intentionally managed outside the
+installer. Automatic Zig/Julia bootstrapping currently supports Linux x86_64; other platforms must
+provide compatible native toolchains explicitly.
 
 Install from a source checkout for development:
 
@@ -168,7 +213,7 @@ inputs resume deterministically and are classified as revalidation rather than a
 
 The operational decision tree is:
 
-1. Choose `c`, `cpp`, `lifetime`, `shader`, or `protocol` from the region's actual semantic boundary.
+1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `lifetime`, `shader`, or `protocol` from the region's actual semantic boundary.
 2. Run inspection and read `meaningful_semantic_coverage`.
 3. If an adapter remains, generate or complete it; do not relabel local proof as wrapper proof.
 4. Require candidate proof and randomized paired physical evidence.
@@ -181,6 +226,32 @@ vladder benchmark paired --manifest paired-benchmark.yaml --out-dir vladder-pair
 vladder benchmark compose --manifest regional-effects.yaml --out vladder-composition.json
 vladder shader synthesize --source kernel.comp --runner-manifest gpu-runner.yaml --out-dir vladder-shader-out
 ```
+
+For an automatically supported Rust region:
+
+```bash
+vladder workflow init --kind rust --out vladder-rust-workflow.yaml
+vladder rust inspect --manifest-path Cargo.toml --source src/lib.rs --function module::count
+vladder rust synthesize --manifest-path Cargo.toml --source src/lib.rs --function module::count
+vladder rust optimize --manifest-path Cargo.toml --source src/lib.rs --function module::count
+```
+
+Read `rust-support.json` before synthesis. `supported` means the selected common information-flow
+operation and local effect envelope closed; it does not mean arbitrary Rust, owning-wrapper, or
+external protocol equivalence. Proof and benchmark artifacts remain separate promotion gates.
+
+For bounded Zig and Julia regions:
+
+```bash
+vladder zig optimize --source src/root.zig --function countEqual --build-root .
+vladder julia optimize --project . --source src/Package.jl --module Package \
+  --function count_equal --signature 'Vector{UInt8},UInt8'
+```
+
+Read `zig-support.json` or `julia-support.json` first. Native compiler LLVM is retained as
+provenance; strict local proof composes source-derived schedule validation, parametric Z3, and a
+canonical schedule LLVM refinement. Do not report that canonical lowerer proof as direct proof of
+Zig frontend aliases or Julia's GC/safepoint ABI.
 
 The shader runner must emit exact output hashes and device timestamps. A candidate that only passes
 `spirv-val` remains non-promotable.
@@ -239,6 +310,27 @@ vladder lower validate
 vladder lower list
 vladder lower show --family layout-representation --rule aos-to-soa
 ```
+
+Audit and rank the executable deep grammar before interpreting a local search result:
+
+```bash
+vladder deep coverage
+vladder deep audit \
+  --manifest examples/deep_grammar/expert-audit.yaml \
+  --out-dir vladder-deep-audit
+vladder deep rank \
+  --language rust \
+  --predicate equal-u8 \
+  --processes 10 \
+  --repetitions 3 \
+  --cpu 0 \
+  --out-dir vladder-deep-ranking
+```
+
+`deep rank` proves every reachable terminal, deduplicates normalized hot assembly, and physically
+ranks each unique realization. It reports `bounded_optimal_local` only when the finite region is
+saturated and all terminal proof/measurement gates close; otherwise it reports
+`best_verified_found`.
 
 Lower a rule into an auditable plan only after establishing its contract facts:
 
@@ -444,6 +536,7 @@ The library and CLI share one execution path and the same artifact schema.
 
 The `vladder-v1` capability registry has complete deterministic plan lowering for:
 
+- executable scalar/word/SIMD lane, mask, reduction, traversal, tail, fusion, and dispatch forms
 - expression and bit-vector algebra
 - branches, selects, masks, and guarded specialization
 - unrolling, tiling, interchange, fusion/fission, and software pipelines
@@ -506,6 +599,7 @@ openspec validate release-vladder-library --strict
 openspec validate release-channels-rc4 --strict
 openspec validate lifetime-aware-realization-v1 --strict
 openspec validate direct-cpp-kernel-extraction --strict
+openspec validate deep-shared-grammar-v2 --strict
 python3 -m build
 python3 -m twine check dist/*
 python3 scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz

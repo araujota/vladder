@@ -1,0 +1,7 @@
+regions:
+  - id: supported-count
+    source: byte_count/src/root.zig
+    function: countEqual
+  - id: allocator-boundary
+    source: byte_count/src/root.zig
+    function: owningCopy

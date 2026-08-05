@@ -16,6 +16,9 @@ from .cpp_regions import inspect_cpp_region, isolate_cpp_region, optimize_cpp_re
 from .lifetime_workflow import analyze_lifetime_flow, synthesize_lifetime_flow
 from .shader_workflow import inspect_shader, synthesize_shader
 from .state_protocol import verify_state_protocol
+from .rust_adapter import RustRegionRequest, inspect_rust_region, isolate_rust_region, optimize_rust_region, synthesize_rust_region
+from .zig_adapter import ZigRegionRequest, inspect_zig_region, isolate_zig_region, optimize_zig_region, synthesize_zig_region
+from .julia_adapter import JuliaRegionRequest, inspect_julia_region, isolate_julia_region, optimize_julia_region, synthesize_julia_region
 
 
 WORKFLOW_SCHEMA = "vladder-agent-workflow-v1"
@@ -36,8 +39,8 @@ def _resolve(base: Path, value: str | Path) -> Path:
 
 
 def initialize_workflow_manifest(kind: str, output_path: Path) -> dict[str, Any]:
-    if kind not in {"c", "cpp", "lifetime", "shader", "protocol"}:
-        raise ValueError("workflow kind must be c, cpp, lifetime, shader, or protocol")
+    if kind not in {"c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "protocol"}:
+        raise ValueError("workflow kind must be c, cpp, rust, zig, julia, lifetime, shader, or protocol")
     region: dict[str, Any]
     if kind == "c":
         region = {"kind": "c", "action": "inspect", "source": "TODO.c", "function": "transform"}
@@ -46,6 +49,17 @@ def initialize_workflow_manifest(kind: str, output_path: Path) -> dict[str, Any]
             "kind": "cpp", "action": "inspect", "source": "TODO.cpp", "function": "TODO",
             "compile_commands": "build/compile_commands.json", "symbol": None, "command_index": None,
         }
+    elif kind == "rust":
+        region = {
+            "kind": "rust", "action": "inspect", "manifest": "Cargo.toml",
+            "source": "src/lib.rs", "function": "TODO", "package": None,
+            "target_kind": "lib", "target_name": None, "profile": "release",
+            "features": [], "proof_bound": 32,
+        }
+    elif kind == "zig":
+        region = {"kind": "zig", "action": "inspect", "source": "src/root.zig", "function": "TODO", "build_root": ".", "optimize_mode": "ReleaseFast", "target": "native", "proof_bound": 32}
+    elif kind == "julia":
+        region = {"kind": "julia", "action": "inspect", "project": ".", "source": "src/Package.jl", "module": "TODO", "function": "TODO", "signature": "Vector{UInt8},UInt8", "cpu_target": "native", "proof_bound": 32}
     elif kind == "lifetime":
         region = {"kind": "lifetime", "action": "analyze", "manifest": "lifetime.yaml", "trace": "lifetime.jsonl"}
     elif kind == "shader":
@@ -70,13 +84,21 @@ def initialize_workflow_manifest(kind: str, output_path: Path) -> dict[str, Any]
 def _workflow_key(raw: dict[str, Any], base: Path) -> tuple[str, dict[str, Any]]:
     region = raw.get("region", {})
     file_hashes: dict[str, str] = {}
-    for key in ("source", "compile_commands", "manifest", "trace", "runner_manifest"):
+    for key in ("source", "compile_commands", "manifest", "trace", "runner_manifest", "project", "build_root"):
         value = region.get(key) if isinstance(region, dict) else None
         if not value:
             continue
         path = _resolve(base, str(value))
         if path.is_dir():
-            path = path / "compile_commands.json"
+            if key == "compile_commands":
+                path = path / "compile_commands.json"
+            else:
+                identities = []
+                for name in ("Project.toml", "JuliaProject.toml", "Manifest.toml", "LocalPreferences.toml", "build.zig", "build.zig.zon"):
+                    candidate = path / name
+                    if candidate.exists(): identities.append({"name": name, "sha256": _hash_bytes(candidate.read_bytes())})
+                file_hashes[key] = _hash_json(identities)
+                continue
         if path.exists() and path.is_file():
             file_hashes[key] = _hash_bytes(path.read_bytes())
     identity = {
@@ -165,6 +187,60 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
         if closure.get("disposition") != "automatic" or not closure.get("capabilities", {}).get("benchmark", {}).get("actual"):
             closure_path = stage_dir / ("isolation/cpp-support.json" if action == "optimize" else "cpp-support.json")
             adapter = generate_cpp_adapter_bundle(closure_path, output_directory / "application-adapter")
+    elif kind == "rust":
+        source = _resolve(manifest_path.parent, str(region["source"]))
+        cargo_manifest = _resolve(manifest_path.parent, str(region["manifest"]))
+        request = RustRegionRequest(
+            manifest_path=cargo_manifest,
+            source=source,
+            function=str(region["function"]),
+            output_directory=stage_dir,
+            package=str(region["package"]) if region.get("package") else None,
+            target_kind=str(region.get("target_kind", "lib")),
+            target_name=str(region["target_name"]) if region.get("target_name") else None,
+            profile=str(region.get("profile", "release")),
+            features=tuple(str(value) for value in region.get("features", [])),
+            proof_bound=int(region.get("proof_bound", 32)),
+            minimum_speedup_pct=float(raw.get("promotion", {}).get("minimum_effect_percent", 1.0)),
+        )
+        actions = {
+            "inspect": inspect_rust_region,
+            "isolate": isolate_rust_region,
+            "synthesize": synthesize_rust_region,
+            "optimize": optimize_rust_region,
+        }
+        if action not in actions:
+            raise ValueError(f"unsupported Rust workflow action: {action}")
+        report = actions[action](request)
+        report_path = stage_dir / {
+            "inspect": "rust-support.json", "isolate": "rust-isolation.json",
+            "synthesize": "rust-synthesis.json", "optimize": "rust-optimization.json",
+        }[action]
+        adapter = None
+    elif kind == "zig":
+        request = ZigRegionRequest(
+            source=_resolve(manifest_path.parent, str(region["source"])), function=str(region["function"]),
+            output_directory=stage_dir, build_root=_resolve(manifest_path.parent, str(region["build_root"])) if region.get("build_root") else None,
+            optimize_mode=str(region.get("optimize_mode", "ReleaseFast")), target=str(region.get("target", "native")),
+            proof_bound=int(region.get("proof_bound", 32)), minimum_speedup_pct=float(raw.get("promotion", {}).get("minimum_effect_percent", 1.0)),
+        )
+        actions = {"inspect": inspect_zig_region, "isolate": isolate_zig_region, "synthesize": synthesize_zig_region, "optimize": optimize_zig_region}
+        if action not in actions: raise ValueError(f"unsupported Zig workflow action: {action}")
+        report = actions[action](request)
+        report_path = stage_dir / {"inspect": "zig-support.json", "isolate": "zig-isolation.json", "synthesize": "zig-synthesis.json", "optimize": "zig-optimization.json"}[action]
+        adapter = None
+    elif kind == "julia":
+        request = JuliaRegionRequest(
+            project=_resolve(manifest_path.parent, str(region["project"])), source=_resolve(manifest_path.parent, str(region["source"])),
+            module=str(region["module"]), function=str(region["function"]), signature=str(region["signature"]),
+            output_directory=stage_dir, proof_bound=int(region.get("proof_bound", 32)),
+            minimum_speedup_pct=float(raw.get("promotion", {}).get("minimum_effect_percent", 1.0)), cpu_target=str(region.get("cpu_target", "native")),
+        )
+        actions = {"inspect": inspect_julia_region, "isolate": isolate_julia_region, "synthesize": synthesize_julia_region, "optimize": optimize_julia_region}
+        if action not in actions: raise ValueError(f"unsupported Julia workflow action: {action}")
+        report = actions[action](request)
+        report_path = stage_dir / {"inspect": "julia-support.json", "isolate": "julia-isolation.json", "synthesize": "julia-synthesis.json", "optimize": "julia-optimization.json"}[action]
+        adapter = None
     elif kind == "lifetime":
         lifetime_manifest = _resolve(manifest_path.parent, str(region["manifest"]))
         trace = _resolve(manifest_path.parent, str(region["trace"]))
@@ -190,7 +266,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
         report_path = stage_dir / "protocol-proof.json"
         adapter = None
     else:
-        raise ValueError("region.kind must be c, cpp, lifetime, shader, or protocol")
+        raise ValueError("region.kind must be c, cpp, rust, zig, julia, lifetime, shader, or protocol")
 
     summary = build_promotion_summary(
         report,
@@ -289,6 +365,31 @@ def build_promotion_summary(
             "generate the C++ application adapter and model the unresolved boundary" if disposition not in {"automatic", "automatic_with_benchmark_adapter"} else
             "materialize and prove an admitted local candidate" if states["meaningful_semantic_coverage"] else
             "resolve source, overload, template, or compile-command selection"
+        )
+    elif kind in {"rust", "zig", "julia"}:
+        support = report.get("support", report)
+        graph = support.get("semantic_graph")
+        states["meaningful_semantic_coverage"] = bool(graph and graph.get("nodes"))
+        candidates = report.get("candidates", [])
+        states["candidate_generated"] = bool(candidates)
+        states["candidate_proved"] = bool(candidates) and any(
+            item.get("proof_status") == "PASS" for item in candidates
+        )
+        states["physically_benchmarked"] = bool(report.get("measurements"))
+        states["production_promoted"] = bool(report.get("promotion", {}).get("promotable"))
+        winner = report.get("winner") if isinstance(report.get("winner"), dict) else None
+        candidate_identity = winner.get("candidate", {}).get("id") if winner else None
+        proof_class = f"{kind}_source_schedule_z3_plus_bounded_llvm_refinement" if states["candidate_proved"] else f"{kind}_native_semantic_capture"
+        disposition = f"promotable_local_{kind}_candidate" if states["production_promoted"] else str(report.get("status", "inspected"))
+        blockers.extend(str(item.get("reason", item.get("kind"))) for item in support.get("blockers", []))
+        next_action = (
+            f"apply the emitted {kind} patch, run project tests, and confirm the project workload"
+            if states["production_promoted"] else
+            f"physically rank the proved {kind} candidates" if states["candidate_proved"] and not states["physically_benchmarked"] else
+            "retain the measured negative result or add only an attribution-justified common grammar rule"
+            if states["physically_benchmarked"] else
+            f"run {kind} synthesis" if states["meaningful_semantic_coverage"] else
+            f"resolve the named {kind} semantic adapter boundary"
         )
     elif kind == "lifetime":
         quality = report.get("trace_quality", {})
@@ -401,6 +502,12 @@ def _infer_kind(report: dict[str, Any]) -> str:
     schema = str(report.get("schema_version", ""))
     if "cpp" in schema or report.get("language") == "c++":
         return "cpp"
+    if "rust" in schema or report.get("source_language") == "rust":
+        return "rust"
+    if "zig" in schema or report.get("source_language") == "zig":
+        return "zig"
+    if "julia" in schema or report.get("source_language") == "julia":
+        return "julia"
     if schema.startswith("vladder-c-") or "automatic_region" in report:
         return "c"
     if "lifetime" in schema:
@@ -420,6 +527,13 @@ def _decisive_artifacts(report: dict[str, Any], report_path: Path, adapter: dict
         for name in priorities:
             if source_artifacts.get(name):
                 artifacts.append({"role": name, "path": str(source_artifacts[name])})
+    support = report.get("support", report)
+    if isinstance(support, dict):
+        rust_artifacts = support.get("artifacts", {})
+        if isinstance(rust_artifacts, dict):
+            for name in ("mir", "llvm_ir", "assembly", "source"):
+                if rust_artifacts.get(name) and len(artifacts) < 5:
+                    artifacts.append({"role": f"rust_{name}", "path": str(rust_artifacts[name])})
     if adapter:
         for name in ("manifest", "benchmark_adapter", "observable_oracle", "agent_task"):
             if adapter.get(name):

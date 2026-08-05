@@ -4,6 +4,84 @@ All notable changes to vLadder are documented here.
 
 ## Unreleased
 
+## 1.0.0rc9 - 2026-08-05
+
+### Added
+
+- Native `bounded-zig-regions-v1` and `bounded-julia-regions-v1` adapters over the existing
+  language-neutral `SemanticFlowGraph`; no language-specific information-flow ontology was added.
+- Zig compiler/build/safety capture, LLVM and assembly provenance, native source regeneration,
+  source-derived schedules, Z3 and canonical Alive2 proof, differential execution, paired physical
+  ranking, audit, CLI, library, workflow, diagnostics, examples, and installer support.
+- Julia project/manifest/world/specialization capture with lowered, typed, LLVM, and native IR,
+  inferred type/effect/allocation checks, native method regeneration, schedule proof, warmed
+  independent-process ranking, audit, CLI, library, workflow, diagnostics, and examples.
+- Checksum-verified Zig and Julia toolchain bootstrapping shared by local installation, CI, and the
+  release workflow so native adapter tests cannot silently disappear from release evidence.
+
+### Boundaries
+
+- Z1 excludes allocator/error/defer/volatile/atomic/assembly/FFI protocols. J1 applies to one
+  concrete type-stable zero-allocation method specialization and excludes other worlds, dynamic
+  dispatch, GC ownership, globals, tasks, exceptions, nondeterminism, and external calls.
+- Native Zig/Julia LLVM is retained as compiler provenance. Alive2 validates the source-derived
+  canonical schedule lowerer; this is not relabeled as direct proof of Zig frontend attributes or
+  Julia's GC/safepoint ABI.
+
+## 1.0.0rc8 - 2026-08-05
+
+### Added
+
+- `deep-v2`, an executable shared physical-realization grammar for exact byte-predicate reductions
+  spanning scalar, packed-word SWAR, SIMD masks/popcount, bounded SIMD byte accumulators, tails,
+  fusion, constants, traversal, and guarded ISA dispatch.
+- One language-neutral `SemanticFlowGraph` vocabulary for lanes, packs, masks, population counts,
+  horizontal reductions, materialization, complexity, and dispatch, with deterministic native C
+  and Rust regeneration from the same derivation.
+- Layered Z3 obligations for bit-vector identities, lane packing, reductions, bounded accumulator
+  no-wrap, traversal/tails, constants, and dispatch, plus bidirectional Alive2 refinements for
+  vector mask/popcount and byte-accumulator cores.
+- `vladder deep coverage|graph|search|emit|benchmark|rank|audit|neuralfusion-audit`, including
+  saturated local derivation search, normalized assembly deduplication, randomized paired ranking,
+  and explicit representation/grammar/lowering/proof/performance failure stages.
+- Pinned expert-transfer evaluation against `bytecount` and read-only NeuralFusion evidence
+  validation. The generated guarded Rust realization beat the upstream runtime-dispatched expert
+  path by 6.07% in the same executable on the reference host.
+
+### Corrected Claim Boundary
+
+- A baseline win is dispositive only for the executable grammar region actually audited. Unknown
+  expert realizations or failures before physical ranking are grammar/tooling gaps, not evidence
+  that no faster semantic equivalent exists.
+- `bounded_optimal_local` requires finite saturated derivation coverage, successful native
+  lowering and proof, assembly-identity accounting, and physical ranking of every unique terminal.
+  LLVM-wide, algorithm-wide, and whole-program optimality remain explicitly unclaimed.
+
+## 1.0.0rc7 - 2026-08-04
+
+### Added
+
+- A versioned, language-neutral adapter protocol and deterministic `SemanticFlowGraph` shared by
+  C, C++, and Rust rather than parallel language-specific information-flow vocabularies.
+- `bounded-rust-regions-v1` with Cargo target capture, exact rustc identity, source/MIR/LLVM/assembly
+  provenance, safe-region effect closure, and native Rust source regeneration.
+- Parametric schedule proofs plus bounded MIR-derived Z3 obligations, fixed-length bidirectional
+  Alive2 refinement, adversarial differential execution, and randomized same-executable physical
+  ranking for the first exact byte-reduction grammar.
+- `vladder rust inspect|isolate|synthesize|optimize|audit|support`, library integration, canonical
+  agent workflow routing, release diagnostics, installer support, examples, and regression tests.
+
+### Boundaries
+
+- Rust R1 is not arbitrary Rust equivalence. Unsafe contracts, allocation and owning containers,
+  custom `Drop`, panic recovery, async, concurrency, FFI, inline assembly, unresolved calls, and
+  external protocols fail closed with named adapter requirements.
+- Textual MIR evidence is pinned to the exact rustc build. Alive2 compatibility normalization may
+  erase unsupported assumptions and metadata but never executable operations, and all before/after
+  hashes are retained.
+- Local proof and speedup do not establish project-level value until the native patch, project
+  tests, and attributed project workload pass.
+
 ## 1.0.0rc6 - 2026-08-04
 
 ### Added

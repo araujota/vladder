@@ -1,6 +1,6 @@
-"""vLadder: verified information-flow superoptimization for C and C++."""
+"""vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc6"
+__version__ = "1.0.0rc9"
 
 from .api import (
     AgentWorkflowRequest,
@@ -8,11 +8,17 @@ from .api import (
     BenchmarkPolicy,
     CppAuditRequest,
     CppRegionRequest,
+    DeepGrammarAuditRequest,
+    DeepGrammarRankRequest,
+    DeepKernelRequest,
     LifetimeRequest,
     OptimizationRequest,
     OptimizationResult,
     PairedBenchmarkRequest,
     StateProtocolRequest,
+    RustRegionRequest,
+    ZigRegionRequest,
+    JuliaRegionRequest,
     VelocityLadder,
 )
 from .agent_workflow import build_promotion_summary, run_agent_workflow
@@ -23,6 +29,12 @@ from .capabilities import GrammarRegistry, load_registry
 from .lowering import LoweringEngine, LoweringMode, LoweringPlan, LoweringRequest, LoweringResult, LoweringStatus
 from .lifetime_graph import LifetimeFlowGraph, LifetimeInformation, load_lifetime_flow_graph
 from .verification_policy import VerificationPolicy
+from .language_adapter import LanguageAdapterRegistry, SemanticFlowGraph
+from .rust_semantics import RUST_SUPPORT_VERSION
+from .zig_adapter import ZIG_SUPPORT_VERSION
+from .julia_adapter import JULIA_SUPPORT_VERSION
+from .deep_grammar import DeepGrammar, load_deep_grammar, search_deep_grammar
+from .deep_ir import DeepKernelContract, DeepRealizationGraph
 
 __all__ = [
     "BenchmarkPolicy",
@@ -31,6 +43,12 @@ __all__ = [
     "CppAdapterRequirement",
     "CppAuditRequest",
     "CppRegionRequest",
+    "DeepGrammar",
+    "DeepGrammarAuditRequest",
+    "DeepGrammarRankRequest",
+    "DeepKernelContract",
+    "DeepKernelRequest",
+    "DeepRealizationGraph",
     "AutomaticRegionRequest",
     "AutomaticSupport",
     "AdapterRequirement",
@@ -48,10 +66,19 @@ __all__ = [
     "OptimizationResult",
     "PairedBenchmarkRequest",
     "StateProtocolRequest",
+    "RustRegionRequest",
+    "RUST_SUPPORT_VERSION",
+    "ZigRegionRequest",
+    "ZIG_SUPPORT_VERSION",
+    "JuliaRegionRequest",
+    "JULIA_SUPPORT_VERSION",
+    "LanguageAdapterRegistry",
+    "SemanticFlowGraph",
     "VelocityLadder",
     "VerificationPolicy",
     "__version__",
     "load_registry",
+    "load_deep_grammar",
     "load_lifetime_flow_graph",
     "inspect_cpp_region",
     "inspect_cpp_matrix",
@@ -59,4 +86,5 @@ __all__ = [
     "classify_cpp_closure",
     "build_promotion_summary",
     "run_agent_workflow",
+    "search_deep_grammar",
 ]

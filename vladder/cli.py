@@ -55,6 +55,29 @@ from .skill_tools import install_skill, validate_skill
 from .verification_policy import VerificationPolicy, evaluate_promotion
 from .shader_workflow import gpu_support_matrix, inspect_shader, synthesize_shader
 from .state_protocol import verify_state_protocol
+from .rust_adapter import (
+    RustRegionRequest,
+    audit_rust_regions,
+    inspect_rust_region,
+    isolate_rust_region,
+    optimize_rust_region,
+    rust_support_report,
+    synthesize_rust_region,
+)
+from .zig_adapter import (
+    ZigRegionRequest, audit_zig_regions, inspect_zig_region, isolate_zig_region,
+    optimize_zig_region, synthesize_zig_region, zig_support_report,
+)
+from .julia_adapter import (
+    JuliaRegionRequest, audit_julia_regions, inspect_julia_region, isolate_julia_region,
+    optimize_julia_region, synthesize_julia_region, julia_support_report,
+)
+from .deep_audit import audit_expert_manifest, audit_neuralfusion_evidence_readonly
+from .deep_benchmark import benchmark_deep_candidate, rank_deep_grammar
+from .deep_grammar import load_deep_grammar, search_deep_grammar
+from .deep_ir import DeepKernelContract, build_deep_realization_graph
+from .deep_lowering import emit_deep_candidate
+from .deep_proof import prove_deep_candidate
 
 
 HARNESS = r"""
@@ -760,6 +783,108 @@ def lower_command(args: argparse.Namespace) -> int:
     return 0 if result.get("status") in {"pass", "planned", "routed"} else 1
 
 
+def deep_command(args: argparse.Namespace) -> int:
+    grammar = load_deep_grammar(Path(args.grammar).resolve() if getattr(args, "grammar", None) else None)
+    output: Path | None = None
+    if args.deep_command == "coverage":
+        report = grammar.coverage()
+        output = Path(args.out).resolve() if args.out else None
+    elif args.deep_command == "audit":
+        report = audit_expert_manifest(Path(args.manifest), Path(args.out_dir), run_benchmarks=True if args.benchmark else None)
+        output = Path(args.out_dir).resolve() / "expert-grammar-audit.json"
+    elif args.deep_command == "neuralfusion-audit":
+        output = Path(args.out).resolve()
+        report = audit_neuralfusion_evidence_readonly(Path(args.repository_root), Path(args.evidence_root), output)
+    elif args.deep_command == "rank":
+        contract = DeepKernelContract(
+            "exact-byte-predicate-reduction",
+            args.predicate,
+            input_min=args.input_min,
+            input_max=args.input_max,
+        )
+        output_directory = Path(args.out_dir).resolve()
+        report = rank_deep_grammar(
+            contract,
+            grammar,
+            args.language,
+            output_directory,
+            processes=args.processes,
+            repetitions_per_process=args.repetitions,
+            n=args.n,
+            inner=args.inner,
+            cpu=args.cpu,
+            minimum_effect_percent=args.min_speedup_pct,
+        )
+        output = output_directory / "deep-ranking.json"
+    else:
+        contract = DeepKernelContract(
+            "exact-byte-predicate-reduction",
+            args.predicate,
+            input_min=args.input_min,
+            input_max=args.input_max,
+        )
+        if args.deep_command == "graph":
+            graph = build_deep_realization_graph(contract, args.realization, source_language=args.language, function_identity=args.function)
+            report = graph.to_dict()
+            output = Path(args.out).resolve() if args.out else None
+        else:
+            search = search_deep_grammar(
+                contract,
+                grammar,
+                source=args.source_realization,
+                targets=(args.target,) if args.target else None,
+                state_budget=args.search_states,
+                time_budget_ms=args.search_ms,
+            )
+            if args.deep_command == "search":
+                report = search.to_dict()
+                output = Path(args.out).resolve() if args.out else None
+            else:
+                derivation = next((item for item in search.derivations if item.target == args.target), None)
+                if derivation is None:
+                    raise ValueError(f"deep grammar cannot derive {args.target} from {args.source_realization}")
+                candidate = emit_deep_candidate(contract, derivation, args.language, args.function, grammar)
+                out_dir = Path(args.out_dir).resolve()
+                out_dir.mkdir(parents=True, exist_ok=True)
+                source_path = out_dir / ("candidate.rs" if args.language == "rust" else "candidate.c")
+                source_path.write_text(candidate.source)
+                proof = prove_deep_candidate(contract, derivation, candidate, out_dir / "proofs")
+                report = {
+                    "schema_version": "vladder-deep-workflow-v1",
+                    "status": "pass" if proof["status"] == "PASS" else "verification_failed",
+                    "contract": contract.to_dict(),
+                    "search": search.to_dict(),
+                    "candidate": candidate.to_dict(),
+                    "proof": proof,
+                    "source": str(source_path),
+                }
+                if args.deep_command == "benchmark":
+                    if proof["status"] != "PASS":
+                        report["benchmark"] = {"status": "NOT_RUN", "reason": "proof did not pass"}
+                    else:
+                        report["benchmark"] = benchmark_deep_candidate(
+                            contract,
+                            derivation,
+                            candidate,
+                            out_dir / "benchmark",
+                            processes=args.processes,
+                            repetitions_per_process=args.repetitions,
+                            n=args.n,
+                            inner=args.inner,
+                            cpu=args.cpu,
+                            minimum_effect_percent=args.min_speedup_pct,
+                        )
+                output = out_dir / "deep-workflow.json"
+    encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if not output.exists() or output.read_text() != encoded:
+            output.write_text(encoded)
+    print(encoded, end="")
+    status = str(report.get("status", "pass"))
+    return 0 if status in {"pass", "supported"} else 2
+
+
 def automatic_region_command(args: argparse.Namespace) -> int:
     source = Path(args.source).resolve()
     out_dir = Path(args.out_dir).resolve()
@@ -857,6 +982,87 @@ def cpp_region_command(args: argparse.Namespace) -> int:
     return return_code
 
 
+def rust_region_command(args: argparse.Namespace) -> int:
+    if args.rust_command == "support":
+        report = rust_support_report()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    if args.rust_command == "audit":
+        report = audit_rust_regions(Path(args.manifest), Path(args.out_dir))
+        print(f"vLadder Rust: audited={report['region_count']} supported={report['supported_count']}")
+        return 0
+    request = RustRegionRequest(
+        manifest_path=Path(args.manifest_path),
+        source=Path(args.source),
+        function=args.function,
+        output_directory=Path(args.out_dir),
+        package=args.package,
+        target_kind=args.target_kind,
+        target_name=args.target_name,
+        profile=args.profile,
+        features=tuple(args.feature),
+        proof_bound=args.proof_bound,
+        minimum_speedup_pct=getattr(args, "min_speedup_pct", 1.0),
+        benchmark_elements=getattr(args, "n", 1 << 20),
+        benchmark_inner=getattr(args, "inner", 128),
+        benchmark_processes=getattr(args, "processes", 8),
+        benchmark_repetitions=getattr(args, "repetitions", 2),
+        cpu=getattr(args, "cpu", None),
+    )
+    actions = {
+        "inspect": inspect_rust_region,
+        "isolate": isolate_rust_region,
+        "synthesize": synthesize_rust_region,
+        "optimize": optimize_rust_region,
+    }
+    report = actions[args.rust_command](request)
+    print(f"vLadder Rust: action={args.rust_command} status={report['status']}")
+    if args.rust_command == "optimize":
+        return 0 if report.get("promotion", {}).get("promotable") else 1
+    return 0 if report["status"] in {"pass", "supported"} else 1
+
+
+def zig_region_command(args: argparse.Namespace) -> int:
+    if args.zig_command == "support":
+        print(json.dumps(zig_support_report(), indent=2, sort_keys=True)); return 0
+    if args.zig_command == "audit":
+        report = audit_zig_regions(Path(args.manifest), Path(args.out_dir))
+        print(f"vLadder Zig: audited={len(report['regions'])} supported={report['supported_count']}"); return 0
+    request = ZigRegionRequest(
+        source=Path(args.source), function=args.function, output_directory=Path(args.out_dir),
+        build_root=Path(args.build_root) if args.build_root else None,
+        optimize_mode=args.optimize_mode, target=args.target, proof_bound=args.proof_bound,
+        minimum_speedup_pct=getattr(args, "min_speedup_pct", 1.0),
+        benchmark_elements=getattr(args, "n", 1 << 20), benchmark_inner=getattr(args, "inner", 128),
+        benchmark_processes=getattr(args, "processes", 8), benchmark_repetitions=getattr(args, "repetitions", 2),
+        cpu=getattr(args, "cpu", None),
+    )
+    actions = {"inspect": inspect_zig_region, "isolate": isolate_zig_region, "synthesize": synthesize_zig_region, "optimize": optimize_zig_region}
+    report = actions[args.zig_command](request)
+    print(f"vLadder Zig: action={args.zig_command} status={report['status']}")
+    return 0 if report["status"] in {"pass", "supported"} else 1
+
+
+def julia_region_command(args: argparse.Namespace) -> int:
+    if args.julia_command == "support":
+        print(json.dumps(julia_support_report(), indent=2, sort_keys=True)); return 0
+    if args.julia_command == "audit":
+        report = audit_julia_regions(Path(args.manifest), Path(args.out_dir))
+        print(f"vLadder Julia: audited={len(report['regions'])} supported={report['supported_count']}"); return 0
+    request = JuliaRegionRequest(
+        project=Path(args.project), source=Path(args.source), module=args.module, function=args.function,
+        signature=args.signature, output_directory=Path(args.out_dir), proof_bound=args.proof_bound,
+        minimum_speedup_pct=getattr(args, "min_speedup_pct", 1.0),
+        benchmark_elements=getattr(args, "n", 1 << 20), benchmark_inner=getattr(args, "inner", 128),
+        benchmark_processes=getattr(args, "processes", 8), benchmark_repetitions=getattr(args, "repetitions", 2),
+        cpu=getattr(args, "cpu", None), cpu_target=args.cpu_target,
+    )
+    actions = {"inspect": inspect_julia_region, "isolate": isolate_julia_region, "synthesize": synthesize_julia_region, "optimize": optimize_julia_region}
+    report = actions[args.julia_command](request)
+    print(f"vLadder Julia: action={args.julia_command} status={report['status']}")
+    return 0 if report["status"] in {"pass", "supported"} else 1
+
+
 def workflow_command(args: argparse.Namespace) -> int:
     if args.workflow_command == "init":
         report = initialize_workflow_manifest(args.kind, Path(args.out).resolve())
@@ -946,14 +1152,14 @@ def lifetime_command(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vladder",
-        description="Verified hardware-aware information-flow superoptimizer for bounded C/C++ regions",
+        description="Verified hardware-aware information-flow superoptimizer for bounded systems-language regions",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
     workflow = sub.add_parser("workflow", help="run and summarize the canonical agent optimization workflow")
     workflow_sub = workflow.add_subparsers(dest="workflow_command", required=True)
     workflow_init = workflow_sub.add_parser("init", help="create a canonical workflow manifest")
-    workflow_init.add_argument("--kind", choices=("c", "cpp", "lifetime", "shader", "protocol"), required=True)
+    workflow_init.add_argument("--kind", choices=("c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "protocol"), required=True)
     workflow_init.add_argument("--out", default="vladder-workflow.yaml")
     workflow_init.set_defaults(func=workflow_command)
     workflow_run = workflow_sub.add_parser("run", help="route one manifest and emit a promotion summary")
@@ -1003,6 +1209,68 @@ def build_parser() -> argparse.ArgumentParser:
     lower_plan.add_argument("--input-identity", default="unbound-region")
     lower_plan.add_argument("--out", help="also write the JSON lowering result")
     lower_plan.set_defaults(func=lower_command)
+    deep = sub.add_parser("deep", help="derive, regenerate, prove, and audit deep shared information-flow realizations")
+    deep.add_argument("--grammar", help="alternate deep-v2 grammar JSON")
+    deep_sub = deep.add_subparsers(dest="deep_command", required=True)
+    deep_coverage = deep_sub.add_parser("coverage", help="report graph, source, proof, and benchmark bindings for every deep family")
+    deep_coverage.add_argument("--out")
+    deep_coverage.set_defaults(func=deep_command)
+    deep_audit = deep_sub.add_parser("audit", help="audit scalar/expert pairs through representation, derivation, lowering, proof, and performance")
+    deep_audit.add_argument("--manifest", required=True)
+    deep_audit.add_argument("--out-dir", default="vladder-deep-audit")
+    deep_audit.add_argument("--benchmark", action="store_true", help="override case settings and physically rank every proved case")
+    deep_audit.set_defaults(func=deep_command)
+    deep_neural = deep_sub.add_parser("neuralfusion-audit", help="inspect existing NeuralFusion semantic evidence without modifying or rebuilding it")
+    deep_neural.add_argument("--repository-root", required=True)
+    deep_neural.add_argument("--evidence-root", required=True)
+    deep_neural.add_argument("--out", default="neuralfusion-deep-readonly.json")
+    deep_neural.set_defaults(func=deep_command)
+    deep_rank = deep_sub.add_parser("rank", help="prove, assembly-deduplicate, and physically rank every reachable terminal realization")
+    deep_rank.add_argument("--predicate", choices=("equal-u8", "utf8-leading-byte"), default="equal-u8")
+    deep_rank.add_argument("--language", choices=("c", "rust"), default="c")
+    deep_rank.add_argument("--input-min", type=int, default=0)
+    deep_rank.add_argument("--input-max", type=int, default=1 << 30)
+    deep_rank.add_argument("--processes", type=int, default=10)
+    deep_rank.add_argument("--repetitions", type=int, default=3)
+    deep_rank.add_argument("--n", type=int, default=1 << 20)
+    deep_rank.add_argument("--inner", type=int, default=128)
+    deep_rank.add_argument("--cpu", type=int)
+    deep_rank.add_argument("--min-speedup-pct", type=float, default=1.0)
+    deep_rank.add_argument("--out-dir", default="vladder-deep-ranking")
+    deep_rank.set_defaults(func=deep_command)
+    for action, help_text in (
+        ("graph", "construct one shared physical realization graph"),
+        ("search", "derive reachable terminal realizations from a scalar graph"),
+        ("emit", "derive and emit a native C or Rust candidate with proof"),
+        ("benchmark", "derive, prove, differentially execute, and physically rank one candidate"),
+    ):
+        command = deep_sub.add_parser(action, help=help_text)
+        command.add_argument("--predicate", choices=("equal-u8", "utf8-leading-byte"), default="equal-u8")
+        command.add_argument("--language", choices=("c", "cpp", "rust"), default="c")
+        command.add_argument("--function", default="deep_candidate")
+        command.add_argument("--input-min", type=int, default=0)
+        command.add_argument("--input-max", type=int, default=1 << 30)
+        if action == "graph":
+            command.add_argument("--realization", required=True)
+            command.add_argument("--out")
+        else:
+            command.add_argument("--source-realization", default="scalar")
+            command.add_argument("--search-states", type=int, default=256)
+            command.add_argument("--search-ms", type=int, default=1000)
+            if action == "search":
+                command.add_argument("--target")
+                command.add_argument("--out")
+            else:
+                command.add_argument("--target", required=True)
+                command.add_argument("--out-dir", default=f"vladder-deep-{action}")
+                if action == "benchmark":
+                    command.add_argument("--processes", type=int, default=10)
+                    command.add_argument("--repetitions", type=int, default=3)
+                    command.add_argument("--n", type=int, default=1 << 20)
+                    command.add_argument("--inner", type=int, default=128)
+                    command.add_argument("--cpu", type=int)
+                    command.add_argument("--min-speedup-pct", type=float, default=1.0)
+        command.set_defaults(func=deep_command)
     region = sub.add_parser("region", help="inspect or optimize an automatically supported bounded C region")
     region_sub = region.add_subparsers(dest="region_command", required=True)
     region_inspect = region_sub.add_parser("inspect", help="classify automatic support or emit adapter requirements")
@@ -1059,6 +1327,80 @@ def build_parser() -> argparse.ArgumentParser:
             command.add_argument("--cpu", type=int, default=0)
             command.add_argument("--min-speedup-pct", type=float, default=1.0)
         command.set_defaults(func=cpp_region_command)
+    rust = sub.add_parser("rust", help="capture MIR/LLVM, synthesize, prove, and optimize a bounded Rust region")
+    rust_sub = rust.add_subparsers(dest="rust_command", required=True)
+    rust_support = rust_sub.add_parser("support", help="show the language-neutral adapter and Rust support version")
+    rust_support.set_defaults(func=rust_region_command)
+    rust_audit = rust_sub.add_parser("audit", help="inspect a manifest of Rust regions without source changes")
+    rust_audit.add_argument("--manifest", required=True)
+    rust_audit.add_argument("--out-dir", default="vladder-rust-audit")
+    rust_audit.set_defaults(func=rust_region_command)
+    for action, help_text, default_out in (
+        ("inspect", "capture Cargo, source, MIR, LLVM IR, assembly, and closure evidence", "vladder-rust-inspect"),
+        ("isolate", "construct the shared semantic graph and bounded proof unit", "vladder-rust-isolation"),
+        ("synthesize", "regenerate native Rust candidates and prove MIR/LLVM equivalence", "vladder-rust-synthesis"),
+        ("optimize", "prove and physically rank native Rust candidates", "vladder-rust-out"),
+    ):
+        command = rust_sub.add_parser(action, help=help_text)
+        command.add_argument("--manifest-path", required=True, help="Cargo.toml for the selected package")
+        command.add_argument("--source", required=True)
+        command.add_argument("--function", required=True, help="module-qualified concrete function name")
+        command.add_argument("--package")
+        command.add_argument("--target-kind", choices=("lib", "bin", "example", "test", "bench"), default="lib")
+        command.add_argument("--target-name")
+        command.add_argument("--profile", default="release")
+        command.add_argument("--feature", action="append", default=[])
+        command.add_argument("--proof-bound", type=int, default=32)
+        command.add_argument("--out-dir", default=default_out)
+        if action == "optimize":
+            command.add_argument("--n", type=int, default=1 << 20)
+            command.add_argument("--inner", type=int, default=128)
+            command.add_argument("--processes", type=int, default=8)
+            command.add_argument("--repetitions", type=int, default=2)
+            command.add_argument("--cpu", type=int)
+            command.add_argument("--min-speedup-pct", type=float, default=1.0)
+        command.set_defaults(func=rust_region_command)
+    zig = sub.add_parser("zig", help="capture native/LLVM artifacts, prove, and optimize a bounded Zig region")
+    zig_sub = zig.add_subparsers(dest="zig_command", required=True)
+    zig_sub.add_parser("support", help="show bounded Zig support").set_defaults(func=zig_region_command)
+    zig_audit = zig_sub.add_parser("audit", help="inspect a manifest of Zig regions")
+    zig_audit.add_argument("--manifest", required=True); zig_audit.add_argument("--out-dir", default="vladder-zig-audit"); zig_audit.set_defaults(func=zig_region_command)
+    for action, help_text, default_out in (
+        ("inspect", "capture Zig source, compiler, LLVM, assembly, effects, and graph", "vladder-zig-inspect"),
+        ("isolate", "emit the bounded Zig proof unit", "vladder-zig-isolation"),
+        ("synthesize", "regenerate and prove native Zig candidates", "vladder-zig-synthesis"),
+        ("optimize", "prove and physically rank native Zig candidates", "vladder-zig-out"),
+    ):
+        command = zig_sub.add_parser(action, help=help_text)
+        command.add_argument("--source", required=True); command.add_argument("--function", required=True)
+        command.add_argument("--build-root"); command.add_argument("--optimize-mode", choices=("Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"), default="ReleaseFast")
+        command.add_argument("--target", default="native"); command.add_argument("--proof-bound", type=int, default=32); command.add_argument("--out-dir", default=default_out)
+        if action == "optimize":
+            command.add_argument("--n", type=int, default=1 << 20); command.add_argument("--inner", type=int, default=128)
+            command.add_argument("--processes", type=int, default=8); command.add_argument("--repetitions", type=int, default=2)
+            command.add_argument("--cpu", type=int); command.add_argument("--min-speedup-pct", type=float, default=1.0)
+        command.set_defaults(func=zig_region_command)
+    julia = sub.add_parser("julia", help="capture typed/LLVM artifacts, prove, and optimize one Julia specialization")
+    julia_sub = julia.add_subparsers(dest="julia_command", required=True)
+    julia_sub.add_parser("support", help="show bounded Julia support").set_defaults(func=julia_region_command)
+    julia_audit = julia_sub.add_parser("audit", help="inspect a manifest of Julia specializations")
+    julia_audit.add_argument("--manifest", required=True); julia_audit.add_argument("--out-dir", default="vladder-julia-audit"); julia_audit.set_defaults(func=julia_region_command)
+    for action, help_text, default_out in (
+        ("inspect", "capture project, method, lowered/typed IR, LLVM, native code, effects, and graph", "vladder-julia-inspect"),
+        ("isolate", "emit the bounded Julia specialization proof unit", "vladder-julia-isolation"),
+        ("synthesize", "regenerate and prove native Julia candidates", "vladder-julia-synthesis"),
+        ("optimize", "prove and physically rank warmed Julia candidates", "vladder-julia-out"),
+    ):
+        command = julia_sub.add_parser(action, help=help_text)
+        command.add_argument("--project", required=True); command.add_argument("--source", required=True)
+        command.add_argument("--module", required=True); command.add_argument("--function", required=True)
+        command.add_argument("--signature", required=True, help="concrete tuple members, e.g. Vector{UInt8},UInt8")
+        command.add_argument("--cpu-target", default="native"); command.add_argument("--proof-bound", type=int, default=32); command.add_argument("--out-dir", default=default_out)
+        if action == "optimize":
+            command.add_argument("--n", type=int, default=1 << 20); command.add_argument("--inner", type=int, default=128)
+            command.add_argument("--processes", type=int, default=8); command.add_argument("--repetitions", type=int, default=2)
+            command.add_argument("--cpu", type=int); command.add_argument("--min-speedup-pct", type=float, default=1.0)
+        command.set_defaults(func=julia_region_command)
     verify_application = sub.add_parser("verify-application", help="verify that an applied source rewrite is the proved generated candidate")
     verify_application.add_argument("--report", required=True, help="perf.json from the promoting optimization run")
     verify_application.add_argument("--source", required=True, help="source file containing the applied replacement")

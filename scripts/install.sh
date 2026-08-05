@@ -7,6 +7,7 @@ SKILL_DIR="${CODEX_HOME:-${HOME}/.codex}/skills"
 PACKAGE_SOURCE="${ROOT_DIR}"
 INSTALL_SYSTEM=1
 INSTALL_ALIVE2=1
+INSTALL_LANGUAGE_TOOLCHAINS=1
 DRY_RUN=0
 ALIVE2_COMMIT="c0f5434f402ad91714ee0952f686cd0f524920ad"
 
@@ -17,6 +18,7 @@ usage() {
   printf '%s\n' "  --package PATH             source tree, sdist, or wheel to install"
   printf '%s\n' "  --no-system-packages       reuse existing system tools"
   printf '%s\n' "  --without-alive2           do not build Alive2 when alive-tv is absent"
+  printf '%s\n' "  --without-language-tools   do not install pinned Zig and Julia toolchains when absent"
   printf '%s\n' "  --dry-run                  print planned commands without executing"
 }
 
@@ -27,6 +29,7 @@ while (($#)); do
     --package) PACKAGE_SOURCE="$2"; shift 2 ;;
     --no-system-packages) INSTALL_SYSTEM=0; shift ;;
     --without-alive2) INSTALL_ALIVE2=0; shift ;;
+    --without-language-tools) INSTALL_LANGUAGE_TOOLCHAINS=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
@@ -53,13 +56,19 @@ if ((INSTALL_SYSTEM)); then
     run "${SUDO[@]}" apt-get install -y \
       build-essential ca-certificates cmake curl git ninja-build pkg-config \
       python3 python3-pip python3-venv clang-20 llvm-20 llvm-20-dev llvm-20-tools \
-      lld-20 z3 libz3-dev linux-tools-common binutils glslang-tools spirv-tools
+      lld-20 z3 libz3-dev linux-tools-common binutils glslang-tools spirv-tools \
+      rustc cargo rustfmt
   else
     printf '%s\n' "No apt-get found; validating an existing toolchain instead."
   fi
 fi
 
-run mkdir -p "${PREFIX}/bin" "${PREFIX}/src" "${PREFIX}/build"
+run mkdir -p "${PREFIX}/bin" "${PREFIX}/src" "${PREFIX}/build" "${PREFIX}/toolchains"
+
+if ((INSTALL_LANGUAGE_TOOLCHAINS)); then
+  run "${ROOT_DIR}/scripts/bootstrap_language_toolchains.sh" --prefix "${PREFIX}/toolchains"
+fi
+
 run python3 -m venv "${PREFIX}/venv"
 run "${PREFIX}/venv/bin/python" -m pip install --upgrade pip setuptools wheel
 run "${PREFIX}/venv/bin/python" -m pip install "${PACKAGE_SOURCE}"

@@ -46,6 +46,11 @@ def doctor_report(strict: bool = False) -> dict[str, Any]:
         DependencyStatus("spirv-val", False, bool(shutil.which("spirv-val")), shutil.which("spirv-val"), _command_version(shutil.which("spirv-val"))),
         DependencyStatus("spirv-opt", False, bool(shutil.which("spirv-opt")), shutil.which("spirv-opt"), _command_version(shutil.which("spirv-opt"))),
         DependencyStatus("nvcc", False, bool(shutil.which("nvcc")), shutil.which("nvcc"), _command_version(shutil.which("nvcc"))),
+        DependencyStatus("rustc", False, bool(shutil.which("rustc")), shutil.which("rustc"), _command_version(shutil.which("rustc"))),
+        DependencyStatus("cargo", False, bool(shutil.which("cargo")), shutil.which("cargo"), _command_version(shutil.which("cargo"))),
+        DependencyStatus("rustfmt", False, bool(shutil.which("rustfmt")), shutil.which("rustfmt"), _command_version(shutil.which("rustfmt"))),
+        DependencyStatus("zig", False, bool(shutil.which("zig")), shutil.which("zig"), _command_version(shutil.which("zig"), ("version",))),
+        DependencyStatus("julia", False, bool(shutil.which("julia")), shutil.which("julia"), _command_version(shutil.which("julia"))),
     ]
     python_dependencies = []
     for distribution in ("PyYAML",):

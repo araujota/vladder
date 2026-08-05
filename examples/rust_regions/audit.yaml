@@ -1,0 +1,15 @@
+regions:
+  - id: supported-count
+    manifest_path: byte_count/Cargo.toml
+    source: byte_count/src/lib.rs
+    function: count_equal
+    target_kind: lib
+    profile: release
+    proof_bound: 8
+  - id: owning-boundary
+    manifest_path: byte_count/Cargo.toml
+    source: byte_count/src/lib.rs
+    function: owning_copy
+    target_kind: lib
+    profile: release
+    proof_bound: 8

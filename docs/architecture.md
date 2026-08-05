@@ -20,9 +20,58 @@ loop, operator, lifetime, LLVM, Alive2, Z3, or hardware-specific search layers.
 
 ## Optimization Boundary
 
-vLadder operates above LLVM. It extracts bounded C/C++ regions into semantic and physical
+vLadder operates above LLVM. It extracts bounded C/C++/Rust/Zig/Julia regions into semantic and physical
 information-flow representations, searches a finite implementation grammar, regenerates source,
 and delegates instruction selection and scheduling to an unmodified compiler.
+
+## Language Adapter Plane (rc9)
+
+`LanguageAdapter` captures build identity, resolves one source region, emits a language semantic
+IR, classifies effects, lowers to the shared `SemanticFlowGraph`, regenerates native source, and
+binds proof and benchmark evidence. The graph vocabulary is language-neutral. C, C++, Rust, Zig,
+and Julia all
+use common value, state, control, materialization, transfer, ownership, and lifetime concepts;
+language-specific facts belong in provenance, contracts, and proof obligations unless they express
+a genuinely new semantic concept.
+
+The first Rust adapter captures Cargo plus rustc MIR/LLVM/assembly and closes an exact borrowed-byte
+reduction. MIR establishes the source operation and generated schedule, Z3 proves the schedule and
+bounded content obligations, and Alive2 checks local fixed-bound LLVM refinement. Unsafe, owning,
+destruction, panic-recovery, async, concurrent, FFI, and external protocols remain explicit
+boundaries rather than being silently flattened into LLVM behavior.
+
+The Zig adapter follows the same ahead-of-time evidence chain with native safety-mode capture and
+explicit allocator, error, defer, volatile, atomic, assembly, and FFI boundaries. The Julia adapter
+binds evidence to one concrete method specialization, active project/manifest, world counter,
+inferred type/effects/allocation state, and JIT target. Generic functions and later worlds are not
+covered by one specialization proof.
+
+Both regenerate native source and parse the realized schedule back from source. A shared
+parametric Z3 theorem proves index coverage and exact reduction; a source-derived canonical LLVM
+unit validates the common lowerer with Alive2. Native Zig and Julia LLVM remain compiler
+provenance rather than being relabeled as direct frontend proofs.
+
+## Executable Deep Grammar Plane
+
+`deep-v2` separates a semantic operation from its physical realization. The initial operation is
+an exact byte predicate plus reduction; realizations include scalar lanes, packed words, SIMD
+masks/popcount, bounded byte-lane accumulation, and guarded dispatch. `LaneMap`, `Pack`,
+`MaskExtract`, `PopulationCount`, `HorizontalReduce`, `Tail`, `Fuse`, and `ComplexityBound` are
+shared graph nodes. C object bounds and Rust borrow/unsafe/panic facts attach to this graph as
+adapter contracts.
+
+Search retains alternative acyclic derivations until saturation or an explicit budget. Each rule
+records preconditions, physical parameters, complexity deltas, proof obligations, and cost
+signals. Native emitters reconstruct C or Rust from the selected terminal graph. Z3 proves lane,
+bit-vector, reduction, no-wrap, traversal, tail, and dispatch obligations; Alive2 validates
+compatible vector cores; differential execution checks native memory behavior; hardware ranking
+uses randomized same-executable pairs. Normalized assembly identities prevent compiler-equivalent
+forms from being counted as independent candidates.
+
+The expert grammar audit is a meta-validation layer. A known fast source form must cross
+representation, derivation, lowering, proof, and performance stages. A failure at an earlier stage
+invalidates a broad negative optimization claim. Only a saturated finite region with every unique
+terminal closed may be called `bounded_optimal_local`.
 
 The core hierarchy is:
 
@@ -59,7 +108,7 @@ backend emits a candidate that passes verification and physical benchmarking.
 ```text
 source + contract + target + workload
                   |
-      Clang IR and source extraction
+   source frontend + semantic IR extraction
                   |
        normalized information flow
                   |

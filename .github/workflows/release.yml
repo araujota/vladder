@@ -24,6 +24,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y binutils clang llvm z3
+      - name: Install Zig and Julia adapter toolchains
+        run: |
+          scripts/bootstrap_language_toolchains.sh --prefix "${RUNNER_TEMP}/vladder-language-tools"
+          echo "${RUNNER_TEMP}/vladder-language-tools/bin" >> "${GITHUB_PATH}"
       - run: python -m pip install --upgrade pip '.[dev]'
       - name: Validate tag identity
         id: identity
@@ -32,7 +36,11 @@ jobs:
           test "${GITHUB_REF_NAME}" = "v${version}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
       - run: python -m pytest -q
-      - run: vladder skill validate
+      - name: Validate skill and executable grammar
+        run: |
+          vladder skill validate
+          vladder lower validate
+          vladder deep coverage
       - name: Validate lifetime workflow
         run: |
           vladder lifetime evaluate-corpus \

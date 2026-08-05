@@ -27,8 +27,14 @@ class ReleasePackagingTests(unittest.TestCase):
                 for path in (
                     "vladder/grammars/vladder-v1/capabilities.json",
                     "vladder/grammars/lifetime-v1/grammar.json",
+                    "vladder/grammars/deep-v2/grammar.json",
                     "vladder/skills/vladder/SKILL.md",
                     "vladder/skills/vladder/references/lifetime.md",
+                    "vladder/skills/vladder/references/deep-grammar.md",
+                    "vladder/skills/vladder/references/zig-regions.md",
+                    "vladder/skills/vladder/references/julia-regions.md",
+                    "vladder/zig_adapter.py",
+                    "vladder/julia_adapter.py",
                 ):
                     archive.writestr(path, "fixture")
             (root / "build" / "temporary").mkdir(parents=True)
@@ -70,6 +76,7 @@ class ReleasePackagingTests(unittest.TestCase):
         self.assertIn(source_digest, formula)
         self.assertIn('depends_on "cmake" => :build', formula)
         self.assertIn('depends_on "llvm@20"', formula)
+        self.assertIn('depends_on "rust"', formula)
         self.assertIn('depends_on "glslang"', formula)
         self.assertIn('depends_on "spirv-tools"', formula)
         with tempfile.TemporaryDirectory() as directory:

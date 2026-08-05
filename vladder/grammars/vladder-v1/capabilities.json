@@ -4,7 +4,8 @@
     "C99",
     "C11",
     "C17",
-    "restricted C++20"
+    "restricted C++20",
+    "bounded Rust 2021"
   ],
   "contract_dimensions": [
     "integer overflow",
@@ -20,6 +21,23 @@
     "realization lifetime and placement"
   ],
   "families": [
+    {
+      "id": "deep-information-realization",
+      "title": "Executable lane, word, SIMD, and reduction realizations",
+      "status": "operational",
+      "concerns": ["scalar-to-word and SIMD decomposition", "lane packing and masks", "bit-vector identities", "horizontal reduction", "alignment and tails", "load traversal", "constant synthesis", "fusion", "bounded algorithmic representation", "ISA dispatch"],
+      "rules": ["scalar-to-word-swar", "scalar-to-simd-mask-popcount", "scalar-to-simd-byte-accumulate", "runtime-isa-dispatch"],
+      "contract_facts": ["exact observable contract", "bounded contiguous byte input", "integer overflow policy", "target ISA and fallback", "no external intermediate observer"],
+      "proof_strategies": ["shared realization graph", "Z3 lane and bit-vector obligations", "Alive2 compatible vector-core refinement", "native differential execution"],
+      "cost_signals": ["loads", "operations per byte", "reduction depth", "register pressure", "tail overhead", "dispatch overhead", "physical latency"],
+      "lowerer": "vladder.lowerers:DeepInformationRealizationLowerer",
+      "source_routes": {
+        "scalar-to-word-swar": "vladder.deep_lowering:emit_deep_candidate",
+        "scalar-to-simd-mask-popcount": "vladder.deep_lowering:emit_deep_candidate",
+        "scalar-to-simd-byte-accumulate": "vladder.deep_lowering:emit_deep_candidate",
+        "runtime-isa-dispatch": "vladder.deep_lowering:emit_deep_candidate"
+      }
+    },
     {
       "id": "expression-algebra",
       "title": "Expression and bit-vector algebra",
