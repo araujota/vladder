@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from typing import Any
 
 from .candidates import Candidate, detect_affine, detect_clamp, detect_div_power2
@@ -106,10 +107,14 @@ def _prompt(fn_source: str, graph: FlowGraph, semantic_smt: str, feedback: str) 
 
 def _chat(base_url: str, key: str, model: str, prompt: str) -> str:
     endpoint = base_url.rstrip("/") + "/chat/completions"
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"}):
+        raise ValueError("LLM endpoint must use HTTPS or loopback HTTP")
     payload = json.dumps({"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0, "response_format": {"type": "json_object"}}).encode()
     request = urllib.request.Request(endpoint, data=payload, headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"}, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        # The endpoint scheme is constrained above.
+        with urllib.request.urlopen(request, timeout=120) as response:  # nosec B310
             body = json.loads(response.read().decode("utf-8"))
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="replace")[:1000]

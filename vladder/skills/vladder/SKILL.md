@@ -5,7 +5,7 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc14`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc15`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v6`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v2`, and
 `bounded-julia-regions-v2` adapters and `heterogeneous-execution-v1`. Use vLadder as a proof-gated workflow: semantic
@@ -28,6 +28,12 @@ grammar from an unmodeled ABI and records aggregate projections, tagged exits, l
 relations, and no-growth ownership projections. Treat `closed_at_compiled_abi` as representation
 closure, not proof of a future candidate or an owning wrapper.
 
+The optional learned search prior is subordinate to this workflow. Read
+[learned-prior.md](references/learned-prior.md) before using `vladder prior`. It ranks structured,
+already enumerated grammar actions; it never supplies legality, equivalence, authoritative runtime,
+or promotion evidence. Preserve the baseline, exploration reserve, abstention fallback, and every
+ordinary proof and physical gate.
+
 ## Non-Negotiable Rules
 
 1. Profile before adding a grammar family or changing code. Optimize a measured load-bearing
@@ -48,18 +54,32 @@ closure, not proof of a future candidate or an owning wrapper.
 10. A baseline win is bounded by grammar coverage. Before saying no faster equivalent was found,
     audit known expert forms through representation, derivation, lowering, proof, and performance.
     A pre-performance failure is a grammar/tooling gap, not a negative hardware result.
+11. Optional contribution consent is never inferred. Before offering or performing canonical
+    training-data contribution or an agent-experience review, run `vladder consent show`. For each
+    `unknown` scope, explicitly ask the user to opt in or opt out and persist the exact answer with
+    `vladder consent set ... --confirmed-user-choice`. Honor the two scopes independently.
+12. A saved `opt_out` means do not upload and do not ask again across turns, sessions, or package
+    updates unless the user explicitly requests reconsideration. A saved `opt_in` permits only the
+    optional terminal workflow; it does not waive payload preview, record-level consent,
+    `--confirm-upload`, schema validation, or the prohibition on source/raw-artifact upload.
 
 ## Workflow
 
 ### Canonical Agent Entry
 
-Read [agent-workflow.md](references/agent-workflow.md), then begin with one manifest rather than
+Read [agent-workflow.md](references/agent-workflow.md) and
+[release-evidence.md](references/release-evidence.md), then begin with one manifest rather than
 assembling subcommands from memory:
 
 ```bash
+vladder consent show
 vladder workflow init --kind cpp --out vladder-workflow.yaml
 vladder workflow run --manifest vladder-workflow.yaml --out-dir vladder-workflow-out
 ```
+
+Before the first canonical workflow run, resolve every `unknown` contribution scope by asking the
+user for an explicit opt-in or opt-out. This is a required agent clarification, not a suggestion;
+the optimization itself remains available regardless of either answer.
 
 Read `promotion-summary.json` first. Answer, in order:
 
@@ -71,6 +91,44 @@ Read `promotion-summary.json` first. Answer, in order:
 
 Follow `next_action`; inspect only the five decisive artifacts before expanding into full lineage.
 Do not confuse `workflow_completed` with any later evidence state.
+
+For search-prior dataset and shadow-evaluation work, use its separate one-manifest route:
+
+```bash
+vladder prior init --out prior.yaml
+vladder prior run --manifest prior.yaml --out-dir prior-out
+```
+
+Read `prior-summary.json`. A valid synthetic pilot and a trained model do not imply production
+eligibility or that any live candidate was pruned.
+
+The operational state order is strict:
+
+1. `meaningful_semantic_coverage`
+2. `candidate_generated`
+3. `candidate_proved`
+4. `physically_benchmarked`
+5. `application_integrated` and `production_promoted`
+
+Stop at the first false state and report its named adapter or evidence requirement. Successful
+command execution is not a substitute for any state.
+
+Validate stable public artifacts before interpreting them:
+
+```bash
+vladder schema list
+vladder schema validate --kind promotion-summary --artifact promotion-summary.json
+```
+
+vLadder is local-only by default. Read [consent.md](references/consent.md). Do not upload
+source, compilation databases, IR, proofs, traces,
+benchmarks, patches, prompts, or raw artifacts. Optional agent reviews and derived-feature training
+bundles use `vladder review|training template|validate|submit`. Submission uses the packaged HTTPS
+release endpoint and requires durable scope opt-in, explicit user approval, `--confirm-upload`, and
+record-level consent; no shared token is required. `--validate-only` is also a network action and
+requires the same durable opt-in, though it tests remote acceptance without storage. Training
+bundles are a strict source-free schema, not an upload path for local prior stores or arbitrary
+artifacts. Read [release-evidence.md](references/release-evidence.md) and `docs/privacy.md`.
 
 ### 1. Establish Environment And Attribution
 
@@ -315,13 +373,24 @@ Before reporting composed effects, use `vladder benchmark compose`; parent/child
 overlapping regions cannot be compounded without an explicit interaction measurement.
 
 For GPU compute and device-resident flow, read [gpu-workflow.md](references/gpu-workflow.md) and
-start with `vladder gpu support`. The `gpu capture|synthesize|verify|rank` workflow separately
-models kernel semantics/resources, queue synchronization, DMA topology, and presentation
-ownership. `spirv-val`, static occupancy, launch-index proof, protocol proof, and counter imports
-are supporting evidence, not physical equivalence. Promotion requires an exact-output runner,
-matching device identity, clean device timestamps, and a confidence interval excluding the
-declared minimum effect. Driver scheduling, firmware, undeclared device loss, and external actors
-remain explicit claim boundaries.
+start with `vladder gpu support`, `vladder gpu probe`, and `vladder gpu topology`. Use
+`gpu cuda-synthesize|cuda-optimize` for a recognized bounded CUDA pointwise source region; use
+`gpu capture|synthesize|verify|rank` for general SPIR-V/PTX capture and manifest-driven external
+runners. The CUDA optimizer compiles candidates for the probed architecture, inspects JIT resource
+usage, proves schedule coverage/injectivity and expression identity, runs exact output hashes, and
+uses randomized clean CUDA-event timing. It emits source, patch, and launch plan only after physical
+promotion. Apply all three as one candidate.
+
+Model queue synchronization, DMA topology, and presentation ownership independently. Generate
+live-bound templates with `gpu queue-template|dma-template|presentation-template`, then run
+`gpu protocol-verify`. A topology probe is capability evidence, not proof that registration,
+transfer, page flip, or scanout occurred. Direct GPUDirect requires both CUDA export and RDMA NIC
+import capability; DMA templates fail until application ordering mechanisms are supplied;
+presentation templates fail without an active connector. `spirv-val`, static occupancy,
+launch-index proof, protocol proof, and Nsight counters are supporting evidence, not physical
+equivalence. Promotion requires exact outputs, matching device identity, clean device timestamps,
+and a confidence interval excluding the declared minimum effect. Driver scheduling, firmware,
+undeclared device loss, and external actors remain explicit claim boundaries.
 
 ### 7. Rewrite Production Source
 

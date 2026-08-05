@@ -22,3 +22,21 @@ configurations SHALL not be combined.
 #### Scenario: Device UUID mismatch
 - **WHEN** baseline and candidate device identities differ
 - **THEN** ranking SHALL fail closed
+
+### Requirement: Native CUDA physical oracle
+For bounded CUDA artifacts, vLadder SHALL support fresh-process execution with deterministic input,
+exact output identity, target-device identity, launch geometry, and clean device-event timing.
+
+#### Scenario: Generated CUDA candidate wins
+- **WHEN** a generated candidate passes its bounded proof, matches the baseline output hash on the
+  same device, and its randomized clean-timing confidence interval excludes the minimum effect
+- **THEN** vLadder MAY emit the selected CUDA source and launch plan together
+
+### Requirement: Counter/ranking separation
+Hardware counter collection SHALL retain profiler replay and serialization evidence and SHALL not
+replace clean physical timing.
+
+#### Scenario: Nsight Compute replays a kernel
+- **WHEN** Nsight Compute uses multiple replay passes and reports a profiler duration
+- **THEN** the counters MAY explain a candidate but the profiler duration SHALL be excluded from
+  effect-size and promotion calculations

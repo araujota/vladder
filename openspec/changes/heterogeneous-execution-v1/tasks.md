@@ -34,3 +34,17 @@
 - [x] 6.2 Add fixtures, unit tests, CLI tests, and end-to-end simulated evidence tests.
 - [x] 6.3 Update README, architecture, bundled skill, examples, and release metadata.
 - [x] 6.4 Run full tests, strict OpenSpec, package build/install, and strict doctor.
+
+## 7. Native Runtime Closure
+
+- [x] 7.1 Add a CUDA-driver runner with deterministic inputs, exact output hashes, clean device
+  timestamps, and JIT-resolved kernel resources.
+- [x] 7.2 Add bounded CUDA pointwise extraction, source regeneration, exhaustive schedule search,
+  Z3 coverage/injectivity proof, physical promotion, patch, and launch-plan emission.
+- [x] 7.3 Add automatic Nsight Compute collection while excluding replay timing from ranking.
+- [x] 7.4 Probe and bind CUDA/Vulkan UUIDs, queue families, PCIe/IOMMU/NIC/RDMA topology, and DRM
+  connectors; reject unsupported direct DMA and inactive presentation paths.
+- [x] 7.5 Strengthen queue stage/access checks, repeated presentation lifecycle verification, and
+  DMA registration/completion/publication/reuse obligations.
+- [x] 7.6 Exercise both no-win and promoted CUDA searches on the local RTX target and retain exact
+  proof, clean timing, counter, replacement, and launch-plan artifacts.

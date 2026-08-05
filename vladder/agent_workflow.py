@@ -10,6 +10,7 @@ from typing import Any
 import yaml
 
 from . import __version__
+from .consent import AGENT_EXPERIENCE_REVIEW, CANONICAL_TRAINING_DATA, contribution_stage
 from .cpp_adapters import generate_cpp_adapter_bundle
 from .automatic import inspect_automatic_region
 from .cpp_regions import inspect_cpp_region, isolate_cpp_region, optimize_cpp_region
@@ -126,6 +127,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
         state = json.loads(state_path.read_text())
         if state.get("workflow_key") == key:
             summary = json.loads(summary_path.read_text())
+            summary["optional_contributions"] = _optional_contributions()
             summary["evidence_origin"] = "revalidated"
             summary["newly_computed"] = False
             summary["next_action"] = (
@@ -508,6 +510,15 @@ def build_promotion_summary(
         "artifact_lineage": lineage,
         "manifest_identity": _hash_json(manifest) if manifest else None,
         "claim_boundary": "promotion requires every state through application integration; local proof never implies external protocol equivalence",
+        "optional_contributions": _optional_contributions(),
+    }
+
+
+def _optional_contributions() -> dict[str, Any]:
+    return {
+        "canonical_training_data": contribution_stage(CANONICAL_TRAINING_DATA),
+        "agent_experience_review": contribution_stage(AGENT_EXPERIENCE_REVIEW),
+        "authority": "optional terminal stages only; neither stage uploads automatically",
     }
 
 

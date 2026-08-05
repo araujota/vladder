@@ -29,9 +29,14 @@ PTX lowering when `nvcc` is available.
 A hardware manifest supplies the exact device identity and finite resource model. Static search
 enumerates workgroup geometry and modeled memory/schedule alternatives, estimates occupancy,
 register and shared-memory limits, physical transactions, coalescing, and instruction work, and
-classifies each result as launch-only, source-rewritable, or adapter-required. Only unchanged
-lane-independent launch geometry and literal GLSL workgroup rewrites currently have executable
-generic realization; code-shape changes remain explicit adapter work.
+classifies each result as launch-only, source-rewritable, or adapter-required. The native CUDA
+probe obtains the device UUID and resource limits, measures a copy-flow bandwidth bound, and loads
+compiled PTX through the driver to observe JIT-resolved registers, local/shared memory, PTX/binary
+version, and thread limits. The executable `cuda-pointwise-schedule-v1` lowerer recognizes one
+lane-independent guarded assignment and emits bounded thread-block and contiguous per-thread
+schedules. Z3 proves exact index coverage/injectivity and normalized source identity preserves the
+per-element expression. Literal GLSL workgroup rewrites remain executable; other code-shape and
+opaque PTX/SPIR-V changes remain explicit adapter work.
 
 Host/device behavior is represented by separate but composable queue, DMA/topology, and
 presentation protocol graphs. Z3 checks declared execution dependencies, visibility, timeline
@@ -39,10 +44,21 @@ ordering, ownership transfer, DMA registration/completion/reuse, and acquire/pre
 lifecycle obligations. Those bounded models do not prove driver, firmware, NIC, display-engine,
 or undeclared failure behavior.
 
+The topology plane joins CUDA and Vulkan devices by UUID and captures Vulkan queue families,
+timeline/synchronization2 support, PCIe capacity and current link state, IOMMU groups, NIC/RDMA
+capabilities, and DRM connectors. Live-bound queue templates reject unsupported queue operations.
+Direct GPU/NIC routes are admitted only when both peer-DMA endpoints are observed. DMA templates
+remain incomplete until application registration and completion mechanisms are supplied, and
+presentation templates fail closed when no connector is active. This prevents a capability probe
+from being mislabeled as runtime protocol proof.
+
 Physical ranking randomizes baseline/candidate order and uses complete output hashes plus clean
-device timestamps. CUPTI, ROCprofiler, and Vulkan/runner counters normalize into shared categories
-for attribution. Replayed or serialized profiler timing, simulated runners, mismatched device
-identity, incomplete observables, or failed protocol obligations cannot promote a candidate.
+device timestamps. The built-in CUDA driver runner uses fresh native processes, deterministic input,
+FNV-1a output identity, and CUDA events. Nsight Compute collection records replay/serialization and
+normalizes occupancy, memory-sector, cache, instruction, and stall counters for attribution only.
+CUPTI, ROCprofiler, and Vulkan/runner counters use the same shared categories. Replayed or serialized
+profiler timing, simulated runners, mismatched device identity, incomplete observables, or failed
+protocol obligations cannot promote a candidate.
 
 ## Optimization Boundary
 
@@ -228,3 +244,9 @@ unbounded low-value search space.
 
 The generalized release excludes compiler sources, model files, external application trees, and
 benchmark outputs. Specialist integrations consume externally pinned dependencies.
+
+Optional contribution is outside the optimization authority chain. Agent and prior summaries
+report two independent terminal stages, canonical training data and agent experience review. A
+user-level consent ledger outside the installation persists explicit opt-in or opt-out across
+sessions and updates; no workflow automatically executes either stage. The client still validates
+and confirms the exact source-free record before the Convex moderation service can receive it.

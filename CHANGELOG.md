@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.0.0rc15 - 2026-08-05
+
+- Add Prior v0 immutable experience records, leakage-safe root/project/language/hardware/temporal
+  splits, a language-hidden graph/action/hardware/workload ranking ensemble, calibrated abstention,
+  baseline-safe exploration, and counterfactual shadow evaluation. Controlled Grade C fixtures do
+  not satisfy the production physical-evidence gate. Add open typed graph/action vocabulary,
+  recanonicalizable semantic records, canonicalizer-gated inference, and reference-based templates
+  so future grammar families do not require hand-authored hashes or a core dataset-schema fork.
+- Close the first executable CUDA path with native device probing, JIT resource inspection,
+  bounded pointwise schedule regeneration and Z3 proof, exact-output CUDA-event ranking, Nsight
+  attribution, and promotion-gated source/patch/launch-plan emission.
+- Add live CUDA/Vulkan UUID binding, Vulkan queue-family and synchronization capability capture,
+  PCIe/IOMMU/NIC/RDMA topology discovery, DRM connector discovery, and fail-closed queue, DMA, and
+  presentation protocol templates.
+- Add stable schemas for semantic graphs, promotion summaries, paired benchmarks, and canonical
+  agent reviews with CLI validation and an additive compatibility policy.
+- Add an explicit local-only privacy contract and a dual-consent, HTTPS-only optional review
+  submission path that rejects source and raw artifact inclusion.
+- Add C, C++, and Rust release demonstrations, seeded accepted/rejected Z3 transformations, a
+  deterministic requirement-level release gate, and clean isolated-installer CI.
+- Add grammar, proof-boundary, benchmark-reproducibility, contribution, roadmap, and NeuralFusion
+  case-study documentation plus a concise installed-skill evidence decision tree.
+- Add Ruff, Bandit, SonarCloud, and Snyk CI configuration; hosted scanners remain named external
+  gates until repository credentials and service projects are configured.
+- Add a static-first Next.js release site and an opt-in Convex review backend with indexed approved
+  review retrieval. Add strict source-free training-bundle contributions, credential-free public
+  moderation intake, idempotency, salted rate controls, validate-only checks, and packaged release
+  endpoints. Local optimization does not depend on either service.
+- Add an atomic owner-only consent ledger with independent canonical-training and agent-review
+  decisions. Unknown and opted-out scopes fail before network access, opt-out suppresses repeated
+  agent prompts across sessions and upgrades, and workflow summaries expose contribution only as
+  an optional non-executing terminal stage. Exact-record consent and `--confirm-upload` remain
+  required after durable opt-in.
+
 ## 1.0.0rc14 - 2026-08-05
 
 - Add the shared `heterogeneous-execution-v1` model for SPIR-V, PTX, and CUDA-lowered kernel

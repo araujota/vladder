@@ -51,6 +51,7 @@ class GPUArchitecture:
     memory_bandwidth_bytes_per_second: float
     clock_hz: float
     issue_width: float = 1.0
+    max_grid_dim_x: int = 2147483647
     source: str = "declared"
     manifest_hash: str = ""
 
@@ -68,6 +69,7 @@ class GPUArchitecture:
             "shared_memory_per_block": self.shared_memory_per_block,
             "global_transaction_bytes": self.global_transaction_bytes,
             "cache_line_bytes": self.cache_line_bytes,
+            "max_grid_dim_x": self.max_grid_dim_x,
         }
         invalid = [name for name, value in positive.items() if value <= 0]
         if invalid:
@@ -124,6 +126,7 @@ class GPUArchitecture:
             memory_bandwidth_bytes_per_second=float(raw["memory_bandwidth_bytes_per_second"]),
             clock_hz=float(raw["clock_hz"]),
             issue_width=float(raw.get("issue_width", 1.0)),
+            max_grid_dim_x=int(raw.get("max_grid_dim_x", 2147483647)),
             source=source,
         )
 

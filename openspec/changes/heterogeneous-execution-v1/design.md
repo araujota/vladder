@@ -58,6 +58,24 @@ cache behavior, stalls, synchronization, and throughput. Counter collection reco
 serialization distortion. Promotion uses randomized uninstrumented timing; counters explain and
 filter candidates but cannot alone select a winner.
 
+### 7. Native CUDA closure is deliberately bounded
+
+`cuda-pointwise-schedule-v1` accepts one canonical one-dimensional lane-independent assignment.
+The lowerer emits native CUDA source for thread-block and contiguous per-thread schedules. Z3
+proves mixed-radix index coverage and injectivity, and normalized source identity preserves the
+element expression. A CUDA-driver runner loads the resulting PTX on the target, records JIT
+resources, hashes deterministic output bytes, and times with CUDA events. The selected source and
+launch plan are one realization. Shared-memory algorithms, atomics, synchronization, indirect
+calls, arbitrary control flow, opaque PTX rewrites, and CUDA host protocols remain adapters.
+
+### 8. Capability discovery binds but does not discharge protocols
+
+The live topology probe joins CUDA and Vulkan UUIDs and records queue families, synchronization
+features, PCIe/IOMMU ancestry, NIC/RDMA capabilities, and DRM connectors. It may reject impossible
+plans. It cannot prove that memory registration, queue execution, DMA completion, page flip, or
+scanout occurred. Generated templates therefore preserve missing application mechanisms as failing
+obligations rather than filling them with inferred booleans.
+
 ## Risks
 
 - Static occupancy can reward kernels with more resident warps but worse instruction locality.
@@ -70,5 +88,8 @@ filter candidates but cannot alone select a winner.
 
 Use real SPIR-V compilation/disassembly, checked-in PTX, architecture manifests, intentionally
 valid and invalid protocol fixtures, Z3 counterexamples, resource-limit tests, counter-replay
-distortion tests, deterministic simulated runners, and an optional local Vulkan timestamp runner.
-No test may promote a candidate without exact observable parity and clean timing evidence.
+distortion tests, and deterministic simulated runners. On a CUDA-capable release host, also probe
+the live CUDA/Vulkan/PCIe/NIC/DRM topology, compile native CUDA candidates, inspect JIT resources,
+run exact-output clean-event ranking, collect Nsight counters separately, and exercise both a
+no-win search and a promoted source-plus-launch realization. No test may promote a candidate
+without exact observable parity and clean timing evidence.

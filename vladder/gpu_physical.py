@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 
 from .language_adapter import canonical_hash
+from .cuda_runtime import run_cuda_artifact
 from .statistics_v3 import empirical_quantile
 
 
@@ -19,10 +20,18 @@ GPU_RANKING_SCHEMA_VERSION = "gpu-physical-ranking-v1"
 
 
 _COUNTER_RULES: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    (("occupancy_limit_registers",), "register_occupancy_limit", "higher"),
+    (("occupancy_limit_shared_mem",), "shared_memory_occupancy_limit", "higher"),
+    (("occupancy_limit_warps",), "warp_occupancy_limit", "higher"),
+    (("registers_per_thread_allocated",), "allocated_registers_per_thread", "lower"),
+    (("registers_per_thread",), "registers_per_thread", "lower"),
+    (("shared_mem_per_block",), "shared_bytes_per_block", "lower"),
+    (("stack_size",), "stack_bytes", "lower"),
+    (("waves_per_multiprocessor",), "waves_per_multiprocessor", "context"),
     (("occupancy", "active_warps", "waves_per"), "occupancy", "higher"),
     (("dram_bytes", "device_memory_bytes", "bytes_read", "bytes_write"), "dram_bytes", "lower"),
-    (("global_load", "read_transactions", "tcc_ea_rdreq"), "global_load_transactions", "lower"),
-    (("global_store", "write_transactions", "tcc_ea_wrreq"), "global_store_transactions", "lower"),
+    (("global_load", "global_op_ld", "read_transactions", "tcc_ea_rdreq"), "global_load_transactions", "lower"),
+    (("global_store", "global_op_st", "write_transactions", "tcc_ea_wrreq"), "global_store_transactions", "lower"),
     (("l2_hit", "lts__t_sector_hit", "tcp_hit"), "l2_hit_rate", "higher"),
     (("l1_hit", "l1tex__t_sector_hit"), "l1_hit_rate", "higher"),
     (("shared_bank", "lds_bank"), "shared_bank_conflicts", "lower"),
@@ -123,8 +132,14 @@ def rank_gpu_candidates(manifest_path: Path, output_directory: Path) -> dict[str
         raise ValueError("GPU ranking manifest must be a mapping")
     runner = raw.get("runner", {})
     command_template = runner.get("command")
-    if not isinstance(command_template, list) or not any("{artifact}" in str(item) for item in command_template):
-        raise ValueError("GPU runner command must be a list containing {artifact}")
+    builtin_runner = str(runner.get("builtin", ""))
+    if builtin_runner not in {"", "cuda-artifact-v1"}:
+        raise ValueError(f"unsupported built-in GPU runner: {builtin_runner}")
+    if not builtin_runner and (
+        not isinstance(command_template, list)
+        or not any("{artifact}" in str(item) for item in command_template)
+    ):
+        raise ValueError("GPU runner requires builtin=cuda-artifact-v1 or a command containing {artifact}")
     baseline = raw.get("baseline")
     candidates = raw.get("candidates", [])
     if not isinstance(baseline, dict) or not candidates:
@@ -146,6 +161,8 @@ def rank_gpu_candidates(manifest_path: Path, output_directory: Path) -> dict[str
 
     def invoke(item: dict[str, Any]) -> dict[str, Any]:
         artifact = _resolve_path(str(item["artifact"]), manifest_path.parent)
+        if builtin_runner == "cuda-artifact-v1":
+            return run_cuda_artifact(artifact)
         command = [
             str(value).replace("{artifact}", str(artifact)).replace("{candidate_id}", str(item.get("id", "candidate")))
             for value in command_template
@@ -243,6 +260,7 @@ def rank_gpu_candidates(manifest_path: Path, output_directory: Path) -> dict[str
         "manifest_hash": canonical_hash(raw),
         "hardware_identity": expected_device,
         "timing_policy": "randomized uninstrumented device timestamp pairs",
+        "runner_backend": builtin_runner or "external-command",
         "declared_evidence_class": declared_evidence_class,
         "physical_evidence_class": physical_evidence_class,
         "counter_policy": "attribution and causal support only; profiler timing is excluded from rank",
@@ -282,7 +300,7 @@ def _compare_counters(baseline: CounterEvidence | None, candidate: CounterEviden
         base, selected = by_category_baseline[category], by_category_candidate[category]
         delta = ((selected.value / base.value) - 1.0) * 100.0 if base.value else None
         favorable = None
-        if delta is not None:
+        if delta is not None and selected.preferred_direction in {"higher", "lower"}:
             favorable = delta > 0 if selected.preferred_direction == "higher" else delta < 0
         comparisons.append({
             "category": category,

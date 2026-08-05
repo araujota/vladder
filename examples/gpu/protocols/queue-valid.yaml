@@ -20,5 +20,7 @@ barriers:
   - src: scale
     dst: consume
     resource: output
+    src_stage: compute
+    dst_stage: compute
     src_access: shader_write
     dst_access: shader_read

@@ -10,6 +10,22 @@ permissions:
   contents: read
 
 jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip '.[dev]'
+      - name: Ruff correctness lint
+        run: ruff check --output-format=github .
+      - name: Bandit medium/high-confidence security scan
+        run: bandit -r vladder scripts -ll -ii -x tests
+      - name: Seeded accepted and rejected transformations
+        run: python scripts/validate_release_seeds.py --out-dir /tmp/vladder-release-seeds
+
   test:
     runs-on: ubuntu-24.04
     strategy:
@@ -46,6 +62,49 @@ jobs:
             --manifest examples/lifetime/lifetime_corpus.yaml \
             --trace examples/lifetime/lifetime_trace.json \
             --out-dir /tmp/vladder-lifetime-evaluation
+      - name: Run release demos
+        if: matrix.python-version == '3.12'
+        run: python scripts/run_release_demos.py --out-dir /tmp/vladder-release-demos
+
+  install-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: One-command isolated install
+        run: |
+          scripts/install.sh --no-system-packages --without-alive2 --without-language-tools \
+            --prefix "${RUNNER_TEMP}/vladder"
+          "${RUNNER_TEMP}/vladder/bin/vladder" --version
+          "${RUNNER_TEMP}/vladder/bin/vladder" schema list
+
+  public-release-gate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            apps/release-site/package-lock.json
+            services/review-backend/package-lock.json
+      - name: Install native proof tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils clang llvm z3
+      - run: python -m pip install --upgrade pip '.[dev]'
+      - run: npm ci --prefix apps/release-site
+      - run: npm ci --prefix services/review-backend
+      - name: Requirement-level release gate
+        run: python scripts/public_release_gate.py --execute --out build/public-release-gate.json
+      - uses: actions/upload-artifact@v5
+        with:
+          name: public-release-gate
+          path: build/public-release-gate.json
 
   distribution:
     runs-on: ubuntu-24.04

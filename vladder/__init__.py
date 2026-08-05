@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc14"
+__version__ = "1.0.0rc15"
 
 from .api import (
     AgentWorkflowRequest,
@@ -38,6 +38,11 @@ from .deep_ir import DeepKernelContract, DeepRealizationGraph
 from .dataflow_grammar import BoundedDataflowGrammar, load_bounded_dataflow_grammar
 from .dataflow_ir import BoundedDataflowContract, BoundedDataflowGraph, build_bounded_dataflow_graph
 from .region_closure import build_region_closure_graph, describe_c_boundary, prove_region_closure
+from .gpu_ir import GPUArchitecture, GPUExecutionPlan, GPUKernelCapture, capture_gpu_kernel
+from .cuda_runtime import probe_cuda_architecture, run_cuda_artifact
+from .cuda_synthesis import optimize_cuda_pointwise, synthesize_cuda_pointwise
+from .device_protocol import DeviceProtocolEvidence, verify_device_protocol
+from .device_topology import probe_device_topology, probe_drm_presentation, probe_vulkan_capabilities
 
 __all__ = [
     "BenchmarkPolicy",
@@ -59,6 +64,10 @@ __all__ = [
     "AutomaticSupport",
     "AdapterRequirement",
     "GrammarRegistry",
+    "GPUArchitecture",
+    "GPUExecutionPlan",
+    "GPUKernelCapture",
+    "DeviceProtocolEvidence",
     "LoweringEngine",
     "LoweringMode",
     "LoweringPlan",
@@ -98,4 +107,13 @@ __all__ = [
     "build_region_closure_graph",
     "describe_c_boundary",
     "prove_region_closure",
+    "capture_gpu_kernel",
+    "probe_cuda_architecture",
+    "run_cuda_artifact",
+    "synthesize_cuda_pointwise",
+    "optimize_cuda_pointwise",
+    "verify_device_protocol",
+    "probe_device_topology",
+    "probe_drm_presentation",
+    "probe_vulkan_capabilities",
 ]

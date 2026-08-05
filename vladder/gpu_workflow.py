@@ -54,13 +54,36 @@ def gpu_support_matrix() -> dict[str, Any]:
             "ptx": "operational",
             "cuda": "operational" if tools["nvcc"] else "nvcc_required_use_ptx_capture",
         },
+        "executable_grammars": {
+            "cuda-pointwise-schedule-v1": "operational" if tools["nvcc"] else "nvcc_required",
+            "glsl-workgroup-source-rewrite": "operational" if tools["glslangValidator"] else "glslang_required",
+            "opaque-ptx-code-shape": "adapter_required",
+            "opaque-spirv-code-shape": "adapter_required",
+        },
+        "cuda_runtime": {
+            "device_probe": "operational" if tools["nvcc"] else "nvcc_required",
+            "jit_resource_inspection": "operational" if tools["nvcc"] else "nvcc_required",
+            "exact_output_runner": "operational" if tools["nvcc"] else "nvcc_required",
+            "clean_event_timing": "operational" if tools["nvcc"] else "nvcc_required",
+            "nsight_counter_collection": "operational" if tools["ncu"] else "ncu_required",
+        },
         "static_models": {
             "occupancy": "operational",
             "registers": "PTX declarations or runner/compiler metadata; unavailable from portable SPIR-V",
             "shared_memory": "operational for declared/compiler-reported bytes",
             "memory_transactions": "operational under architecture-manifest assumptions",
         },
-        "protocol_graphs": {"queue": "operational", "dma": "operational", "presentation": "operational"},
+        "protocol_graphs": {
+            "queue": "operational with live Vulkan queue-family binding",
+            "dma": "operational with live PCIe/IOMMU/NIC/RDMA route binding",
+            "presentation": "operational with live DRM connector binding",
+        },
+        "topology_probe": {
+            "cuda_vulkan_uuid_binding": "operational" if tools["vulkaninfo"] and tools["nvcc"] else "toolchain_required",
+            "pcie_iommu_nic_rdma": "operational on Linux sysfs",
+            "drm_connectors": "operational on Linux sysfs",
+            "runtime_transfer_or_scanout": "application_runner_required",
+        },
         "physical_ranking": "operational with exact-output and clean device-timestamp runner",
         "counter_adapters": {
             "CUPTI/Nsight": "manifest import" if not tools["ncu"] else "tool plus manifest import",
@@ -69,7 +92,10 @@ def gpu_support_matrix() -> dict[str, Any]:
         },
         "local_nvidia_device": device,
         "tools": tools,
-        "claim_boundary": "workflow mechanics and bounded graph proofs are operational; final driver scheduling and physical claims require a concrete device runner",
+        "claim_boundary": (
+            "bounded CUDA pointwise physical ranking has a native runner; arbitrary kernels, final "
+            "driver scheduling, DMA completion, and presentation require concrete application runners"
+        ),
     }
 
 

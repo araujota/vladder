@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/promotion-summary-v1.schema.json",
+  "title": "vLadder Promotion Summary v1",
+  "type": "object",
+  "required": ["schema_version", "workflow_kind", "states", "proof_class", "disposition", "result_classification", "promotion_permitted", "blockers", "next_action", "claim_boundary"],
+  "properties": {
+    "schema_version": {"const": "vladder-promotion-summary-v1"},
+    "workflow_kind": {"enum": ["c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "gpu", "protocol"]},
+    "states": {
+      "type": "object",
+      "required": ["workflow_completed", "meaningful_semantic_coverage", "candidate_generated", "candidate_proved", "physically_benchmarked", "application_integrated", "production_promoted", "production_retained"],
+      "additionalProperties": {"type": "boolean"}
+    },
+    "proof_class": {"type": "string"},
+    "disposition": {"type": "string"},
+    "result_classification": {"type": "string"},
+    "promotion_permitted": {"type": "boolean"},
+    "blockers": {"type": "array", "items": {"type": "string"}},
+    "next_action": {"type": "string"},
+    "claim_boundary": {"type": "string"}
+  },
+  "additionalProperties": true
+}

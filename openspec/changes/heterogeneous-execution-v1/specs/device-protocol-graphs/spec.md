@@ -24,3 +24,22 @@ vLadder SHALL model image acquisition, rendering, presentation, scanout, release
 - **WHEN** a rendered image is scheduled for scanout
 - **THEN** rendering SHALL complete before the flip and the image SHALL not be overwritten until
   release or the declared replacement event
+
+### Requirement: Live capability binding
+Protocol candidates SHALL be bindable to observed device, queue-family, PCIe/IOMMU, NIC/RDMA, and
+DRM connector identities without treating capability discovery as runtime completion evidence.
+
+#### Scenario: Unsupported direct GPU-to-NIC transfer
+- **WHEN** either the selected GPU lacks peer-DMA export or the selected NIC lacks RDMA peer import
+- **THEN** no direct route SHALL be admitted and any generated plan SHALL use a declared staged
+  fallback or fail closed
+
+#### Scenario: Queue family capability mismatch
+- **WHEN** a physically bound operation requires compute, graphics, or transfer behavior absent
+  from its observed queue family
+- **THEN** queue protocol verification SHALL produce a counterexample
+
+#### Scenario: No active display connector
+- **WHEN** the DRM probe observes no connected connector
+- **THEN** a presentation template SHALL remain unproved and SHALL not claim page-flip or scanout
+  execution

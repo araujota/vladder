@@ -30,7 +30,7 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc14`, the C++ closure matrix is
+The package version is `1.0.0rc15`, the C++ closure matrix is
 `bounded-cpp-regions-v6`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
 `bounded-zig-regions-v2`, and `bounded-julia-regions-v2` adapters. The C frontend fully
@@ -93,16 +93,30 @@ queue synchronization, DMA topology, and presentation ownership lower into share
 
 - SPIR-V, PTX, and CUDA-to-PTX capture with operation, resource, provenance, and claim-boundary
   inventories;
+- native CUDA device probing and a bounded pointwise source lowerer that searches thread geometry
+  and contiguous per-thread schedules, proves index coverage/injectivity, checks exact output
+  hashes, and emits source plus launch plan only after clean physical promotion;
 - architecture manifests and static occupancy, register, shared-memory, cache-transaction, and
-  coalescing estimates for pruning;
+  coalescing estimates for pruning, calibrated with CUDA-driver JIT resource inspection and a
+  measured copy-flow bandwidth bound;
 - bounded launch-plan proof and GLSL local-workgroup source regeneration where the source and
   recognized lane-independent semantics permit it;
 - queue/semaphore/barrier, GPU/NIC DMA/topology, and acquire/present/scanout protocol verification;
-- CUPTI, ROCprofiler, and runner-counter normalization with randomized paired physical ranking.
+- live CUDA/Vulkan UUID joining, Vulkan queue-family capability capture, PCIe/IOMMU/NIC/RDMA route
+  discovery, and DRM connector binding with fail-closed protocol templates;
+- built-in Nsight Compute attribution plus CUPTI, ROCprofiler, and runner-counter normalization with
+  randomized paired physical ranking.
 
 Static models never promote. Exact output hashes, matching device identity, clean device
 timestamps, protocol closure, and confidence intervals are required for a physical win.
 Profiler-replayed, serialized, or simulated measurements remain attribution-only.
+
+rc15 makes that optimization stack consumable as a public agent workflow. It adds stable schemas,
+three reproducible frontend demonstrations, seeded accepted/rejected transformations, a
+requirement-level release gate, a canonical review record, an opt-in Convex review service, and a
+static-first release site. Optimization remains local-only by default. Neither source nor raw
+artifacts are accepted by the review schema, and review submission requires durable scope consent,
+explicit CLI confirmation, and record-level consent.
 
 This is not arbitrary-C++ or whole-device equivalence. RAII, allocation, exceptions, general
 concurrency, callbacks, syscalls, drivers, presentation, Vulkan/CUDA host protocols, and external
@@ -201,13 +215,75 @@ information-flow operations, proof obligations, cost signals, and any specialize
 This is distinct from generic source emission: rules without a compatible source backend fail
 closed when source mode is requested.
 
+## Public Release Evidence
+
+Run the complete local release decision from one command:
+
+```bash
+python3 scripts/public_release_gate.py --execute
+```
+
+The report evaluates every requirement independently. Local checks can pass while hosted Sonar,
+Snyk, Convex, or Vercel deployment remains an `external_gate`; these states are never collapsed
+into one optimistic result. Three small C, C++, and Rust demonstrations are documented in
+[`demos/README.md`](demos/README.md). The substantial application study is
+[`docs/case-studies/neuralfusion.md`](docs/case-studies/neuralfusion.md).
+
+Public artifacts are schema-versioned:
+
+```bash
+vladder schema list
+vladder schema validate --kind promotion-summary --artifact promotion-summary.json
+vladder review template --promotion-summary promotion-summary.json \
+  --project PROJECT --revision GIT_SHA --out agent-review.json
+vladder review validate --review agent-review.json
+```
+
+Optional source-free contributions use the shipped release service. They require a durable,
+scope-specific user decision in addition to `--confirm-upload` and
+`privacy.submission_consent=true`; no shared credential is required. Unknown state is not consent:
+
+```bash
+vladder consent show
+vladder consent set --scope canonical-training-data --decision opt-in --confirmed-user-choice
+vladder consent set --scope agent-experience-review --decision opt-out --confirmed-user-choice
+```
+
+Agents must explicitly ask for opt in or opt out before recording an unknown scope. Training and
+review are independent. A saved opt-out suppresses upload and repeated requests across sessions
+and package updates until the user explicitly asks to change it. A saved opt-in still requires
+review of the exact source-free payload and both per-submission gates:
+
+```bash
+vladder review submit --review agent-review.json --confirm-upload
+vladder training template --out training-bundle.json
+vladder training validate --bundle training-bundle.json
+vladder training submit --bundle training-bundle.json --confirm-upload
+```
+
+The consent ledger is stored outside the package under the user's configuration directory (or
+`VLADDER_CONSENT_FILE`) with owner-only permissions. Use `--validate-only` to test the remote path
+without storage; because it sends the exact payload to the service, it requires opt-in too. Reviews
+and derived-feature training bundles are private pending moderation. Override endpoints with `VLADDER_REVIEW_ENDPOINT` or
+`VLADDER_TRAINING_ENDPOINT`; ordinary optimization never uses the network. The local privacy policy
+is in [`docs/privacy.md`](docs/privacy.md); schema compatibility is in
+[`docs/artifact-schemas.md`](docs/artifact-schemas.md).
+
+Release and contributor guides:
+
+- [`docs/grammar-authoring.md`](docs/grammar-authoring.md)
+- [`docs/proof-boundaries.md`](docs/proof-boundaries.md)
+- [`docs/benchmark-reproducibility.md`](docs/benchmark-reproducibility.md)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`ROADMAP.md`](ROADMAP.md)
+
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc14` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc15` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc14'
+python3 -m pip install --pre 'vladder==1.0.0rc15'
 vladder doctor
 ```
 
@@ -287,6 +363,29 @@ The operational decision tree is:
 4. Require candidate proof and randomized paired physical evidence.
 5. Require project integration and composed-system confirmation before retention.
 
+### Learned Search Prior
+
+The optional Prior v0 layer ranks already enumerated semantic-graph actions so vLadder can spend
+less proof, compilation, differential-test, and benchmark capacity on low-value candidates. It is
+strictly advisory: it cannot emit code, establish legality or equivalence, suppress the baseline,
+replace hardware measurement, or promote a rewrite.
+
+```bash
+vladder prior init --out prior.yaml
+vladder prior run --manifest prior.yaml --out-dir prior-out
+vladder prior template --out training-template.yaml
+vladder prior materialize --manifest training-template.yaml --store experience
+```
+
+Read `prior-out/prior-summary.json` first. The default run is a controlled Grade C pilot and reports
+`production_model_status: insufficient_dataset`; synthetic measurements never count toward the
+production corpus gate. Real deployment requires leakage-safe root/project/language/hardware
+holdouts, calibrated abstention, shadow replay, at least 95% winner recall at the declared budget,
+and the unchanged deterministic vLadder proof and promotion path. See
+[`docs/learned-search-prior-v0.md`](docs/learned-search-prior-v0.md).
+The template is open to future typed graph fields and structured grammar primitives; unknown
+semantic vocabulary participates in identity and model features instead of being discarded.
+
 ```bash
 vladder cpp adapter --report vladder-cpp-inspect/cpp-support.json --out-dir vladder-cpp-adapter
 vladder protocol verify --manifest state-protocol.yaml --out-dir vladder-protocol-proof
@@ -297,6 +396,12 @@ vladder gpu capture --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu
 vladder gpu synthesize --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-candidates
 vladder gpu verify --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-proof
 vladder gpu rank --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-ranking
+vladder gpu probe --out gpu-architecture.yaml
+vladder gpu topology --out device-topology.json
+vladder gpu cuda-optimize --source kernel.cu --function transform \
+  --architecture gpu-architecture.yaml --out-dir vladder-cuda-out
+vladder gpu queue-template --topology device-topology.json --out queue.yaml
+vladder gpu protocol-verify --manifest queue.yaml --out-dir queue-proof
 ```
 
 For an automatically supported Rust region:
@@ -672,6 +777,7 @@ python3 -m venv .venv
 .venv/bin/pip install '.[dev]'
 python3 scripts/audit_release.py --root .
 .venv/bin/python -m pytest -q
+python3 scripts/public_release_gate.py --execute
 openspec validate release-vladder-library --strict
 openspec validate release-channels-rc4 --strict
 openspec validate lifetime-aware-realization-v1 --strict
@@ -682,6 +788,10 @@ python3 -m twine check dist/*
 python3 scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz
 python3 scripts/release_preflight.py --repository OWNER/REPOSITORY
 ```
+
+The optional website and review service are independently buildable under `apps/release-site` and
+`services/review-backend`. Their deployment credentials are never prerequisites for local
+optimization.
 
 The release audit rejects generated outputs, caches, model files, vendored application trees,
 credentials, compiled objects, and oversized machine-local artifacts.

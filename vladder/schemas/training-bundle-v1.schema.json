@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/training-bundle-v1.schema.json",
+  "title": "vLadder Source-Free Training Bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "bundle_id", "created_at", "vladder_version", "producer",
+    "dataset", "examples", "privacy"
+  ],
+  "properties": {
+    "schema_version": {"const": "vladder-training-bundle-v1"},
+    "bundle_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "vladder_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "producer": {
+      "type": "object", "additionalProperties": false,
+      "required": ["agent", "model"],
+      "properties": {
+        "agent": {"type": "string", "minLength": 1, "maxLength": 120},
+        "model": {"type": "string", "minLength": 1, "maxLength": 120},
+        "provider": {"type": ["string", "null"], "maxLength": 120}
+      }
+    },
+    "dataset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_id", "grammar_version", "grammar_hash", "hardware_class", "hardware_manifest_hash"],
+      "properties": {
+        "project_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$"},
+        "grammar_version": {"type": "string", "minLength": 1, "maxLength": 120},
+        "grammar_hash": {"$ref": "#/$defs/hash"},
+        "hardware_class": {"type": "string", "minLength": 1, "maxLength": 160},
+        "hardware_manifest_hash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "examples": {
+      "type": "array", "minItems": 1, "maxItems": 256,
+      "items": {"$ref": "#/$defs/example"}
+    },
+    "privacy": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "source_included", "raw_artifacts_included", "prompts_included",
+        "personal_data_included", "submission_consent"
+      ],
+      "properties": {
+        "source_included": {"const": false},
+        "raw_artifacts_included": {"const": false},
+        "prompts_included": {"const": false},
+        "personal_data_included": {"const": false},
+        "submission_consent": {"type": "boolean"}
+      }
+    }
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "feature": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,95}$"},
+        "value": {"type": "number"}
+      }
+    },
+    "category": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "value"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,95}$"},
+        "value": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,127}$"}
+      }
+    },
+    "example": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "example_id", "semantic_root_hash", "candidate_hash", "language", "region_kind",
+        "grammar_family", "grammar_rule", "numeric_features", "categorical_features", "evidence"
+      ],
+      "properties": {
+        "example_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"},
+        "semantic_root_hash": {"$ref": "#/$defs/hash"},
+        "candidate_hash": {"$ref": "#/$defs/hash"},
+        "language": {"enum": ["c", "cpp", "rust", "zig", "julia", "cuda", "spirv", "other"]},
+        "region_kind": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,95}$"},
+        "grammar_family": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,95}$"},
+        "grammar_rule": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,127}$"},
+        "numeric_features": {
+          "type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/feature"}
+        },
+        "categorical_features": {
+          "type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/category"}
+        },
+        "evidence": {
+          "type": "object", "additionalProperties": false,
+          "required": [
+            "semantic_outcome", "physical_outcome", "proof_class", "quality_grade",
+            "benchmark_scope", "speedup_percent", "ci_lower_percent", "ci_upper_percent",
+            "sample_count"
+          ],
+          "properties": {
+            "semantic_outcome": {
+              "enum": ["inapplicable", "missing_contract", "semantic_mismatch", "illegal", "proof_failed", "proof_unknown", "proof_passed"]
+            },
+            "physical_outcome": {
+              "enum": ["not_measured", "compiler_identical", "measured_regression", "statistical_tie", "small_win_below_floor", "material_regional_win", "composed_regression", "composed_win", "resource_regression"]
+            },
+            "proof_class": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,95}$"},
+            "quality_grade": {"enum": ["A", "B", "C", "D"]},
+            "benchmark_scope": {"enum": ["none", "micro", "regional", "composed", "end_to_end"]},
+            "speedup_percent": {"type": ["number", "null"]},
+            "ci_lower_percent": {"type": ["number", "null"]},
+            "ci_upper_percent": {"type": ["number", "null"]},
+            "sample_count": {"type": "integer", "minimum": 0, "maximum": 1000000000}
+          }
+        }
+      }
+    }
+  }
+}

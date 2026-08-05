@@ -24,3 +24,19 @@ Kernel graph equivalence SHALL not imply host queue, DMA, presentation, or drive
 #### Scenario: Kernel output is exact
 - **WHEN** device outputs match for a candidate
 - **THEN** protocol claims SHALL remain independently required unless their graph is also verified
+
+### Requirement: Executable bounded CUDA semantics
+vLadder SHALL extract and regenerate explicitly supported lane-independent CUDA source regions
+without translating them through a CPU language.
+
+#### Scenario: Pointwise schedule transformation
+- **WHEN** a CUDA kernel contains one canonical guarded pointwise assignment
+- **THEN** vLadder SHALL preserve the element expression, prove exact schedule coverage and
+  injectivity, compile the regenerated CUDA source for the pinned architecture, and retain all
+  unsupported host and device claims explicitly
+
+#### Scenario: CUDA kernel outside the bounded envelope
+- **WHEN** a CUDA kernel contains unsupported shared state, atomics, synchronization, loops, or
+  unrecognized expressions
+- **THEN** code-changing regeneration SHALL be rejected as adapter-required while capture and
+  attribution may continue

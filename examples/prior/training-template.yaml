@@ -1,0 +1,90 @@
+schema_version: vladder-prior-training-template-v1
+vocabulary:
+  semantic_graph: semantic-flow-v2+prior-canonical-semantic-graph-v1-open-typed-extensions
+  grammar: replace-with-current-grammar-hash
+  extension_policy: use structured fields or namespaced extensions
+roots:
+  - ref: root.example
+    project_id: opaque-project-id
+    graph_version: semantic-flow-v2
+    provenance:
+      - source_language: cpp
+        frontend_version: frontend-version
+        source_commit: commit-hash
+        source_region_hash: region-hash
+    contract:
+      semantic_family: future_family
+      exact: true
+      observables: [output, extent]
+    graph:
+      schema_version: semantic-flow-v2
+      name: future-root
+      nodes:
+        - id: input
+          kind: Input
+          operation: load
+          output_type: u32
+          attributes: {}
+          semantic_obligations: []
+        - id: future
+          kind: FutureTypedNode
+          operation: future.transform
+          output_type: u32
+          attributes:
+            domain_specific_dimension: 4
+          semantic_obligations: []
+      edges:
+        - id: edge.0
+          source: input
+          destination: future
+          relation: future-data-relation
+          value_type: u32
+          ownership: borrowed
+          lifetime: call
+          ordering: program-order
+      obligations: []
+      effects: []
+      protocols: []
+      claims: []
+      contracts: {}
+candidates:
+  - ref: candidate.baseline
+    root_ref: root.example
+    baseline: true
+    action:
+      family: baseline
+      family_version: 1
+      primitives: []
+      parameters: {}
+    hardware: &hardware
+      architecture: x86_64
+      isa: [avx2]
+    workload: &workload
+      input_size_bucket: 1024
+  - ref: candidate.future
+    root_ref: root.example
+    action:
+      family: future_family
+      family_version: 1
+      primitives: [future.transform]
+      parameters:
+        tile: 4
+      extensions:
+        org.example.future:
+          schema_version: 1
+          policy: bounded
+    hardware: *hardware
+    workload: *workload
+observations:
+  - candidate_ref: candidate.baseline
+    kind: proof
+    outcome: proof_passed
+    quality_grade: C
+    payload:
+      method: replace-with-proof-artifact
+  - candidate_ref: candidate.future
+    kind: proof
+    outcome: proof_unknown
+    quality_grade: D
+    payload:
+      reason: not-yet-evaluated

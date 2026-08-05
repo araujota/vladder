@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/benchmark-result-v1.schema.json",
+  "title": "vLadder Paired Benchmark Result v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "executable",
+    "same_executable",
+    "metric_key",
+    "direction",
+    "process_count",
+    "repetitions_per_process",
+    "randomized_order",
+    "paired_effect_percent",
+    "paired_effect_95_percent",
+    "minimum_effect_percent",
+    "semantic_parity",
+    "classification",
+    "promotable_physical_evidence",
+    "candidate_identity",
+    "pairs",
+    "manifest_hash"
+  ],
+  "properties": {
+    "schema_version": {"const": "vladder-paired-benchmark-v1"},
+    "status": {"enum": ["pass", "not_promoted"]},
+    "executable": {"type": "string", "minLength": 1},
+    "same_executable": {"const": true},
+    "metric_key": {"type": "string", "minLength": 1},
+    "direction": {"enum": ["lower", "higher"]},
+    "process_count": {"type": "integer", "minimum": 2},
+    "repetitions_per_process": {"type": "integer", "minimum": 1},
+    "randomized_order": {"const": true},
+    "seed": {"type": "integer"},
+    "paired_effect_percent": {"type": "number"},
+    "paired_effect_95_percent": {
+      "type": "array",
+      "prefixItems": [{"type": "number"}, {"type": "number"}],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "minimum_effect_percent": {"type": "number"},
+    "semantic_parity": {"enum": ["PASS", "FAIL"]},
+    "observable_failures": {"type": "array", "items": {"type": "object"}},
+    "classification": {
+      "enum": [
+        "retained_revalidated",
+        "newly_discovered",
+        "verification_failed",
+        "statistical_tie",
+        "measured_regression",
+        "insufficient_effect"
+      ]
+    },
+    "promotable_physical_evidence": {"type": "boolean"},
+    "candidate_identity": {"type": "string", "minLength": 1},
+    "retained_candidate_identity": {"type": ["string", "null"]},
+    "pairs": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "required": [
+          "process",
+          "order",
+          "baseline",
+          "candidate",
+          "baseline_median",
+          "candidate_median",
+          "effect_percent",
+          "observables"
+        ],
+        "properties": {
+          "process": {"type": "integer", "minimum": 0},
+          "order": {
+            "type": "array",
+            "items": {"enum": ["baseline", "candidate"]},
+            "minItems": 2,
+            "maxItems": 2,
+            "uniqueItems": true
+          },
+          "baseline": {"type": "array", "items": {"type": "number"}, "minItems": 1},
+          "candidate": {"type": "array", "items": {"type": "number"}, "minItems": 1},
+          "baseline_median": {"type": "number"},
+          "candidate_median": {"type": "number"},
+          "effect_percent": {"type": "number"},
+          "observables": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "manifest_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "additionalProperties": true
+}

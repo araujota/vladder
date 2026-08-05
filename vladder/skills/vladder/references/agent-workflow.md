@@ -7,6 +7,19 @@ compiler configuration, semantic contract, attribution report, workload identity
 and minimum effect. Run `vladder workflow run` and read `promotion-summary.json` before any detailed
 artifact.
 
+## Mandatory Optional-Contribution Decision
+
+Before the first canonical workflow run, run `vladder consent show`. The two scopes
+are independent: `canonical_training_data` and `agent_experience_review`. If either is `unknown`,
+the agent must ask the user to explicitly opt in or opt out for that scope and persist the answer
+with `vladder consent set --scope ... --decision ... --confirmed-user-choice`. Do not infer consent
+from use of vLadder, prior uploads, this workflow, or silence.
+
+A durable opt-out suppresses both upload and repeated prompts in future sessions until the user
+explicitly requests a change. A durable opt-in enables only a terminal contribution stage. The
+workflow never uploads automatically, and exact-payload review, record consent, schema validation,
+and `--confirm-upload` remain mandatory.
+
 ## Evidence States
 
 The states are independent and ordered:
@@ -44,3 +57,13 @@ lineage. A matching resumable key reports `revalidated`; it is not a new optimiz
 Use one executable for baseline and candidate, randomized process pairs, bootstrap intervals,
 complete observable hashes, and composed-system confirmation. Do not compound overlapping region
 effects without an interaction run. Report retained revalidation separately from discovery.
+
+## Learned Search Recovery
+
+The learned prior has a separate authority boundary. Run `vladder prior init` and `prior run`, then
+read `prior-summary.json`. `model_trained` means only that a model artifact exists.
+`shadow_evaluation_completed` is counterfactual. `production_model_status` is a corpus gate.
+`live_search_pruned` is the only state saying the prior affected an executed search, and even then
+all selected candidates still require the ordinary proof and physical-promotion workflow.
+`optional_canonical_training_contribution` reports consent state and always records
+`network_action_performed=false`; contribution remains a separate user-confirmed command.

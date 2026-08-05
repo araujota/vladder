@@ -22,7 +22,19 @@ transfer:
   bytes: 1048576
   direct: true
   memory_registered: true
+  registration_api: nvidia_peermem_or_dma_buf
   producer_complete_before_dma: true
+  producer_sync: cuda_event_or_stream_sync
   dma_complete_before_publish: true
+  completion_signal: rdma_completion_queue
+  publication_order: release_after_completion
   consumer_complete_before_reuse: true
+  reuse_guard: consumer_completion
   fallback: host_staging
+  events:
+    - {type: producer_complete}
+    - {type: dma_begin}
+    - {type: dma_complete}
+    - {type: publish}
+    - {type: consumer_complete}
+    - {type: reuse}

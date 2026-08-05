@@ -21,3 +21,16 @@ Static cost and occupancy SHALL be pruning and attribution evidence, not a physi
 #### Scenario: Higher estimated occupancy
 - **WHEN** a candidate has a higher occupancy estimate but no device timing
 - **THEN** it SHALL remain physically unranked
+
+### Requirement: Runtime-calibrated architecture evidence
+vLadder SHALL distinguish probed device limits, compiler/JIT-resolved candidate resources,
+measured sustainable bandwidth, and architecture-family assumptions.
+
+#### Scenario: CUDA candidate resource inspection
+- **WHEN** a generated PTX candidate is loaded on the target device
+- **THEN** its resolved registers, local memory, static shared memory, PTX/binary version, and
+  maximum thread count SHALL be recorded and used for feasibility analysis
+
+#### Scenario: Assumed transaction granularity
+- **WHEN** transaction or register allocation granularity is not directly reported by the runtime
+- **THEN** the value SHALL remain an explicit model assumption rather than a measured hardware fact

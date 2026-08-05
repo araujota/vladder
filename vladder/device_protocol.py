@@ -164,6 +164,17 @@ def _verify_queue(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlo
     operations = raw.get("operations", [])
     resources = raw.get("resources", [])
     barriers = raw.get("barriers", [])
+    semaphore_types = {
+        str(item["id"]): str(item.get("type", "timeline")).lower()
+        for item in raw.get("semaphores", [])
+        if isinstance(item, dict) and "id" in item
+    }
+    invalid_semaphore_types = {
+        identifier: kind for identifier, kind in semaphore_types.items()
+        if kind not in {"binary", "timeline"}
+    }
+    if invalid_semaphore_types:
+        raise ValueError(f"unsupported queue semaphore types: {invalid_semaphore_types}")
     if not isinstance(operations, list) or not operations:
         raise ValueError("queue protocol requires a non-empty operations list")
     resource_ids = {str(item["id"]) for item in resources if isinstance(item, dict) and "id" in item}
@@ -186,9 +197,86 @@ def _verify_queue(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlo
         last_operation_by_queue[queue] = operation_id
     semaphore_resources: set[tuple[str, str, str]] = set()
     timeline_checks: list[tuple[str, bool, dict[str, Any]]] = []
+    device_binding = raw.get("device_binding")
+    if device_binding is not None:
+        if not isinstance(device_binding, dict):
+            raise ValueError("queue device_binding must be a mapping")
+        queue_families = {
+            int(item["index"]): item
+            for item in device_binding.get("queue_families", [])
+            if isinstance(item, dict) and "index" in item
+        }
+        timeline_checks.extend((
+            (
+                "queue.binding.identity",
+                bool(device_binding.get("topology_hash")) and bool(device_binding.get("device_uuid")),
+                {"topology_hash": device_binding.get("topology_hash"), "device_uuid": device_binding.get("device_uuid")},
+            ),
+            (
+                "queue.binding.synchronization2",
+                not bool(raw.get("requires_synchronization2", False)) or bool(device_binding.get("synchronization2", False)),
+                {"required": bool(raw.get("requires_synchronization2", False)), "supported": device_binding.get("synchronization2")},
+            ),
+        ))
+        uses_timeline = any(
+            semaphore_types.get(str(event.get("semaphore")), "timeline") == "timeline"
+            for operation in operations
+            for event in [*operation.get("signals", []), *operation.get("waits", [])]
+        )
+        timeline_checks.append((
+            "queue.binding.timeline",
+            not uses_timeline or bool(device_binding.get("timeline_semaphore", False)),
+            {"used": uses_timeline, "supported": device_binding.get("timeline_semaphore")},
+        ))
+        for operation in operations:
+            family_index = operation.get("queue_family_index")
+            if family_index is None:
+                timeline_checks.append((
+                    f"queue.binding.family.{operation.get('id')}", False,
+                    {"reason": "queue_family_index missing from a physically bound operation"},
+                ))
+                continue
+            family = queue_families.get(int(family_index))
+            required = _required_queue_capabilities(operation)
+            flags = set(map(str, family.get("flags", []))) if family else set()
+            queue_index = int(operation.get("queue_index", 0))
+            valid = bool(family) and required.issubset(flags) and 0 <= queue_index < int(family.get("queue_count", 0))
+            timeline_checks.append((
+                f"queue.binding.family.{operation.get('id')}", valid,
+                {
+                    "family_index": family_index, "queue_index": queue_index,
+                    "required_capabilities": sorted(required), "observed_family": family,
+                },
+            ))
+    for semaphore, values in sorted(signals.items()):
+        if semaphore_types.get(semaphore, "timeline") != "timeline":
+            continue
+        monotonic = all(left[1] < right[1] for left, right in zip(values, values[1:]))
+        timeline_checks.append((
+            f"queue.timeline.signal.{semaphore}",
+            monotonic,
+            {"signals": values, "requirement": "strictly increasing timeline values"},
+        ))
+    binary_state: dict[str, tuple[int, str] | None] = {
+        identifier: None for identifier, kind in semaphore_types.items() if kind == "binary"
+    }
     for ordinal, operation in enumerate(operations):
         for wait in operation.get("waits", []):
             semaphore = str(wait["semaphore"])
+            kind = semaphore_types.get(semaphore, "timeline")
+            if kind == "binary":
+                producer = binary_state.get(semaphore)
+                valid = producer is not None and producer[0] < ordinal
+                timeline_checks.append((
+                    f"queue.binary.wait.{operation_ids[ordinal]}.{semaphore}", valid,
+                    {"available_signal": producer, "requirement": "one prior unconsumed signal"},
+                ))
+                if valid and producer is not None:
+                    execution_edges.add((producer[1], operation_ids[ordinal]))
+                    for resource in wait.get("resources", []):
+                        semaphore_resources.add((producer[1], operation_ids[ordinal], str(resource)))
+                    binary_state[semaphore] = None
+                continue
             value = int(wait.get("value", 1))
             producers = [item for item in signals.get(semaphore, []) if item[0] < ordinal and item[1] >= value]
             valid = bool(producers)
@@ -198,11 +286,25 @@ def _verify_queue(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlo
                 execution_edges.add((producer[2], operation_ids[ordinal]))
                 for resource in wait.get("resources", []):
                     semaphore_resources.add((producer[2], operation_ids[ordinal], str(resource)))
+        for signal in operation.get("signals", []):
+            semaphore = str(signal["semaphore"])
+            if semaphore_types.get(semaphore, "timeline") != "binary":
+                continue
+            available = binary_state.get(semaphore)
+            valid = available is None
+            timeline_checks.append((
+                f"queue.binary.signal.{operation_ids[ordinal]}.{semaphore}", valid,
+                {"outstanding_signal": available, "requirement": "binary signal must be consumed before re-signal"},
+            ))
+            if valid:
+                binary_state[semaphore] = (ordinal, operation_ids[ordinal])
     closure = _transitive_closure(operation_ids, execution_edges)
-    barrier_keys = {
-        (str(item.get("src")), str(item.get("dst")), str(item.get("resource")))
-        for item in barriers if isinstance(item, dict)
-    }
+    barrier_by_key: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for item in barriers:
+        if isinstance(item, dict):
+            barrier_by_key.setdefault(
+                (str(item.get("src")), str(item.get("dst")), str(item.get("resource"))), []
+            ).append(item)
     accesses: list[tuple[int, str, str, str, str]] = []
     issues: list[ProtocolIssue] = []
     for ordinal, operation in enumerate(operations):
@@ -217,15 +319,31 @@ def _verify_queue(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlo
         proof, smt = _prove_fact(identifier, valid, detail)
         obligations.append(proof); smt_parts.append(smt)
         if not valid:
-            issues.append(ProtocolIssue(identifier, "timeline", "wait has no preceding signal at the required timeline value", detail))
+            category = "binary_semaphore" if ".binary." in identifier else "timeline"
+            message = (
+                "binary semaphore signal/wait state is invalid"
+                if category == "binary_semaphore"
+                else "wait has no preceding signal at the required timeline value"
+            )
+            issues.append(ProtocolIssue(identifier, category, message, detail))
     for left_index, left_id, resource, left_mode, left_stage in accesses:
         for right_index, right_id, right_resource, right_mode, right_stage in accesses:
-            if right_index <= left_index or resource != right_resource or "write" not in {left_mode, right_mode}:
+            left_reads, left_writes = "read" in left_mode, "write" in left_mode
+            right_reads, right_writes = "read" in right_mode, "write" in right_mode
+            if right_index <= left_index or resource != right_resource or not (left_writes or right_writes):
                 continue
-            hazard = "RAW" if left_mode == "write" and right_mode == "read" else ("WAR" if left_mode == "read" and right_mode == "write" else "WAW")
+            hazard = "RAW" if left_writes and right_reads else ("WAR" if left_reads and right_writes else "WAW")
             ordered = (left_id, right_id) in closure
             visibility_required = hazard == "RAW"
-            visible = (left_id, right_id, resource) in barrier_keys or (left_id, right_id, resource) in semaphore_resources
+            matching_barriers = barrier_by_key.get((left_id, right_id, resource), [])
+            scoped_barriers = [
+                item for item in matching_barriers
+                if _scope_covers(item.get("src_stage"), left_stage)
+                and _scope_covers(item.get("dst_stage"), right_stage)
+                and _access_covers(item.get("src_access"), left_mode)
+                and _access_covers(item.get("dst_access"), right_mode)
+            ]
+            visible = bool(scoped_barriers) or (left_id, right_id, resource) in semaphore_resources
             valid = ordered and (visible or not visibility_required)
             identifier = f"queue.hazard.{left_id}.{right_id}.{resource}"
             detail = {
@@ -235,22 +353,31 @@ def _verify_queue(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlo
                 "execution_dependency": ordered,
                 "memory_visibility": visible,
                 "visibility_required": visibility_required,
+                "matching_barriers": matching_barriers,
+                "scope_covering_barriers": scoped_barriers,
             }
             proof, smt = _prove_fact(identifier, valid, detail)
             obligations.append(proof); smt_parts.append(smt)
             if not valid:
                 issues.append(ProtocolIssue(identifier, "hazard", "resource hazard lacks sufficient execution or memory dependency", detail))
     ownership = {str(item["id"]): str(item.get("owner", "shared")) for item in resources if isinstance(item, dict) and "id" in item}
-    transfer_keys = {
-        (str(item.get("resource")), str(item.get("ownership_from")), str(item.get("ownership_to")))
-        for item in barriers if item.get("ownership_from") is not None
-    }
     for operation in operations:
         queue_family = str(operation.get("queue_family", operation.get("queue", "shared")))
         for access in operation.get("accesses", []):
             resource = str(access["resource"])
             owner = ownership.get(resource, "shared")
-            if owner not in {"shared", queue_family} and (resource, owner, queue_family) not in transfer_keys:
+            transfers = [
+                item for item in barriers
+                if str(item.get("resource")) == resource
+                and str(item.get("ownership_from")) == owner
+                and str(item.get("ownership_to")) == queue_family
+                and str(item.get("dst")) in index
+                and (
+                    str(item.get("dst")) == str(operation["id"])
+                    or (str(item.get("dst")), str(operation["id"])) in closure
+                )
+            ]
+            if owner not in {"shared", queue_family} and not transfers:
                 detail = {"resource": resource, "owner": owner, "consumer_queue_family": queue_family}
                 identifier = f"queue.ownership.{operation['id']}.{resource}"
                 proof, smt = _prove_fact(identifier, False, detail)
@@ -275,15 +402,57 @@ def _verify_queue(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlo
     nodes.append(_base_node("output", "Output", "queue-protocol-complete", (previous,), {}, "queue-completion"))
     hazard_obligation = obligation("queue.hazards.complete", "synchronization", "all declared resource hazards have sufficient dependencies", scope="bounded-queue-trace", proof_method="Z3 fact obligations plus dependency closure", native_construct="Vulkan synchronization2")
     timeline_obligation = obligation("queue.timeline.monotonic", "state", "every timeline wait is satisfied by an earlier signal value", scope="bounded-queue-trace", proof_method="Z3 integer/fact obligations", native_construct="timeline semaphore")
+    binary_obligation = obligation("queue.binary.lifecycle", "state", "binary semaphore signals are consumed exactly once before re-signal", scope="bounded-queue-trace", proof_method="bounded semaphore state machine", native_construct="binary semaphore")
     graph = _graph(
         name=str(raw.get("name", "queue-protocol")), kind="queue", manifest_path=manifest_path,
         nodes=nodes,
-        contracts={"resources": resources, "operation_ids": operation_ids, "barriers": barriers},
-        obligations=(hazard_obligation, timeline_obligation),
-        effects=(SemanticEffect("queue.sync", "Synchronize", "submit", "device-queues", "declared-resource-results", "queue-and-semaphore-order", tuple(node.id for node in nodes if node.kind in {"QueueSubmit", "Barrier", "SemaphoreWait", "SemaphoreSignal"}), ("queue.hazards.complete", "queue.timeline.monotonic")),),
-        protocols=(ProtocolTransition("queue.submit", "Queue", "recorded", "submit/wait/signal", "complete", "all declared waits and hazards pass", ("queue.hazards.complete", "queue.timeline.monotonic"), {"api": "Vulkan synchronization2"}),),
+        contracts={
+            "resources": resources, "operation_ids": operation_ids, "barriers": barriers,
+            "device_binding": device_binding, "semaphores": raw.get("semaphores", []),
+        },
+        obligations=(hazard_obligation, timeline_obligation, binary_obligation),
+        effects=(SemanticEffect("queue.sync", "Synchronize", "submit", "device-queues", "declared-resource-results", "queue-and-semaphore-order", tuple(node.id for node in nodes if node.kind in {"QueueSubmit", "Barrier", "SemaphoreWait", "SemaphoreSignal"}), ("queue.hazards.complete", "queue.timeline.monotonic", "queue.binary.lifecycle")),),
+        protocols=(ProtocolTransition("queue.submit", "Queue", "recorded", "submit/wait/signal", "complete", "all declared waits and hazards pass", ("queue.hazards.complete", "queue.timeline.monotonic", "queue.binary.lifecycle"), {"api": "Vulkan synchronization2"}),),
     )
     return graph, obligations, issues, "\n; ---- obligation ----\n".join(smt_parts)
+
+
+def _scope_covers(declared: Any, actual: str) -> bool:
+    if isinstance(declared, list):
+        scopes = {str(item).lower() for item in declared}
+    elif declared is None:
+        return False
+    else:
+        scopes = {item.strip().lower() for item in str(declared).split("|") if item.strip()}
+    return bool(scopes & {actual.lower(), "all", "all_commands", "all_graphics"})
+
+
+def _required_queue_capabilities(operation: dict[str, Any]) -> set[str]:
+    explicit = operation.get("required_capabilities")
+    if explicit:
+        return {str(item).lower() for item in explicit}
+    stages = " ".join(str(item.get("stage", "")) for item in operation.get("accesses", [])).lower()
+    required: set[str] = set()
+    if any(token in stages for token in ("compute", "ray_tracing")):
+        required.add("compute")
+    if any(token in stages for token in ("graphics", "vertex", "fragment", "color", "depth")):
+        required.add("graphics")
+    if any(token in stages for token in ("transfer", "copy", "blit", "resolve")):
+        required.add("transfer")
+    return required or {"transfer"}
+
+
+def _access_covers(declared: Any, mode: str) -> bool:
+    if isinstance(declared, list):
+        accesses = {str(item).lower() for item in declared}
+    elif declared is None:
+        return False
+    else:
+        accesses = {item.strip().lower() for item in str(declared).split("|") if item.strip()}
+    required = {kind for kind in ("read", "write") if kind in mode.lower()}
+    return bool(required) and ("all" in accesses or all(
+        any(kind in access for access in accesses) for kind in required
+    ))
 
 
 def _verify_dma(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlowGraph, list[dict[str, Any]], list[ProtocolIssue], str]:
@@ -300,6 +469,10 @@ def _verify_dma(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlowG
         route = [source, destination]
     checks.append(("dma.route.endpoints", bool(route) and route[0] == source and route[-1] == destination, {"route": route}))
     link_keys = {(str(item["from"]), str(item["to"])) for item in links if isinstance(item, dict)}
+    link_by_pair = {
+        (str(item["from"]), str(item["to"])): item
+        for item in links if isinstance(item, dict)
+    }
     route_connected = all((left, right) in link_keys or (right, left) in link_keys for left, right in zip(route, route[1:]))
     checks.append(("dma.route.connected", route_connected, {"route": route, "links": sorted(link_keys)}))
     direct = bool(transfer.get("direct", False))
@@ -307,6 +480,28 @@ def _verify_dma(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlowG
         source_caps = set(map(str, device_by_id.get(source, {}).get("capabilities", [])))
         destination_caps = set(map(str, device_by_id.get(destination, {}).get("capabilities", [])))
         checks.append(("dma.direct.capability", "peer_dma_export" in source_caps and "peer_dma_import" in destination_caps, {"source_capabilities": sorted(source_caps), "destination_capabilities": sorted(destination_caps)}))
+        direct_links = []
+        for left, right in zip(route, route[1:]):
+            link = link_by_pair.get((left, right)) or link_by_pair.get((right, left), {})
+            direct_links.append(bool(link.get("direct", False)))
+        checks.append(("dma.direct.route", bool(direct_links) and all(direct_links), {"route": route, "direct_links": direct_links}))
+    mechanism_fields = {
+        "dma.registration.mechanism": "registration_api",
+        "dma.producer.mechanism": "producer_sync",
+        "dma.completion.mechanism": "completion_signal",
+        "dma.publication.mechanism": "publication_order",
+        "dma.reuse.mechanism": "reuse_guard",
+    }
+    for identifier, field in mechanism_fields.items():
+        checks.append((identifier, bool(transfer.get(field)), {field: transfer.get(field)}))
+    event_sequence = [str(item.get("type")) for item in transfer.get("events", []) if isinstance(item, dict)]
+    if event_sequence:
+        required_events = ("producer_complete", "dma_begin", "dma_complete", "publish", "consumer_complete", "reuse")
+        positions = {kind: [index for index, value in enumerate(event_sequence) if value == kind] for kind in required_events}
+        ordered_events = all(positions[kind] for kind in required_events) and all(
+            positions[left][0] < positions[right][0] for left, right in zip(required_events, required_events[1:])
+        )
+        checks.append(("dma.events.ordered", ordered_events, {"events": event_sequence, "required": required_events}))
     checks.extend((
         ("dma.memory.registered", bool(transfer.get("memory_registered", False)), {"memory_registered": transfer.get("memory_registered")}),
         ("dma.producer.ordered", bool(transfer.get("producer_complete_before_dma", False)), {"producer_complete_before_dma": transfer.get("producer_complete_before_dma")}),
@@ -351,23 +546,61 @@ def _verify_dma(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlowG
 def _verify_presentation(raw: dict[str, Any], manifest_path: Path) -> tuple[SemanticFlowGraph, list[dict[str, Any]], list[ProtocolIssue], str]:
     images = {str(item) for item in raw.get("images", [])}
     events = raw.get("events", [])
-    by_image: dict[str, list[tuple[int, str]]] = {item: [] for item in images}
+    states = {item: "available" for item in images}
+    completed_cycles = {item: 0 for item in images}
+    histories: dict[str, list[dict[str, Any]]] = {item: [] for item in images}
+    checks: list[tuple[str, bool, dict[str, Any]]] = []
+    transitions = {
+        "acquire": ({"available"}, "acquired"),
+        "reuse": ({"available"}, "acquired"),
+        "render_begin": ({"acquired"}, "rendering"),
+        "render_complete": ({"acquired", "rendering"}, "rendered"),
+        "present": ({"rendered"}, "presented"),
+        "scanout": ({"presented"}, "scanning"),
+        "release": ({"scanning"}, "available"),
+    }
     for index, event in enumerate(events):
         image = str(event.get("image", ""))
-        if image in by_image:
-            by_image[image].append((index, str(event.get("type", ""))))
-    checks: list[tuple[str, bool, dict[str, Any]]] = []
-    expected_order = ("acquire", "render_complete", "present", "scanout", "release")
-    for image, sequence in sorted(by_image.items()):
-        positions = {kind: [index for index, event in sequence if event == kind] for kind in expected_order}
-        complete = all(positions[kind] for kind in expected_order)
-        ordered = complete and all(positions[left][0] < positions[right][0] for left, right in zip(expected_order, expected_order[1:]))
-        checks.append((f"presentation.lifecycle.{image}", ordered, {"events": sequence, "required_order": expected_order}))
-        reuse_positions = [index for index, event in sequence if event in {"reuse", "render_begin"}]
-        if reuse_positions and positions["release"]:
-            checks.append((f"presentation.reuse.{image}", min(reuse_positions) > positions["release"][0], {"reuse": reuse_positions, "release": positions["release"]}))
+        event_type = str(event.get("type", ""))
+        if image not in states:
+            checks.append((f"presentation.image.{index}", False, {"image": image, "event": event_type, "reason": "undeclared image"}))
+            continue
+        before = states[image]
+        allowed, after = transitions.get(event_type, (set(), before))
+        valid = before in allowed
+        histories[image].append({"index": index, "event": event_type, "before": before, "after": after if valid else before, "valid": valid})
+        checks.append((
+            f"presentation.transition.{image}.{index}", valid,
+            {"event": event_type, "state": before, "allowed": sorted(allowed)},
+        ))
+        if valid:
+            states[image] = after
+            if event_type == "release":
+                completed_cycles[image] += 1
+    for image in sorted(images):
+        complete = completed_cycles[image] > 0 and states[image] == "available"
+        checks.append((
+            f"presentation.lifecycle.{image}", complete,
+            {"history": histories[image], "completed_cycles": completed_cycles[image], "final_state": states[image]},
+        ))
     checks.append(("presentation.images.declared", bool(images), {"images": sorted(images)}))
     checks.append(("presentation.deadline.policy", bool(raw.get("deadline_policy")), {"deadline_policy": raw.get("deadline_policy")}))
+    connector_binding = raw.get("connector_binding")
+    if connector_binding is not None:
+        if not isinstance(connector_binding, dict):
+            raise ValueError("presentation connector_binding must be a mapping")
+        checks.extend((
+            (
+                "presentation.binding.identity",
+                bool(connector_binding.get("capability_hash")) and bool(connector_binding.get("connector")),
+                {"capability_hash": connector_binding.get("capability_hash"), "connector": connector_binding.get("connector")},
+            ),
+            (
+                "presentation.binding.connected",
+                str(connector_binding.get("status", "")) == "connected",
+                {"status": connector_binding.get("status"), "connector": connector_binding.get("connector")},
+            ),
+        ))
     obligations: list[dict[str, Any]] = []
     issues: list[ProtocolIssue] = []
     smt_parts: list[str] = []
@@ -390,7 +623,10 @@ def _verify_presentation(raw: dict[str, Any], manifest_path: Path) -> tuple[Sema
     graph = _graph(
         name=str(raw.get("name", "presentation-protocol")), kind="presentation", manifest_path=manifest_path,
         nodes=nodes,
-        contracts={"images": sorted(images), "events": events, "present_mode": raw.get("present_mode"), "deadline_policy": raw.get("deadline_policy")},
+        contracts={
+            "images": sorted(images), "events": events, "present_mode": raw.get("present_mode"),
+            "deadline_policy": raw.get("deadline_policy"), "connector_binding": connector_binding,
+        },
         obligations=(lifecycle_obligation, deadline_obligation),
         effects=(
             SemanticEffect("presentation.acquire", "Acquire", "frame", "swapchain-image", "frame", "acquire-before-render", tuple(node.id for node in nodes if node.kind == "Acquire"), ("presentation.lifecycle.complete",)),
