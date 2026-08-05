@@ -1,4 +1,4 @@
-import { ArrowDownToLine, BookOpen, Check, Code2, LockKeyhole, Route, ShieldCheck, Terminal } from "lucide-react";
+import { ArrowDownToLine, BookOpen, Check, Code2, LockKeyhole, MessageSquareText, Route, ShieldCheck, Terminal } from "lucide-react";
 import { CopyCommand } from "../components/copy-command";
 
 const github = "https://github.com/araujota/vladder";
@@ -42,6 +42,7 @@ export default async function Home() {
           <a href="#workflow">Workflow</a>
           <a href="#support">Support</a>
           <a href={`${github}/tree/main/docs`}><BookOpen size={17} />Docs</a>
+          <a href={`${github}/discussions`}><MessageSquareText size={17} />Community</a>
           <a href={github}><Code2 size={17} />GitHub</a>
         </nav>
       </header>
@@ -136,7 +137,7 @@ export default async function Home() {
 
       <footer>
         <span>vLadder · MIT licensed</span>
-        <div><a href={`${github}/blob/main/ROADMAP.md`}>Roadmap</a><a href={`${github}/blob/main/CONTRIBUTING.md`}>Contribute</a><a href={`${github}/releases`}>Downloads</a></div>
+        <div><a href={`${github}/discussions`}>Community</a><a href={`${github}/blob/main/ROADMAP.md`}>Roadmap</a><a href={`${github}/blob/main/CONTRIBUTING.md`}>Contribute</a><a href={`${github}/releases`}>Downloads</a></div>
       </footer>
     </main>
   );
