@@ -176,8 +176,6 @@ def static_estimates(tc: Toolchain, binary: Path, asm: Path | None = None, funct
 
 
 def alive2_check(tc: Toolchain, ir: Path, out_dir: Path, name: str, timeout: int = 20) -> dict[str, object]:
-    if not tc.alive_tv:
-        return {"status": "unavailable", "reason": "alive-tv not found"}
     if not ir.exists():
         return {"status": "unavailable", "reason": "LLVM IR file not found"}
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -194,6 +192,12 @@ def alive2_check(tc: Toolchain, ir: Path, out_dir: Path, name: str, timeout: int
             "reason": "reference and candidate proof functions are alpha-identical after symbol normalization",
             "sanitized_ir": str(sanitized),
             "log": str(log),
+        }
+    if not tc.alive_tv:
+        return {
+            "status": "unavailable",
+            "reason": "alive-tv not found and canonical LLVM IR identity did not close the proof",
+            "sanitized_ir": str(sanitized),
         }
     try:
         result = run(
