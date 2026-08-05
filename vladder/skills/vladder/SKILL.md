@@ -5,7 +5,7 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc10`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc11`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v5`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v1`, and
 `bounded-julia-regions-v1` adapters. Use vLadder as a proof-gated workflow: semantic
@@ -13,6 +13,11 @@ identity and lifetime -> realization and placement -> compiled IR -> information
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
 chooses which verified realization and implementation graph should exist.
+
+The executable `bounded-dataflow-v1` grammar adds stable variable-output compaction, exact
+fixed-width codecs, transactional state deltas, AoS projected multi-reductions, and deterministic
+4x4 packed blocks. Read [bounded-dataflow.md](references/bounded-dataflow.md) when the observable
+includes indices, values, exact extent, packed bytes, or next state rather than only a scalar.
 
 All supported frontends converge on `SemanticFlowGraph v2`. Read typed `obligations`, `effects`,
 `protocols`, and `claims` before interpreting a graph. An obligation is actionable through its ID,
@@ -134,6 +139,21 @@ with independently closed local regions, attribution, lifetime/placement analysi
 domain contracts. Never call identity-capsule proof whole-wrapper equivalence, and never call a
 source scheduling contract an Alive2 proof of the physical candidate. Read
 [cpp-regions.md](references/cpp-regions.md).
+
+When inspection identifies bounded variable output or a state transition, do not collapse it to a
+count-only proof unit. Preserve masks, stable order, extent, capacity failure, and state
+publication in `bounded-dataflow-v1`:
+
+```bash
+vladder dataflow coverage
+vladder dataflow graph --contract contract.json --target mask-prefix-stable --out graph.json
+vladder dataflow verify --contract contract.json --target guarded-avx2-compaction --out-dir proof
+```
+
+No-growth vector closure requires a checked available-capacity guard before any write, trivial
+element lifetime, no throwing local operation, and declared aliases. `reserve()` is not enough.
+An owning wrapper that remains outside this envelope is an explicit adapter, not a blocker for the
+borrowed local kernel and not part of its Z3/Alive2 claim.
 
 For Rust, preserve native ownership and panic semantics and start from Cargo rather than a C FFI
 capsule. Read [rust-regions.md](references/rust-regions.md), then run:

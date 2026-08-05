@@ -1,0 +1,67 @@
+{
+  "schema_version": "vladder-bounded-dataflow-grammar-v1",
+  "version": "bounded-dataflow-v1",
+  "families": [
+    {
+      "id": "predicate-stable-compaction",
+      "source": "scalar-two-pass",
+      "rules": [
+        {"id": "fuse-compare-scatter", "to": "fused-stable", "proof": ["stable-sequence", "capacity-atomicity"], "cost_signals": ["passes", "temporary-mask-bytes"]},
+        {"id": "mask-prefix-scatter", "to": "mask-prefix-stable", "proof": ["mask-population", "prefix-offsets", "stable-sequence", "capacity-atomicity"], "cost_signals": ["predicate-throughput", "mask-extract", "scatter-cost"]},
+        {"id": "guard-avx2-mask-scatter", "to": "guarded-avx2-compaction", "proof": ["dispatch-completeness", "mask-population", "stable-sequence", "capacity-atomicity"], "cost_signals": ["vector-width", "mask-extract", "scatter-cost"]},
+        {"id": "guard-avx512-compress-store", "to": "guarded-avx512-compress", "proof": ["dispatch-completeness", "compress-order", "stable-sequence", "capacity-atomicity"], "cost_signals": ["compress-store-throughput", "dispatch-overhead"]}
+      ]
+    },
+    {
+      "id": "fixed-width-codec",
+      "source": "scalar-field-pack",
+      "rules": [
+        {"id": "fuse-field-bit-placement", "to": "fused-word-pack", "proof": ["field-bounds", "bit-placement", "endian-bijection"], "cost_signals": ["temporary-bytes", "stores", "dependency-depth"]},
+        {"id": "coalesce-envelope-store", "to": "coalesced-envelope-store", "proof": ["field-bounds", "bit-placement", "store-footprint"], "cost_signals": ["stores", "cache-lines"]}
+      ]
+    },
+    {
+      "id": "stateful-delta-transducer",
+      "source": "staged-delta",
+      "rules": [
+        {"id": "fuse-detect-emit-next-state", "to": "transactional-delta", "proof": ["delta-reconstruction", "commit-rollback-atomicity", "stable-sequence"], "cost_signals": ["passes", "state-bytes", "temporary-bytes"]},
+        {"id": "mask-driven-transaction", "to": "mask-transactional-delta", "proof": ["mask-population", "delta-reconstruction", "commit-rollback-atomicity"], "cost_signals": ["predicate-throughput", "state-bytes", "scatter-cost"]}
+      ]
+    },
+    {
+      "id": "aos-fused-multi-reduction",
+      "source": "repeated-projection-scans",
+      "rules": [
+        {"id": "fuse-projections-and-reductions", "to": "fused-aos-reductions", "proof": ["field-projection", "multi-reduction-equivalence"], "cost_signals": ["passes", "record-bytes", "cache-lines"]},
+        {"id": "blocked-aos-reductions", "to": "blocked-aos-reductions", "proof": ["field-projection", "block-partition", "multi-reduction-equivalence"], "cost_signals": ["prefetch-distance", "working-set", "reduction-chains"]}
+      ]
+    },
+    {
+      "id": "quantized-block-4x4",
+      "source": "scalar-reference-block",
+      "rules": [
+        {"id": "fuse-endpoint-reductions", "to": "fused-4x4-block", "proof": ["tile-coverage", "endpoint-equivalence", "deterministic-tie-break", "index-pack"], "cost_signals": ["passes", "loads", "reduction-chains"]},
+        {"id": "packed-pixel-lanes", "to": "packed-lane-4x4-block", "proof": ["tile-coverage", "channel-extraction", "endpoint-equivalence", "index-pack"], "cost_signals": ["packed-loads", "bitwise-instructions", "register-pressure"]}
+      ]
+    }
+  ],
+  "terminals": {
+    "scalar-two-pass": {"family": "predicate-stable-compaction", "isa": "scalar"},
+    "fused-stable": {"family": "predicate-stable-compaction", "isa": "scalar"},
+    "mask-prefix-stable": {"family": "predicate-stable-compaction", "isa": "scalar-word"},
+    "guarded-avx2-compaction": {"family": "predicate-stable-compaction", "isa": "runtime-avx2"},
+    "guarded-avx512-compress": {"family": "predicate-stable-compaction", "isa": "runtime-avx512f"},
+    "scalar-field-pack": {"family": "fixed-width-codec", "isa": "scalar"},
+    "fused-word-pack": {"family": "fixed-width-codec", "isa": "scalar"},
+    "coalesced-envelope-store": {"family": "fixed-width-codec", "isa": "scalar"},
+    "staged-delta": {"family": "stateful-delta-transducer", "isa": "scalar"},
+    "transactional-delta": {"family": "stateful-delta-transducer", "isa": "scalar"},
+    "mask-transactional-delta": {"family": "stateful-delta-transducer", "isa": "scalar-word"},
+    "repeated-projection-scans": {"family": "aos-fused-multi-reduction", "isa": "scalar"},
+    "fused-aos-reductions": {"family": "aos-fused-multi-reduction", "isa": "scalar"},
+    "blocked-aos-reductions": {"family": "aos-fused-multi-reduction", "isa": "scalar"},
+    "scalar-reference-block": {"family": "quantized-block-4x4", "isa": "scalar"},
+    "fused-4x4-block": {"family": "quantized-block-4x4", "isa": "scalar"},
+    "packed-lane-4x4-block": {"family": "quantized-block-4x4", "isa": "scalar-word"}
+  }
+}

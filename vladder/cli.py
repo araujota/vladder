@@ -78,6 +78,11 @@ from .deep_grammar import load_deep_grammar, search_deep_grammar
 from .deep_ir import DeepKernelContract, build_deep_realization_graph
 from .deep_lowering import emit_deep_candidate
 from .deep_proof import prove_deep_candidate
+from .dataflow_audit import audit_dataflow_manifest
+from .dataflow_grammar import load_bounded_dataflow_grammar
+from .dataflow_ir import BoundedDataflowContract, build_bounded_dataflow_graph
+from .dataflow_lowering import emit_dataflow_cpp
+from .dataflow_proof import prove_dataflow_candidate
 
 
 HARNESS = r"""
@@ -886,6 +891,62 @@ def deep_command(args: argparse.Namespace) -> int:
     return 0 if status in {"pass", "supported"} else 2
 
 
+def dataflow_command(args: argparse.Namespace) -> int:
+    grammar = load_bounded_dataflow_grammar(Path(args.grammar).resolve() if getattr(args, "grammar", None) else None)
+    output: Path | None = None
+    if args.dataflow_command == "coverage":
+        report = grammar.coverage()
+        output = Path(args.out).resolve() if args.out else None
+    elif args.dataflow_command == "audit":
+        output_directory = Path(args.out_dir).resolve()
+        report = audit_dataflow_manifest(Path(args.manifest).resolve(), output_directory, grammar)
+        output = output_directory / "bounded-dataflow-audit.json"
+    else:
+        payload = json.loads(Path(args.contract).read_text())
+        if not isinstance(payload, dict):
+            raise ValueError("bounded dataflow contract must be a JSON object")
+        contract = BoundedDataflowContract.from_dict(payload)
+        derivation = grammar.derive(contract, args.target)
+        if args.dataflow_command == "graph":
+            report = build_bounded_dataflow_graph(
+                contract, args.target, source_language="cpp", function_identity=args.function
+            ).to_dict()
+            report["status"] = "pass"
+            output = Path(args.out).resolve() if args.out else None
+        else:
+            output_directory = Path(args.out_dir).resolve()
+            output_directory.mkdir(parents=True, exist_ok=True)
+            candidate = emit_dataflow_cpp(contract, derivation, args.function, grammar)
+            source = output_directory / "candidate.cpp"
+            source.write_text(candidate.source)
+            proof = prove_dataflow_candidate(
+                contract,
+                derivation,
+                candidate,
+                output_directory / "proofs",
+                run_differential=args.dataflow_command == "verify",
+            )
+            report = {
+                "schema_version": "vladder-bounded-dataflow-workflow-v1",
+                "status": "pass" if proof["status"] == "PASS" else "verification_failed",
+                "contract": contract.to_dict(),
+                "derivation": derivation.to_dict(),
+                "candidate": candidate.to_dict(),
+                "candidate_source": str(source),
+                "proof": proof,
+                "source_changes_performed": False,
+                "production_promotion": False,
+            }
+            output = output_directory / "bounded-dataflow-workflow.json"
+    encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if not output.exists() or output.read_text() != encoded:
+            output.write_text(encoded)
+    print(encoded, end="")
+    return 0 if report.get("status") == "pass" else 2
+
+
 def automatic_region_command(args: argparse.Namespace) -> int:
     source = Path(args.source).resolve()
     out_dir = Path(args.out_dir).resolve()
@@ -1272,6 +1333,33 @@ def build_parser() -> argparse.ArgumentParser:
                     command.add_argument("--cpu", type=int)
                     command.add_argument("--min-speedup-pct", type=float, default=1.0)
         command.set_defaults(func=deep_command)
+    dataflow = sub.add_parser(
+        "dataflow",
+        help="derive, emit, prove, and audit bounded variable-output and stateful C++ dataflow",
+    )
+    dataflow.add_argument("--grammar", help="alternate bounded-dataflow-v1 grammar JSON")
+    dataflow_sub = dataflow.add_subparsers(dest="dataflow_command", required=True)
+    dataflow_coverage = dataflow_sub.add_parser("coverage", help="show every bounded dataflow family and executable terminal")
+    dataflow_coverage.add_argument("--out")
+    dataflow_coverage.set_defaults(func=dataflow_command)
+    dataflow_audit = dataflow_sub.add_parser("audit", help="classify a C++ repository manifest without changing production source")
+    dataflow_audit.add_argument("--manifest", required=True)
+    dataflow_audit.add_argument("--out-dir", default="vladder-dataflow-audit")
+    dataflow_audit.set_defaults(func=dataflow_command)
+    for action, help_text in (
+        ("graph", "construct one SemanticFlowGraph v2 bounded-dataflow realization"),
+        ("emit", "emit native C++ and bounded proof obligations without physical promotion"),
+        ("verify", "emit, prove, compile, and differentially execute one native C++ realization"),
+    ):
+        command = dataflow_sub.add_parser(action, help=help_text)
+        command.add_argument("--contract", required=True, help="bounded dataflow contract JSON")
+        command.add_argument("--target", required=True, help="terminal realization name from dataflow coverage")
+        command.add_argument("--function", default="dataflow_candidate")
+        if action == "graph":
+            command.add_argument("--out")
+        else:
+            command.add_argument("--out-dir", default=f"vladder-dataflow-{action}")
+        command.set_defaults(func=dataflow_command)
     region = sub.add_parser("region", help="inspect or optimize an automatically supported bounded C region")
     region_sub = region.add_subparsers(dest="region_command", required=True)
     region_inspect = region_sub.add_parser("inspect", help="classify automatic support or emit adapter requirements")

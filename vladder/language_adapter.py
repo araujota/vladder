@@ -66,6 +66,21 @@ SEMANTIC_NODE_KINDS = frozenset({
     "Fuse",
     "View",
     "ComplexityBound",
+    # Bounded variable-output and stateful dataflow vocabulary.
+    "CapacityGuard",
+    "PrefixScan",
+    "Compact",
+    "Scatter",
+    "Extent",
+    "Codec",
+    "EndianConvert",
+    "Project",
+    "Histogram",
+    "Commit",
+    "Rollback",
+    "Tile",
+    "Quantize",
+    "QualityMetric",
 })
 
 

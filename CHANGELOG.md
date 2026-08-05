@@ -4,6 +4,26 @@ All notable changes to vLadder are documented here.
 
 ## Unreleased
 
+## 1.0.0rc11 - 2026-08-05
+
+### Added
+
+- `bounded-dataflow-v1`, a language-neutral SemanticFlowGraph v2 grammar for stable variable-output
+  compaction, exact fixed-width codecs, transactional state deltas, AoS projected multi-reductions,
+  and deterministic 4x4 packed blocks.
+- Seventeen native C++20 terminals with guarded AVX2/AVX-512 fallbacks, Z3 sequence/bitvector/state
+  obligations, local codec Alive2 evidence, compiled differential oracles, and source/graph hashes.
+- Contract-bounded no-growth C++ container closure and a fail-closed, tracked-source no-write
+  repository acceptance audit.
+
+### Boundaries
+
+- Owning allocation, nontrivial elements, exceptions, concurrent publication, and external
+  protocols remain explicit adapters. A proved borrowed dataflow region is not a whole-wrapper or
+  application equivalence claim.
+- NeuralFusion validation is read-only archetype acceptance. It generated no production patch and
+  establishes no application speedup.
+
 ## 1.0.0rc10 - 2026-08-05
 
 ### Added

@@ -51,6 +51,11 @@ FACT_OVERRIDES: dict[str, tuple[str, ...]] = {
     "immutable-mutable-projection-split": ("semantic source authority", "complete mutation classification", "ownership and consistency", "fallback equivalence"),
     "intermediate-realization-elimination": ("semantic source authority", "scope containment", "publication and retirement", "fallback equivalence"),
     "placement-resident-state": ("semantic source authority", "complete mutation classification", "ownership and consistency", "publication and retirement", "fallback equivalence"),
+    "stable-compaction": ("bounded extent", "stable order", "capacity failure policy", "caller-owned output", "trivial element lifetime", "alias sets"),
+    "fixed-width-codec": ("field widths", "byte order", "malformed input behavior", "integer overflow policy"),
+    "stateful-delta": ("bounded extent", "acknowledged baseline", "commit and rollback atomicity", "capacity failure policy", "alias sets"),
+    "aos-multi-reduction": ("trivial record layout", "field projections", "integer overflow policy", "predicate semantics"),
+    "quantized-block-4x4": ("fixed tile shape", "endpoint policy", "tie breaking", "quality contract", "integer overflow policy"),
 }
 
 
@@ -355,4 +360,16 @@ class LifetimeRealizationLowerer(DeclarativeFamilyLowerer):
         "immutable-mutable-projection-split": "retain the stable projection while updating only mutation-dependent state",
         "intermediate-realization-elimination": "forward directly to a consumer or retire storage at the final-use frontier",
         "placement-resident-state": "retain a versioned realization at the consuming hardware or ownership boundary",
+    }
+
+
+class BoundedVariableOutputDataflowLowerer(DeclarativeFamilyLowerer):
+    family_id = "bounded-variable-output-dataflow"
+    region_kind = "bounded-stateful-variable-output-region"
+    rules = {
+        "stable-compaction": "derive a predicate mask, exact extent, capacity guard, stable indices and values, and caller-owned bounded output",
+        "fixed-width-codec": "pack typed fields into an exact endian-aware fixed-width representation without an intermediate owner",
+        "stateful-delta": "compare current and acknowledged state, emit a bounded stable delta, and atomically commit or roll back candidate state",
+        "aos-multi-reduction": "project fields from trivial records and fuse compound predicates and multiple reductions into one traversal",
+        "quantized-block-4x4": "derive deterministic endpoints, palette indices, and a packed fixed-tile realization under an explicit quality class",
     }

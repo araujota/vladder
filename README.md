@@ -30,7 +30,7 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc10`, the C++ closure matrix is
+The package version is `1.0.0rc11`, the C++ closure matrix is
 `bounded-cpp-regions-v5`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
 `bounded-zig-regions-v1`, and `bounded-julia-regions-v1` adapters. The C frontend fully
@@ -132,6 +132,29 @@ five-stage audit: representation, derivation, lowering, proof, and physical perf
 before performance identifies missing grammar/tooling coverage rather than a physically inferior
 semantic equivalent.
 
+`bounded-dataflow-v1` extends that executable path beyond scalar counts to bounded variable-output
+and stateful C++ regions. Its five families cover predicate/mask/stable compaction, fixed-width
+wire codecs, transactional baseline/delta transducers, AoS projected multi-reductions, and
+deterministic 4x4 packed blocks. All 17 terminals have native C++20 emission, deterministic
+SemanticFlowGraph v2 derivations, bounded Z3 obligations, and compiled differential execution;
+fixed codec helpers also receive local Alive2 refinement evidence. Guarded AVX2 and AVX-512
+compaction terminals retain scalar fallbacks.
+
+The C++ closure is intentionally finite. Borrowed spans and caller-owned output can close when a
+pre-write capacity guard proves no growth, element lifetime is trivial, aliases are declared, and
+the local region cannot throw. `std::vector::reserve()` alone does not prove this. Allocating or
+owning wrappers, nontrivial records, concurrent publication, callbacks, and external protocols
+remain explicit adapters rather than being mislabeled as unsupported local computation. See
+[Bounded Variable-Output Dataflow](docs/bounded-dataflow-v1.md).
+
+```bash
+vladder dataflow coverage
+vladder dataflow verify \
+  --contract examples/dataflow/compaction-contract.json \
+  --target guarded-avx2-compaction \
+  --out-dir /tmp/vladder-compaction
+```
+
 Semantic realization lifetime is also a first-class graph and grammar dimension.
 `LifetimeFlowGraph` models when information becomes valid, how often it is constructed, where it
 resides, which transitions invalidate it, when it is last consumed, and how it falls back. The
@@ -147,10 +170,10 @@ closed when source mode is requested.
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc10` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc11` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc10'
+python3 -m pip install --pre 'vladder==1.0.0rc11'
 vladder doctor
 ```
 
