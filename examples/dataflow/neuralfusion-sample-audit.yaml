@@ -1,0 +1,17 @@
+repository_root: .
+compile_commands: build/dev/compile_commands.json
+regions:
+  - id: route-a-record-classification
+    source: apps/neuralfusion_scene_animation_command_stream_profile.cpp
+    function: count_route_kind
+  - id: sparse-p2-discovery
+    source: src/runtime/sparse_p2_cache.cpp
+    function: build_sparse_p2_delta_into
+    command_index: 91
+  - id: hpc-comp-reference
+    source: src/server/hpc_compression.cpp
+    function: hpc_comp_encode_surface_reference
+    command_index: 185
+  - id: multi-client-evaluation
+    source: src/runtime/multi_client_authoritative_distributor.cpp
+    function: evaluate_multi_client_openusd_perspectives

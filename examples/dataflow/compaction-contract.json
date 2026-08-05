@@ -1,0 +1,13 @@
+{
+  "family": "predicate-stable-compaction",
+  "max_elements": 256,
+  "element_bits": 64,
+  "output_mode": "index-value",
+  "stable": true,
+  "capacity_policy": "fail-unchanged",
+  "record_trivially_copyable": true,
+  "no_growth": true,
+  "noexcept": true,
+  "aliasing": "disjoint",
+  "target_isa": ["scalar", "avx2", "avx512f"]
+}

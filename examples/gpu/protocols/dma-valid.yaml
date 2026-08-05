@@ -1,0 +1,40 @@
+kind: dma
+name: gpu-to-nic-direct
+devices:
+  - id: gpu0
+    type: gpu
+    capabilities: [peer_dma_export]
+  - id: nic0
+    type: nic
+    capabilities: [peer_dma_import]
+links:
+  - from: gpu0
+    to: nic0
+    kind: pcie
+    direct: true
+    bidirectional: true
+    bandwidth_bytes_per_second: 25000000000
+    latency_ns: 900
+transfer:
+  source: gpu0
+  destination: nic0
+  route: [gpu0, nic0]
+  bytes: 1048576
+  direct: true
+  memory_registered: true
+  registration_api: nvidia_peermem_or_dma_buf
+  producer_complete_before_dma: true
+  producer_sync: cuda_event_or_stream_sync
+  dma_complete_before_publish: true
+  completion_signal: rdma_completion_queue
+  publication_order: release_after_completion
+  consumer_complete_before_reuse: true
+  reuse_guard: consumer_completion
+  fallback: host_staging
+  events:
+    - {type: producer_complete}
+    - {type: dma_begin}
+    - {type: dma_complete}
+    - {type: publish}
+    - {type: consumer_complete}
+    - {type: reuse}

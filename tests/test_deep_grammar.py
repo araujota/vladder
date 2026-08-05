@@ -13,6 +13,7 @@ from vladder.deep_audit import audit_expert_manifest, extract_named_source_regio
 from vladder.deep_benchmark import compile_deep_harness
 from vladder.deep_grammar import DeepGrammar, load_deep_grammar, search_deep_grammar
 from vladder.deep_ir import DeepKernelContract, build_deep_realization_graph, inspect_source_realization
+from vladder.deep_benchmark import _hot_assembly_identity, _physical_search_complete
 from vladder.deep_lowering import emit_deep_candidate
 from vladder.deep_proof import prove_deep_candidate, prove_vector_byte_accumulate_alive2
 
@@ -21,6 +22,54 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DeepGrammarTests(unittest.TestCase):
+    def test_unrelated_hex_literal_is_not_utf8_semantics(self) -> None:
+        result = inspect_source_realization(
+            "unsigned seed = 0xC0FFEEULL; for (size_t i = 0; i < n; ++i) sum += data[i];",
+            "cpp",
+            "main",
+        )
+        self.assertIsNone(result.predicate)
+        continuation_count = inspect_source_realization(
+            "for (...) count += ((value & 0xC0) == 0x80);",
+            "cpp",
+            "main",
+        )
+        self.assertIsNone(continuation_count.predicate)
+
+    def test_hot_identity_resolves_native_and_jit_symbol_spellings(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            zig = root / "zig.s"
+            zig.write_text("paired.deep_candidate:\n  movq %rdi, %rax\n  retq\n")
+            julia = root / "julia.s"
+            julia.write_text("julia_deep_candidate_176:\n  movq %rdi, %rax\n  retq\n")
+            empty = root / "empty.s"
+            empty.write_text("unrelated:\n  retq\n")
+            alias_ir = root / "alias.ll"
+            alias_ir.write_text(
+                "@deep_candidate = alias i64 (ptr), ptr @paired.deep_baseline\n"
+                "define internal i64 @paired.deep_baseline(ptr %p) {\n  ret i64 0\n}\n"
+            )
+            self.assertEqual(_hot_assembly_identity(zig, "deep_candidate")["status"], "resolved")
+            self.assertEqual(_hot_assembly_identity(julia, "deep_candidate")["status"], "resolved")
+            self.assertEqual(_hot_assembly_identity(empty, "deep_candidate", alias_ir)["status"], "resolved")
+            unresolved = _hot_assembly_identity(empty, "deep_candidate")
+            self.assertEqual(unresolved["status"], "unresolved")
+            self.assertIsNone(unresolved["normalized_sha256"])
+
+    def test_unresolved_physical_identity_prevents_complete_search_claim(self) -> None:
+        closed = [
+            {"physical_identity_status": "resolved", "classification": "statistical_tie"},
+            {"physical_identity_status": "resolved", "classification": "assembly_duplicate"},
+        ]
+        self.assertTrue(_physical_search_complete(closed, 1, 1))
+        unresolved = [
+            *closed,
+            {"physical_identity_status": "unresolved", "classification": "statistical_tie"},
+        ]
+        self.assertFalse(_physical_search_complete(unresolved, 1, 1))
+        self.assertFalse(_physical_search_complete(closed, 2, 1))
+
     def test_rust_shift_predicate_normalizes_to_shared_utf8_semantics(self) -> None:
         source = "pub fn count(values: &[u8]) -> usize { values.iter().filter(|&&byte| (byte >> 6) != 0b10).count() }"
         realization = inspect_source_realization(source, "rust", "count")

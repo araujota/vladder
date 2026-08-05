@@ -1,0 +1,36 @@
+{
+  "schema_version": "vladder-schema-registry-v1",
+  "compatibility_policy": "Within a schema major version, producers may add optional fields but may not remove required fields, change required field types, or change enum meaning. Incompatible changes require a new schema ID and file.",
+  "artifacts": {
+    "agent-review": {
+      "artifact_schema_version": "vladder-agent-review-v1",
+      "file": "agent-review-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder review template"
+    },
+    "benchmark-result": {
+      "artifact_schema_version": "vladder-paired-benchmark-v1",
+      "file": "benchmark-result-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder benchmark paired"
+    },
+    "promotion-summary": {
+      "artifact_schema_version": "vladder-promotion-summary-v1",
+      "file": "promotion-summary-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder workflow run"
+    },
+    "semantic-flow": {
+      "artifact_schema_version": "semantic-flow-v2",
+      "file": "semantic-flow-v2.schema.json",
+      "stability": "stable",
+      "producer": "language and protocol frontends"
+    },
+    "training-bundle": {
+      "artifact_schema_version": "vladder-training-bundle-v1",
+      "file": "training-bundle-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder training template"
+    }
+  }
+}

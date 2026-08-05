@@ -29,7 +29,8 @@ def sha256(path: Path) -> str:
 def pypi_sdist(project: str, version: str, metadata: dict[str, Any] | None = None) -> dict[str, str]:
     payload = metadata
     if payload is None:
-        with urlopen(f"https://pypi.org/pypi/{project}/{version}/json", timeout=30) as response:
+        # The scheme and host are constants; only path components are substituted.
+        with urlopen(f"https://pypi.org/pypi/{project}/{version}/json", timeout=30) as response:  # nosec B310
             payload = json.load(response)
     files = payload.get("urls", [])
     matches = [item for item in files if item.get("packagetype") == "sdist"]

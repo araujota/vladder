@@ -30,6 +30,17 @@ and prove local units, but it performs no optimization, ranking, or source chang
 - aggregate references and compiler-lowered aggregate results;
 - callable boundaries as explicit external contracts.
 
+`bounded-cpp-regions-v6` adds one shared `RegionClosureGraph` over these source bindings:
+
+- aggregate results become ordered register or `sret` live-out projections;
+- ordinary local returns become tagged CFG exits and are scheduled at whole-function scope;
+- definition-visible local helpers become exact call-preserving or inlined relations;
+- guarded no-growth appends of trivial values become borrowed output projections.
+
+Read `region-closure.json` and `region-closure-proof/region-closure-proof.json`. Z3 closure of an
+exit selector, aggregate projection, or capacity inequality does not prove a transformed function;
+each candidate still needs Alive2 where applicable and full differential observables.
+
 The frontend also records object-state use, allocation, exceptions, synchronization, source helper
 calls, definition-visible compiled helper summaries, and candidate loop/container subregions.
 
@@ -70,7 +81,8 @@ closed in local LLVM IR. The report's `protocol_scopes` must say:
   remain available.
 
 This limitation applies to the protocol claim, not the entire source file. Independently closed
-subregions remain eligible. Escaping control, volatile/synchronization, local exception behavior,
+subregions remain eligible. Ordinary local returns can use the tagged whole-function CFG mode;
+`goto`, coroutine transfer, volatile/synchronization, local exception behavior,
 and ambiguous source ranges reject a capsule rather than weakening its contract.
 
 ## Recovery Recipes
@@ -111,7 +123,7 @@ boundary/state relations, optional CBMC for explicitly bounded aggregate or exce
 differential tests for complete observables, and project tests for ownership and external APIs.
 Do not infer whole-function equivalence from a subregion proof.
 
-The v5 loop scheduler uses a source-level Clang hint. Its proof build removes the hint and proves
+The v6 loop scheduler uses a source-level Clang hint. Its proof build removes the hint and proves
 capsule IR identity; Z3 proves loop partition coverage. `physical_candidate_alive2: NOT_RUN` is an
 explicit boundary, not a passed Alive2 result. Require differential application checks and
 physical measurement before promotion.

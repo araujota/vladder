@@ -1,0 +1,57 @@
+name: External Security Services
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-24.04
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_PROJECT_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: SonarCloud configuration status
+        if: env.SONAR_TOKEN == '' || env.SONAR_ORGANIZATION == '' || env.SONAR_PROJECT_KEY == ''
+        run: echo "SonarCloud external gate is not configured; set SONAR_TOKEN and repository variables."
+      - name: SonarQube Cloud scan
+        if: env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' && env.SONAR_PROJECT_KEY != ''
+        uses: SonarSource/sonarqube-scan-action@v6
+        with:
+          args: >-
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+
+  snyk:
+    runs-on: ubuntu-24.04
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install .
+      - name: Snyk configuration status
+        if: env.SNYK_TOKEN == ''
+        run: echo "Snyk external gate is not configured; set SNYK_TOKEN."
+      - name: Snyk dependency scan
+        if: env.SNYK_TOKEN != ''
+        uses: snyk/actions/python@master
+        with:
+          args: --severity-threshold=high --sarif-file-output=snyk.sarif
+      - name: Upload Snyk SARIF
+        if: env.SNYK_TOKEN != '' && always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: snyk.sarif

@@ -1,0 +1,15 @@
+kind: queue
+name: missing-cross-queue-dependency
+resources:
+  - id: output
+    owner: shared
+operations:
+  - id: produce
+    queue: compute-0
+    accesses:
+      - {resource: output, mode: write, stage: compute}
+  - id: consume
+    queue: transfer-0
+    accesses:
+      - {resource: output, mode: read, stage: transfer}
+barriers: []

@@ -1,0 +1,11 @@
+collector: ROCprofiler-dispatch-simulated
+architecture: test-wave32
+device_identity: TEST-GPU-0001
+replay_count: 2
+serialized_execution: true
+profiler_distorts_timing: true
+metrics:
+  MeanOccupancyPerCU: {value: 0.625, unit: ratio}
+  dram_bytes_read: {value: 786432, unit: bytes}
+  global_load_transactions: {value: 6144, unit: transactions}
+  memory_stall_cycles: {value: 3500, unit: cycles}

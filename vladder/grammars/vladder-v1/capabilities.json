@@ -265,6 +265,24 @@
         "intermediate-realization-elimination": "vladder.lifetime_workflow:synthesize_lifetime_flow",
         "placement-resident-state": "vladder.lifetime_workflow:synthesize_lifetime_flow"
       }
+    },
+    {
+      "id": "bounded-variable-output-dataflow",
+      "title": "Bounded stateful and variable-output dataflow",
+      "status": "operational",
+      "concerns": ["predicate masks", "stable compaction", "caller-owned bounded output", "fixed-width codecs", "transactional deltas", "AoS projections", "fixed 4x4 quantized blocks"],
+      "rules": ["stable-compaction", "fixed-width-codec", "stateful-delta", "aos-multi-reduction", "quantized-block-4x4"],
+      "contract_facts": ["bounded extent", "capacity failure policy", "caller-owned output", "alias sets", "integer overflow policy"],
+      "proof_strategies": ["SemanticFlowGraph v2 derivation binding", "Z3 bounded sequence and transition obligations", "Alive2 for fixed local codec helpers", "native differential execution", "owning-wrapper adapter obligations"],
+      "cost_signals": ["selected density", "bytes materialized", "output extent", "passes over input", "allocation count", "state publication cost", "packing operations", "physical latency"],
+      "lowerer": "vladder.lowerers:BoundedVariableOutputDataflowLowerer",
+      "source_routes": {
+        "stable-compaction": "vladder.dataflow_lowering:emit_dataflow_cpp",
+        "fixed-width-codec": "vladder.dataflow_lowering:emit_dataflow_cpp",
+        "stateful-delta": "vladder.dataflow_lowering:emit_dataflow_cpp",
+        "aos-multi-reduction": "vladder.dataflow_lowering:emit_dataflow_cpp",
+        "quantized-block-4x4": "vladder.dataflow_lowering:emit_dataflow_cpp"
+      }
     }
   ]
 }

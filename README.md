@@ -30,10 +30,10 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc10`, the C++ closure matrix is
-`bounded-cpp-regions-v5`; it retains the
+The package version is `1.0.0rc15`, the C++ closure matrix is
+`bounded-cpp-regions-v6`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
-`bounded-zig-regions-v1`, and `bounded-julia-regions-v1` adapters. The C frontend fully
+`bounded-zig-regions-v2`, and `bounded-julia-regions-v2` adapters. The C frontend fully
 automates extraction, LLVM-derived classification, transformation, C source regeneration,
 formal refinement, differential execution, hardware benchmarking, and proof-gated patch
 promotion for canonical functions with this ABI:
@@ -55,8 +55,15 @@ typed obligations, effects, protocol transitions, and claim boundaries. The C fr
 the same authoritative v2 graph to every admitted legacy `FlowGraph`; legacy classification
 fields remain compatibility views.
 
+The v6 `RegionClosureGraph` additionally represents noncanonical first-order C ABIs, ordered
+aggregate-result projections, ordinary multi-exit CFGs, definition-visible helper summaries, and
+guarded no-growth trivial container writes. These close local representation boundaries; they do
+not make reallocation, nontrivial destruction, exceptions, indirect calls, or external ownership
+generic. A modeled C ABI with no executable family is reported as `grammar-adapter`, not
+misreported as an ABI failure.
+
 Results expose independent capture, isolation, candidate-generation, local-proof, benchmark,
-source-rewrite, and protocol-equivalence capabilities. v5 can materialize whole local functions
+source-rewrite, and protocol-equivalence capabilities. v6 can materialize whole local functions
 and eligible nested loops as proof units, and can emit bounded source schedule candidates for the
 latter. It still requires a workload adapter before ranking a noncanonical C++ candidate. Alive2
 can prove local LLVM rewrites; it does not prove RAII, allocation, object invariants, exception,
@@ -78,6 +85,39 @@ rc6 adds a manifest-driven agent workflow and closes several application-promoti
   output and device-timestamp runners. SPIR-V structural validation is not equivalence, and CUDA
   remains an external toolchain/runner boundary when unavailable.
 
+rc14 extends that evidence chain into heterogeneous execution without creating a separate GPU
+semantic ontology. `Q4KPhysicalExecutionGraph`-style machine resources, SPIR-V/PTX operations,
+queue synchronization, DMA topology, and presentation ownership lower into shared
+`SemanticFlowGraph v2` nodes, effects, obligations, and protocol transitions. The
+`heterogeneous-execution-v1` workflow provides:
+
+- SPIR-V, PTX, and CUDA-to-PTX capture with operation, resource, provenance, and claim-boundary
+  inventories;
+- native CUDA device probing and a bounded pointwise source lowerer that searches thread geometry
+  and contiguous per-thread schedules, proves index coverage/injectivity, checks exact output
+  hashes, and emits source plus launch plan only after clean physical promotion;
+- architecture manifests and static occupancy, register, shared-memory, cache-transaction, and
+  coalescing estimates for pruning, calibrated with CUDA-driver JIT resource inspection and a
+  measured copy-flow bandwidth bound;
+- bounded launch-plan proof and GLSL local-workgroup source regeneration where the source and
+  recognized lane-independent semantics permit it;
+- queue/semaphore/barrier, GPU/NIC DMA/topology, and acquire/present/scanout protocol verification;
+- live CUDA/Vulkan UUID joining, Vulkan queue-family capability capture, PCIe/IOMMU/NIC/RDMA route
+  discovery, and DRM connector binding with fail-closed protocol templates;
+- built-in Nsight Compute attribution plus CUPTI, ROCprofiler, and runner-counter normalization with
+  randomized paired physical ranking.
+
+Static models never promote. Exact output hashes, matching device identity, clean device
+timestamps, protocol closure, and confidence intervals are required for a physical win.
+Profiler-replayed, serialized, or simulated measurements remain attribution-only.
+
+rc15 makes that optimization stack consumable as a public agent workflow. It adds stable schemas,
+three reproducible frontend demonstrations, seeded accepted/rejected transformations, a
+requirement-level release gate, a canonical review record, an opt-in Convex review service, and a
+static-first release site. Optimization remains local-only by default. Neither source nor raw
+artifacts are accepted by the review schema, and review submission requires durable scope consent,
+explicit CLI confirmation, and record-level consent.
+
 This is not arbitrary-C++ or whole-device equivalence. RAII, allocation, exceptions, general
 concurrency, callbacks, syscalls, drivers, presentation, Vulkan/CUDA host protocols, and external
 libraries are proved only through explicit finite adapters over their actual observables.
@@ -93,15 +133,17 @@ candidates in a randomized same-executable benchmark. Unsafe contracts, owning a
 custom destruction, async, concurrency, FFI, unresolved calls, and external protocols fail closed
 with explicit adapter requirements.
 
-The Zig frontend captures a selected native function, compiler/build identity, safety mode, LLVM
-IR, and assembly. Z1 closes allocation-free exact byte reductions over borrowed slices, regenerates
+The Zig frontend captures a selected native function in its original module graph, compiler/build
+identity, safety mode, LLVM IR, and assembly. Z2 accepts explicit bounded comptime type
+specializations such as `countScalar(u8, ...)` and closes allocation-free exact byte reductions over borrowed slices, regenerates
 Zig, derives the realized schedule back from source, proves it with Z3 and canonical Alive2 LLVM,
 runs differential tests, and ranks variants in one executable. Allocator ownership, error unions,
 `defer`, volatile/atomic effects, assembly, FFI, and unresolved calls remain explicit boundaries.
 
-The Julia frontend captures one concrete module/method/tuple specialization, Julia version,
-project/manifest, world counter, inferred effects and allocation, lowered/typed IR, LLVM IR, and
-native assembly. J1 closes type-stable zero-allocation exact byte reductions and ranks warmed
+The Julia frontend captures one concrete module/method/tuple specialization through the declared
+project and package module, Julia version, project/manifest, world counter, inferred effects,
+lowered/typed IR, LLVM IR, and native assembly. Reflection does not execute arbitrary target
+methods. J2 closes type-stable zero-allocation exact byte reductions and ranks warmed
 steady-state native Julia candidates in independent processes. Other methods/worlds, dynamic
 dispatch, GC-visible allocation, globals, exceptions, tasks, `ccall`, nondeterminism, and external
 effects fail closed.
@@ -117,8 +159,12 @@ runtime- or deployment-dispatch realizations. The same derivation regenerates na
 Rust, Zig, or Julia source for every terminal. Language adapters contribute typed bounds,
 ownership, lifetime, exception, unsafe, numeric, and ISA obligations without forking the
 information-flow vocabulary. Z3, compatible Alive2 core refinements, exhaustive boundary
-execution, normalized assembly identities where available, and randomized paired ranking are all
+execution, non-empty symbol-resolved assembly or LLVM identities, and randomized paired ranking are all
 required by the closed path.
+
+An unresolved hot body is never hashed as an empty physical identity. It is measured without
+deduplication and forces `best_verified_found`; `bounded_optimal_local` additionally requires every
+terminal identity to resolve and every unique identity to be measured.
 
 `SemanticFlowGraph v2` is the common evidence contract. Obligations have stable IDs, categories,
 scopes, proof methods, and native-language bindings. Effects name memory, allocation, cleanup,
@@ -132,6 +178,31 @@ five-stage audit: representation, derivation, lowering, proof, and physical perf
 before performance identifies missing grammar/tooling coverage rather than a physically inferior
 semantic equivalent.
 
+`bounded-dataflow-v1` extends that executable path beyond scalar counts to bounded variable-output
+and stateful regions. Its five families cover predicate/mask/stable compaction, fixed-width
+wire codecs, transactional baseline/delta transducers, AoS projected multi-reductions, and
+deterministic 4x4 packed blocks. All 17 terminals have native C, C++20, Zig, and Julia emission,
+deterministic SemanticFlowGraph v2 derivations, bounded Z3 obligations, and compiled differential execution;
+fixed codec helpers also receive local Alive2 refinement evidence. Guarded AVX2 and AVX-512
+compaction terminals retain scalar fallbacks. Bindings unable to express a named ISA terminal
+report `semantic_scalar_fallback` and do not count as distinct physical coverage.
+
+The C++ closure is intentionally finite. Borrowed spans and caller-owned output can close when a
+pre-write capacity guard proves no growth, element lifetime is trivial, aliases are declared, and
+the local region cannot throw. `std::vector::reserve()` alone does not prove this. Allocating or
+owning wrappers, nontrivial records, concurrent publication, callbacks, and external protocols
+remain explicit adapters rather than being mislabeled as unsupported local computation. See
+[Bounded Variable-Output Dataflow](docs/bounded-dataflow-v1.md).
+
+```bash
+vladder dataflow coverage
+vladder dataflow verify \
+  --contract examples/dataflow/compaction-contract.json \
+  --target guarded-avx2-compaction \
+  --language cpp \
+  --out-dir /tmp/vladder-compaction
+```
+
 Semantic realization lifetime is also a first-class graph and grammar dimension.
 `LifetimeFlowGraph` models when information becomes valid, how often it is constructed, where it
 resides, which transitions invalidate it, when it is last consumed, and how it falls back. The
@@ -144,13 +215,75 @@ information-flow operations, proof obligations, cost signals, and any specialize
 This is distinct from generic source emission: rules without a compatible source backend fail
 closed when source mode is requested.
 
+## Public Release Evidence
+
+Run the complete local release decision from one command:
+
+```bash
+python3 scripts/public_release_gate.py --execute
+```
+
+The report evaluates every requirement independently. Local checks can pass while hosted Sonar,
+Snyk, Convex, or Vercel deployment remains an `external_gate`; these states are never collapsed
+into one optimistic result. Three small C, C++, and Rust demonstrations are documented in
+[`demos/README.md`](demos/README.md). The substantial application study is
+[`docs/case-studies/neuralfusion.md`](docs/case-studies/neuralfusion.md).
+
+Public artifacts are schema-versioned:
+
+```bash
+vladder schema list
+vladder schema validate --kind promotion-summary --artifact promotion-summary.json
+vladder review template --promotion-summary promotion-summary.json \
+  --project PROJECT --revision GIT_SHA --out agent-review.json
+vladder review validate --review agent-review.json
+```
+
+Optional source-free contributions use the shipped release service. They require a durable,
+scope-specific user decision in addition to `--confirm-upload` and
+`privacy.submission_consent=true`; no shared credential is required. Unknown state is not consent:
+
+```bash
+vladder consent show
+vladder consent set --scope canonical-training-data --decision opt-in --confirmed-user-choice
+vladder consent set --scope agent-experience-review --decision opt-out --confirmed-user-choice
+```
+
+Agents must explicitly ask for opt in or opt out before recording an unknown scope. Training and
+review are independent. A saved opt-out suppresses upload and repeated requests across sessions
+and package updates until the user explicitly asks to change it. A saved opt-in still requires
+review of the exact source-free payload and both per-submission gates:
+
+```bash
+vladder review submit --review agent-review.json --confirm-upload
+vladder training template --out training-bundle.json
+vladder training validate --bundle training-bundle.json
+vladder training submit --bundle training-bundle.json --confirm-upload
+```
+
+The consent ledger is stored outside the package under the user's configuration directory (or
+`VLADDER_CONSENT_FILE`) with owner-only permissions. Use `--validate-only` to test the remote path
+without storage; because it sends the exact payload to the service, it requires opt-in too. Reviews
+and derived-feature training bundles are private pending moderation. Override endpoints with `VLADDER_REVIEW_ENDPOINT` or
+`VLADDER_TRAINING_ENDPOINT`; ordinary optimization never uses the network. The local privacy policy
+is in [`docs/privacy.md`](docs/privacy.md); schema compatibility is in
+[`docs/artifact-schemas.md`](docs/artifact-schemas.md).
+
+Release and contributor guides:
+
+- [`docs/grammar-authoring.md`](docs/grammar-authoring.md)
+- [`docs/proof-boundaries.md`](docs/proof-boundaries.md)
+- [`docs/benchmark-reproducibility.md`](docs/benchmark-reproducibility.md)
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [`ROADMAP.md`](ROADMAP.md)
+
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc10` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc15` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc10'
+python3 -m pip install --pre 'vladder==1.0.0rc15'
 vladder doctor
 ```
 
@@ -224,11 +357,34 @@ inputs resume deterministically and are classified as revalidation rather than a
 
 The operational decision tree is:
 
-1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `lifetime`, `shader`, or `protocol` from the region's actual semantic boundary.
+1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `lifetime`, `gpu`, `shader`, or `protocol` from the region's actual semantic boundary.
 2. Run inspection and read `meaningful_semantic_coverage`.
 3. If an adapter remains, generate or complete it; do not relabel local proof as wrapper proof.
 4. Require candidate proof and randomized paired physical evidence.
 5. Require project integration and composed-system confirmation before retention.
+
+### Learned Search Prior
+
+The optional Prior v0 layer ranks already enumerated semantic-graph actions so vLadder can spend
+less proof, compilation, differential-test, and benchmark capacity on low-value candidates. It is
+strictly advisory: it cannot emit code, establish legality or equivalence, suppress the baseline,
+replace hardware measurement, or promote a rewrite.
+
+```bash
+vladder prior init --out prior.yaml
+vladder prior run --manifest prior.yaml --out-dir prior-out
+vladder prior template --out training-template.yaml
+vladder prior materialize --manifest training-template.yaml --store experience
+```
+
+Read `prior-out/prior-summary.json` first. The default run is a controlled Grade C pilot and reports
+`production_model_status: insufficient_dataset`; synthetic measurements never count toward the
+production corpus gate. Real deployment requires leakage-safe root/project/language/hardware
+holdouts, calibrated abstention, shadow replay, at least 95% winner recall at the declared budget,
+and the unchanged deterministic vLadder proof and promotion path. See
+[`docs/learned-search-prior-v0.md`](docs/learned-search-prior-v0.md).
+The template is open to future typed graph fields and structured grammar primitives; unknown
+semantic vocabulary participates in identity and model features instead of being discarded.
 
 ```bash
 vladder cpp adapter --report vladder-cpp-inspect/cpp-support.json --out-dir vladder-cpp-adapter
@@ -236,6 +392,16 @@ vladder protocol verify --manifest state-protocol.yaml --out-dir vladder-protoco
 vladder benchmark paired --manifest paired-benchmark.yaml --out-dir vladder-paired
 vladder benchmark compose --manifest regional-effects.yaml --out vladder-composition.json
 vladder shader synthesize --source kernel.comp --runner-manifest gpu-runner.yaml --out-dir vladder-shader-out
+vladder gpu capture --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-capture
+vladder gpu synthesize --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-candidates
+vladder gpu verify --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-proof
+vladder gpu rank --manifest heterogeneous-workflow.yaml --out-dir vladder-gpu-ranking
+vladder gpu probe --out gpu-architecture.yaml
+vladder gpu topology --out device-topology.json
+vladder gpu cuda-optimize --source kernel.cu --function transform \
+  --architecture gpu-architecture.yaml --out-dir vladder-cuda-out
+vladder gpu queue-template --topology device-topology.json --out queue.yaml
+vladder gpu protocol-verify --manifest queue.yaml --out-dir queue-proof
 ```
 
 For an automatically supported Rust region:
@@ -264,8 +430,10 @@ provenance; strict local proof composes source-derived schedule validation, para
 canonical schedule LLVM refinement. Do not report that canonical lowerer proof as direct proof of
 Zig frontend aliases or Julia's GC/safepoint ABI.
 
-The shader runner must emit exact output hashes and device timestamps. A candidate that only passes
-`spirv-val` remains non-promotable.
+The shader or heterogeneous GPU runner must emit exact output hashes and device timestamps. A
+candidate that only passes `spirv-val`, a bounded launch proof, a static cost model, or a simulated
+runner remains non-promotable. Use `vladder gpu support` to inspect available kernel, counter, and
+device tooling and see [GPU Compute Evidence](vladder/skills/vladder/references/gpu-workflow.md).
 
 For repository or runtime architecture work, begin with an explicit lifetime manifest and trace:
 
@@ -426,9 +594,12 @@ proves predicted local units but still performs no optimization, benchmark, or s
 `--command-index N` when the compilation database contains multiple configurations for one file.
 Inspect `closure.disposition`, each independent `closure.capabilities` entry, categorical
 `protocol_scopes`, `compiled-effects.json`, `typed-abi.json`, `subregions.json`,
-`cpp-information-flow.json`, and `proof-envelope.json`. `bounded-cpp-regions-v5` can emit whole
+`cpp-information-flow.json`, `region-closure.json`, `region-closure-proof.json`, and
+`proof-envelope.json`. `bounded-cpp-regions-v6` can emit whole
 local-function proof units and source-preserving lambda capsules for eligible loops inside owning
-C++ methods. Its bounded schedule grammar emits guarded Clang unroll candidates with identity and
+C++ methods. Ordinary early-return loops use a whole-function CFG boundary so return semantics are
+not changed by lambda extraction. Guarded no-growth trivial vector regions and call-preserving
+local helpers are eligible bounded capsules. Its bounded schedule grammar emits guarded Clang unroll candidates with identity and
 Z3 schedule evidence, but requires an application benchmark adapter before ranking or applying
 them. RAII, exceptions/destructors, allocation ownership, concurrency, callbacks, Vulkan/OpenUSD,
 and other external protocols remain explicitly outside generic whole-function proof. They do not
@@ -606,6 +777,7 @@ python3 -m venv .venv
 .venv/bin/pip install '.[dev]'
 python3 scripts/audit_release.py --root .
 .venv/bin/python -m pytest -q
+python3 scripts/public_release_gate.py --execute
 openspec validate release-vladder-library --strict
 openspec validate release-channels-rc4 --strict
 openspec validate lifetime-aware-realization-v1 --strict
@@ -617,8 +789,17 @@ python3 scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz
 python3 scripts/release_preflight.py --repository OWNER/REPOSITORY
 ```
 
+The optional website and review service are independently buildable under `apps/release-site` and
+`services/review-backend`. Their deployment credentials are never prerequisites for local
+optimization.
+
 The release audit rejects generated outputs, caches, model files, vendored application trees,
 credentials, compiled objects, and oversized machine-local artifacts.
+
+The pinned no-write C, C++, Zig, and Julia acceptance study is documented in
+[docs/cross-language-rc12-evaluation.md](docs/cross-language-rc12-evaluation.md). It distinguishes
+compiler capture, semantic closure, candidate generation, proof, and physical rejection rather
+than treating successful command execution as optimization success.
 
 ## Publishing
 

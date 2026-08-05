@@ -14,6 +14,7 @@ import time
 import yaml
 
 from . import __version__
+from .consent import CONSENT_SCOPES, load_consent, set_consent
 from .candidates import Candidate, generate_candidates
 from .automatic import inspect_automatic_region
 from .cpp_regions import inspect_cpp_matrix, inspect_cpp_region, isolate_cpp_region, optimize_cpp_region
@@ -49,11 +50,42 @@ from .paired_benchmark import compose_benchmark_effects, run_paired_benchmark
 from .proofs import proof_to_dict, prove_candidate, write_smt2_stub
 from .report import write_csv, write_html, write_json
 from .replacement import verify_applied_replacement
+from .review_workflow import create_review_template, submit_review, validate_review
+from .training_workflow import (
+    create_training_bundle_from_prior, create_training_template, submit_training_bundle,
+    validate_training_bundle,
+)
+from .schema_registry import list_artifact_schemas, validate_artifact
 from .toolchain import alive2_check, compile_c, compiler_version, cpu_flags, cpu_model, discover_toolchain, emit_alive2_ir, run, static_estimates, tool_version
 from .sksf_workflow import synthesize_kernel_v6, validate_attribution_v6
 from .skill_tools import install_skill, validate_skill
 from .verification_policy import VerificationPolicy, evaluate_promotion
 from .shader_workflow import gpu_support_matrix, inspect_shader, synthesize_shader
+from .gpu_workflow import (
+    capture_gpu_workflow,
+    gpu_support_matrix as heterogeneous_gpu_support_matrix,
+    rank_gpu_workflow,
+    synthesize_gpu_workflow,
+    verify_gpu_workflow,
+)
+from .cuda_runtime import probe_cuda_architecture, run_cuda_artifact
+from .cuda_synthesis import optimize_cuda_pointwise, synthesize_cuda_pointwise
+from .device_topology import (
+    emit_dma_protocol_template,
+    emit_presentation_protocol_template,
+    emit_vulkan_queue_protocol_template,
+    probe_device_topology,
+    probe_drm_presentation,
+    probe_vulkan_capabilities,
+)
+from .device_protocol import verify_device_protocol
+from .gpu_ir import load_gpu_architecture
+from .prior_workflow import (
+    evaluate_prior, evaluate_prior_generalization, generate_prior_dataset, ingest_prior_dataset, prior_support,
+    initialize_prior_manifest, initialize_prior_training_template, materialize_prior_dataset_template,
+    recommend_prior, run_prior_workflow, select_prior,
+    split_prior_dataset, train_prior, validate_prior_dataset,
+)
 from .state_protocol import verify_state_protocol
 from .rust_adapter import (
     RustRegionRequest,
@@ -78,6 +110,12 @@ from .deep_grammar import load_deep_grammar, search_deep_grammar
 from .deep_ir import DeepKernelContract, build_deep_realization_graph
 from .deep_lowering import emit_deep_candidate
 from .deep_proof import prove_deep_candidate
+from .dataflow_audit import audit_dataflow_manifest
+from .dataflow_grammar import load_bounded_dataflow_grammar
+from .dataflow_ir import BoundedDataflowContract, build_bounded_dataflow_graph
+from .dataflow_lowering import emit_dataflow_cpp
+from .dataflow_multilang import emit_dataflow_native
+from .dataflow_proof import prove_dataflow_candidate
 
 
 HARNESS = r"""
@@ -886,6 +924,63 @@ def deep_command(args: argparse.Namespace) -> int:
     return 0 if status in {"pass", "supported"} else 2
 
 
+def dataflow_command(args: argparse.Namespace) -> int:
+    grammar = load_bounded_dataflow_grammar(Path(args.grammar).resolve() if getattr(args, "grammar", None) else None)
+    output: Path | None = None
+    if args.dataflow_command == "coverage":
+        report = grammar.coverage()
+        output = Path(args.out).resolve() if args.out else None
+    elif args.dataflow_command == "audit":
+        output_directory = Path(args.out_dir).resolve()
+        report = audit_dataflow_manifest(Path(args.manifest).resolve(), output_directory, grammar)
+        output = output_directory / "bounded-dataflow-audit.json"
+    else:
+        payload = json.loads(Path(args.contract).read_text())
+        if not isinstance(payload, dict):
+            raise ValueError("bounded dataflow contract must be a JSON object")
+        contract = BoundedDataflowContract.from_dict(payload)
+        derivation = grammar.derive(contract, args.target)
+        if args.dataflow_command == "graph":
+            report = build_bounded_dataflow_graph(
+                contract, args.target, source_language=args.language, function_identity=args.function
+            ).to_dict()
+            report["status"] = "pass"
+            output = Path(args.out).resolve() if args.out else None
+        else:
+            output_directory = Path(args.out_dir).resolve()
+            output_directory.mkdir(parents=True, exist_ok=True)
+            candidate = emit_dataflow_native(contract, derivation, args.language, args.function, grammar)
+            suffix = {"c": ".c", "cpp": ".cpp", "zig": ".zig", "julia": ".jl"}[args.language]
+            source = output_directory / ("candidate" + suffix)
+            source.write_text(candidate.source)
+            proof = prove_dataflow_candidate(
+                contract,
+                derivation,
+                candidate,
+                output_directory / "proofs",
+                run_differential=args.dataflow_command == "verify",
+            )
+            report = {
+                "schema_version": "vladder-bounded-dataflow-workflow-v1",
+                "status": "pass" if proof["status"] == "PASS" else "verification_failed",
+                "contract": contract.to_dict(),
+                "derivation": derivation.to_dict(),
+                "candidate": candidate.to_dict(),
+                "candidate_source": str(source),
+                "proof": proof,
+                "source_changes_performed": False,
+                "production_promotion": False,
+            }
+            output = output_directory / "bounded-dataflow-workflow.json"
+    encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if output:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        if not output.exists() or output.read_text() != encoded:
+            output.write_text(encoded)
+    print(encoded, end="")
+    return 0 if report.get("status") == "pass" else 2
+
+
 def automatic_region_command(args: argparse.Namespace) -> int:
     source = Path(args.source).resolve()
     out_dir = Path(args.out_dir).resolve()
@@ -1036,7 +1131,7 @@ def zig_region_command(args: argparse.Namespace) -> int:
         minimum_speedup_pct=getattr(args, "min_speedup_pct", 1.0),
         benchmark_elements=getattr(args, "n", 1 << 20), benchmark_inner=getattr(args, "inner", 128),
         benchmark_processes=getattr(args, "processes", 8), benchmark_repetitions=getattr(args, "repetitions", 2),
-        cpu=getattr(args, "cpu", None),
+        cpu=getattr(args, "cpu", None), specialization=getattr(args, "specialization", None),
     )
     actions = {"inspect": inspect_zig_region, "isolate": isolate_zig_region, "synthesize": synthesize_zig_region, "optimize": optimize_zig_region}
     report = actions[args.zig_command](request)
@@ -1107,6 +1202,141 @@ def shader_command(args: argparse.Namespace) -> int:
     return 0 if report.get("status") == "pass" or args.shader_command == "support" else 2
 
 
+def gpu_command(args: argparse.Namespace) -> int:
+    if args.gpu_command == "support":
+        report = heterogeneous_gpu_support_matrix()
+    elif args.gpu_command == "probe":
+        report = probe_cuda_architecture(
+            Path(args.out),
+            device=args.device,
+            measure_bandwidth=not args.no_bandwidth,
+            bandwidth_extent=args.bandwidth_n,
+        )
+    elif args.gpu_command == "topology":
+        report = probe_device_topology(
+            Path(args.out), cuda_device=args.device, transfer_bytes=args.transfer_bytes
+        )
+    elif args.gpu_command == "vulkan-probe":
+        report = probe_vulkan_capabilities(Path(args.out))
+    elif args.gpu_command == "presentation-probe":
+        report = probe_drm_presentation(Path(args.out))
+    elif args.gpu_command == "dma-template":
+        topology_path = Path(args.topology).resolve()
+        topology = json.loads(topology_path.read_text())
+        report = emit_dma_protocol_template(
+            topology, args.destination, Path(args.out), transfer_bytes=args.transfer_bytes
+        )
+    elif args.gpu_command == "queue-template":
+        topology = json.loads(Path(args.topology).resolve().read_text())
+        report = emit_vulkan_queue_protocol_template(topology, Path(args.out))
+    elif args.gpu_command == "presentation-template":
+        topology = json.loads(Path(args.topology).resolve().read_text())
+        report = emit_presentation_protocol_template(topology, Path(args.out))
+    elif args.gpu_command == "protocol-verify":
+        report = verify_device_protocol(Path(args.manifest), Path(args.out_dir)).to_dict()
+    elif args.gpu_command == "cuda-run":
+        report = run_cuda_artifact(Path(args.artifact))
+    elif args.gpu_command in {"cuda-synthesize", "cuda-optimize"}:
+        output_directory = Path(args.out_dir).resolve()
+        if args.architecture:
+            architecture = load_gpu_architecture(Path(args.architecture))
+        else:
+            probe = probe_cuda_architecture(
+                output_directory / "architecture.yaml",
+                device=args.device,
+                measure_bandwidth=True,
+                bandwidth_extent=args.bandwidth_n,
+            )
+            architecture = load_gpu_architecture(probe["architecture"])
+        shared = {
+            "logical_extent": args.n,
+            "thread_sizes": tuple(int(item) for item in args.threads.split(",") if item),
+            "unroll_factors": tuple(int(item) for item in args.unroll.split(",") if item),
+            "baseline_threads": args.baseline_threads,
+            "warmup": args.warmup,
+            "iterations": args.iterations,
+            "static_finalists": args.finalists,
+        }
+        if args.gpu_command == "cuda-synthesize":
+            report = synthesize_cuda_pointwise(
+                Path(args.source), args.function, architecture, output_directory, **shared
+            )
+        else:
+            report = optimize_cuda_pointwise(
+                Path(args.source), args.function, architecture, output_directory,
+                **shared,
+                processes=args.processes,
+                minimum_effect_percent=args.min_effect,
+                bootstrap_rounds=args.bootstrap_rounds,
+                seed=args.seed,
+                collect_counters=not args.no_counters,
+            )
+    else:
+        actions = {
+            "capture": capture_gpu_workflow,
+            "synthesize": synthesize_gpu_workflow,
+            "verify": verify_gpu_workflow,
+            "rank": rank_gpu_workflow,
+        }
+        report = actions[args.gpu_command](Path(args.manifest), Path(args.out_dir))
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report.get("status", "PASS") in {"pass", "PASS", "partial", "INCOMPLETE"} or args.gpu_command == "support" else 2
+
+
+def prior_command(args: argparse.Namespace) -> int:
+    if args.prior_command == "support":
+        report = prior_support()
+    elif args.prior_command == "init":
+        report = initialize_prior_manifest(Path(args.out))
+        report = {"schema_version": "vladder-prior-workflow-init-v0", "status": "pass", "manifest": str(Path(args.out).resolve()), "configuration": report}
+    elif args.prior_command == "run":
+        report = run_prior_workflow(Path(args.manifest), Path(args.out_dir))
+    elif args.prior_command == "template":
+        report = initialize_prior_training_template(Path(args.out))
+        report = {"schema_version": "vladder-prior-template-init-v1", "status": "pass", "template": str(Path(args.out).resolve()), "configuration": report}
+    elif args.prior_command == "materialize":
+        report = materialize_prior_dataset_template(Path(args.manifest), Path(args.store))
+    elif args.prior_command == "evaluate-matrix":
+        report = evaluate_prior_generalization(
+            Path(args.store), Path(args.out_dir), methods=tuple(args.methods.split(",")),
+            ensemble_size=args.ensemble_size, epochs=args.epochs, learning_rate=args.learning_rate,
+            seed=args.seed, budget_fraction=args.budget_fraction,
+            exploration_fraction=args.exploration_fraction,
+        )
+    elif args.prior_command == "generate":
+        report = generate_prior_dataset(Path(args.out_dir), args.roots)
+    elif args.prior_command == "ingest":
+        report = ingest_prior_dataset(Path(args.manifest), Path(args.store))
+    elif args.prior_command == "validate":
+        report = validate_prior_dataset(Path(args.store), Path(args.split) if args.split else None)
+    elif args.prior_command == "split":
+        report = split_prior_dataset(
+            Path(args.store), Path(args.out), method=args.method, seed=args.seed,
+            test_fraction=args.test_fraction, calibration_fraction=args.calibration_fraction,
+            holdout=args.holdout,
+        )
+    elif args.prior_command == "train":
+        report = train_prior(
+            Path(args.store), Path(args.split), Path(args.out_dir), ensemble_size=args.ensemble_size,
+            epochs=args.epochs, learning_rate=args.learning_rate, seed=args.seed,
+        )
+    elif args.prior_command == "recommend":
+        report = recommend_prior(Path(args.model), Path(args.store), args.root_id, Path(args.out))
+    elif args.prior_command == "select":
+        report = select_prior(
+            Path(args.recommendation), Path(args.store), args.root_id, Path(args.out),
+            budget=args.budget, exploration_fraction=args.exploration_fraction, seed=args.seed,
+        )
+    else:
+        report = evaluate_prior(
+            Path(args.model), Path(args.store), Path(args.split), Path(args.out),
+            partition=args.partition, budget_fraction=args.budget_fraction,
+            exploration_fraction=args.exploration_fraction, seed=args.seed,
+        )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report.get("status") in {"pass", "insufficient_evaluation_roots"} else 2
+
+
 def verify_application_command(args: argparse.Namespace) -> int:
     report = verify_applied_replacement(
         Path(args.report),
@@ -1128,6 +1358,72 @@ def skill_command(args: argparse.Namespace) -> int:
         report = install_skill(Path(args.target), force=args.force)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["status"] == "pass" else 1
+
+
+def schema_command(args: argparse.Namespace) -> int:
+    if args.schema_command == "list":
+        report = list_artifact_schemas()
+    else:
+        report = validate_artifact(args.kind, Path(args.artifact))
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report.get("status", "pass") == "pass" else 2
+
+
+def consent_command(args: argparse.Namespace) -> int:
+    consent_path = Path(args.consent_file).expanduser() if args.consent_file else None
+    if args.consent_command == "show":
+        report = load_consent(consent_path)
+    else:
+        report = set_consent(
+            args.scope.replace("-", "_"),
+            args.decision.replace("-", "_"),
+            path=consent_path,
+            confirmed_user_choice=args.confirmed_user_choice,
+        )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+def review_command(args: argparse.Namespace) -> int:
+    if args.review_command == "template":
+        report = create_review_template(
+            Path(args.promotion_summary), Path(args.out), project_name=args.project,
+            project_revision=args.revision, repository=args.repository,
+        )
+    elif args.review_command == "validate":
+        report = validate_review(Path(args.review))
+    else:
+        report = submit_review(
+            Path(args.review), endpoint=args.endpoint, token=None,
+            confirm_upload=args.confirm_upload, validate_only=args.validate_only,
+            timeout_seconds=args.timeout,
+            consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
+        )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report.get("status") in {"pass", "submitted", "validated_remotely"} or args.review_command == "template" else 2
+
+
+def training_command(args: argparse.Namespace) -> int:
+    if args.training_command == "template":
+        report = create_training_template(Path(args.out))
+    elif args.training_command == "from-prior":
+        report = create_training_bundle_from_prior(
+            Path(args.store), Path(args.out), project_id=args.project_id,
+            producer_agent=args.agent, producer_model=args.model, producer_provider=args.provider,
+            maximum_examples=args.maximum_examples,
+        )
+    elif args.training_command == "validate":
+        report = validate_training_bundle(Path(args.bundle))
+    else:
+        report = submit_training_bundle(
+            Path(args.bundle), endpoint=args.endpoint, token=None,
+            confirm_upload=args.confirm_upload, validate_only=args.validate_only,
+            timeout_seconds=args.timeout,
+            consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
+        )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    accepted = {"pass", "submitted", "validated_remotely"}
+    return 0 if report.get("status") in accepted or args.training_command == "template" else 2
 
 
 def lifetime_command(args: argparse.Namespace) -> int:
@@ -1160,7 +1456,7 @@ def build_parser() -> argparse.ArgumentParser:
     workflow = sub.add_parser("workflow", help="run and summarize the canonical agent optimization workflow")
     workflow_sub = workflow.add_subparsers(dest="workflow_command", required=True)
     workflow_init = workflow_sub.add_parser("init", help="create a canonical workflow manifest")
-    workflow_init.add_argument("--kind", choices=("c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "protocol"), required=True)
+    workflow_init.add_argument("--kind", choices=("c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "gpu", "protocol"), required=True)
     workflow_init.add_argument("--out", default="vladder-workflow.yaml")
     workflow_init.set_defaults(func=workflow_command)
     workflow_run = workflow_sub.add_parser("run", help="route one manifest and emit a promotion summary")
@@ -1272,6 +1568,34 @@ def build_parser() -> argparse.ArgumentParser:
                     command.add_argument("--cpu", type=int)
                     command.add_argument("--min-speedup-pct", type=float, default=1.0)
         command.set_defaults(func=deep_command)
+    dataflow = sub.add_parser(
+        "dataflow",
+        help="derive, emit, prove, and audit bounded variable-output and stateful dataflow",
+    )
+    dataflow.add_argument("--grammar", help="alternate bounded-dataflow-v1 grammar JSON")
+    dataflow_sub = dataflow.add_subparsers(dest="dataflow_command", required=True)
+    dataflow_coverage = dataflow_sub.add_parser("coverage", help="show every bounded dataflow family and executable terminal")
+    dataflow_coverage.add_argument("--out")
+    dataflow_coverage.set_defaults(func=dataflow_command)
+    dataflow_audit = dataflow_sub.add_parser("audit", help="classify a C++ repository manifest without changing production source")
+    dataflow_audit.add_argument("--manifest", required=True)
+    dataflow_audit.add_argument("--out-dir", default="vladder-dataflow-audit")
+    dataflow_audit.set_defaults(func=dataflow_command)
+    for action, help_text in (
+        ("graph", "construct one SemanticFlowGraph v2 bounded-dataflow realization"),
+        ("emit", "emit native C/C++/Zig/Julia and bounded proof obligations without physical promotion"),
+        ("verify", "emit, prove, compile, and differentially execute one native realization"),
+    ):
+        command = dataflow_sub.add_parser(action, help=help_text)
+        command.add_argument("--contract", required=True, help="bounded dataflow contract JSON")
+        command.add_argument("--target", required=True, help="terminal realization name from dataflow coverage")
+        command.add_argument("--function", default="dataflow_candidate")
+        command.add_argument("--language", choices=("c", "cpp", "zig", "julia"), default="cpp")
+        if action == "graph":
+            command.add_argument("--out")
+        else:
+            command.add_argument("--out-dir", default=f"vladder-dataflow-{action}")
+        command.set_defaults(func=dataflow_command)
     region = sub.add_parser("region", help="inspect or optimize an automatically supported bounded C region")
     region_sub = region.add_subparsers(dest="region_command", required=True)
     region_inspect = region_sub.add_parser("inspect", help="classify automatic support or emit adapter requirements")
@@ -1374,6 +1698,7 @@ def build_parser() -> argparse.ArgumentParser:
     ):
         command = zig_sub.add_parser(action, help=help_text)
         command.add_argument("--source", required=True); command.add_argument("--function", required=True)
+        command.add_argument("--specialization", help="concrete Zig comptime type, for example u8")
         command.add_argument("--build-root"); command.add_argument("--optimize-mode", choices=("Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"), default="ReleaseFast")
         command.add_argument("--target", default="native"); command.add_argument("--proof-bound", type=int, default=32); command.add_argument("--out-dir", default=default_out)
         if action == "optimize":
@@ -1440,6 +1765,194 @@ def build_parser() -> argparse.ArgumentParser:
         if action == "synthesize":
             command.add_argument("--runner-manifest", help="application output-hash and device-timestamp runner")
         command.set_defaults(func=shader_command)
+    gpu = sub.add_parser("gpu", help="capture, synthesize, verify, and rank heterogeneous GPU execution graphs")
+    gpu_sub = gpu.add_subparsers(dest="gpu_command", required=True)
+    gpu_support = gpu_sub.add_parser("support", help="show GPU kernel, protocol, cost-model, and counter capabilities")
+    gpu_support.set_defaults(func=gpu_command)
+    gpu_probe = gpu_sub.add_parser("probe", help="probe a CUDA device and measure a sustainable copy-flow bandwidth bound")
+    gpu_probe.add_argument("--out", default="vladder-gpu-architecture.yaml")
+    gpu_probe.add_argument("--device", type=int, default=0)
+    gpu_probe.add_argument("--no-bandwidth", action="store_true")
+    gpu_probe.add_argument("--bandwidth-n", type=int, default=1 << 25)
+    gpu_probe.set_defaults(func=gpu_command)
+    gpu_topology = gpu_sub.add_parser("topology", help="bind CUDA, Vulkan, PCIe, IOMMU, NIC, RDMA, and DRM capabilities into one topology")
+    gpu_topology.add_argument("--out", default="vladder-device-topology.json")
+    gpu_topology.add_argument("--device", type=int, default=0)
+    gpu_topology.add_argument("--transfer-bytes", type=int, default=1 << 20)
+    gpu_topology.set_defaults(func=gpu_command)
+    gpu_vulkan = gpu_sub.add_parser("vulkan-probe", help="probe Vulkan device identity, queues, synchronization, and external-memory capabilities")
+    gpu_vulkan.add_argument("--out", default="vladder-vulkan-capabilities.json")
+    gpu_vulkan.set_defaults(func=gpu_command)
+    gpu_presentation = gpu_sub.add_parser("presentation-probe", help="probe DRM connector and scanout capability boundaries")
+    gpu_presentation.add_argument("--out", default="vladder-presentation-capabilities.json")
+    gpu_presentation.set_defaults(func=gpu_command)
+    gpu_dma = gpu_sub.add_parser("dma-template", help="emit a fail-closed DMA protocol template from a probed topology route")
+    gpu_dma.add_argument("--topology", required=True)
+    gpu_dma.add_argument("--destination", required=True)
+    gpu_dma.add_argument("--out", default="vladder-dma-protocol.yaml")
+    gpu_dma.add_argument("--transfer-bytes", type=int, default=1 << 20)
+    gpu_dma.set_defaults(func=gpu_command)
+    gpu_queue = gpu_sub.add_parser("queue-template", help="emit a live-device-bound Vulkan synchronization2 queue protocol")
+    gpu_queue.add_argument("--topology", required=True)
+    gpu_queue.add_argument("--out", default="vladder-vulkan-queue-protocol.yaml")
+    gpu_queue.set_defaults(func=gpu_command)
+    gpu_present_template = gpu_sub.add_parser("presentation-template", help="emit a live-connector-bound presentation protocol, failing closed when no connector is active")
+    gpu_present_template.add_argument("--topology", required=True)
+    gpu_present_template.add_argument("--out", default="vladder-presentation-protocol.yaml")
+    gpu_present_template.set_defaults(func=gpu_command)
+    gpu_protocol = gpu_sub.add_parser("protocol-verify", help="prove a bounded Vulkan queue, DMA, or presentation protocol graph")
+    gpu_protocol.add_argument("--manifest", required=True)
+    gpu_protocol.add_argument("--out-dir", default="vladder-device-protocol-proof")
+    gpu_protocol.set_defaults(func=gpu_command)
+    gpu_run = gpu_sub.add_parser("cuda-run", help="execute one bounded CUDA artifact with exact output hashing and device timestamps")
+    gpu_run.add_argument("--artifact", required=True)
+    gpu_run.set_defaults(func=gpu_command)
+    for action, help_text, default_out in (
+        ("cuda-synthesize", "extract and generate proved bounded CUDA pointwise schedules", "vladder-cuda-synthesis"),
+        ("cuda-optimize", "generate, prove, physically rank, and conditionally emit a CUDA replacement", "vladder-cuda-optimization"),
+    ):
+        command = gpu_sub.add_parser(action, help=help_text)
+        command.add_argument("--source", required=True)
+        command.add_argument("--function", required=True)
+        command.add_argument("--architecture")
+        command.add_argument("--out-dir", default=default_out)
+        command.add_argument("--device", type=int, default=0)
+        command.add_argument("--n", type=int, default=1 << 26)
+        command.add_argument("--threads", default="64,128,256,512")
+        command.add_argument("--unroll", default="1,2,4,8")
+        command.add_argument("--baseline-threads", type=int, default=256)
+        command.add_argument("--warmup", type=int, default=10)
+        command.add_argument("--iterations", type=int, default=100)
+        command.add_argument("--finalists", type=int, default=8)
+        command.add_argument("--bandwidth-n", type=int, default=1 << 25)
+        if action == "cuda-optimize":
+            command.add_argument("--processes", type=int, default=10)
+            command.add_argument("--min-effect", type=float, default=1.0)
+            command.add_argument("--bootstrap-rounds", type=int, default=2000)
+            command.add_argument("--seed", type=int, default=0)
+            command.add_argument("--no-counters", action="store_true")
+        command.set_defaults(func=gpu_command)
+    for action, help_text, default_out in (
+        ("capture", "capture SPIR-V/PTX/CUDA kernel and device protocol graphs", "vladder-gpu-capture"),
+        ("synthesize", "enumerate architecture-aware kernel and protocol realization plans", "vladder-gpu-synthesis"),
+        ("verify", "verify bounded kernel-capture and device-protocol obligations", "vladder-gpu-proof"),
+        ("rank", "rank exact candidates using clean device timing and counter support", "vladder-gpu-ranking"),
+    ):
+        command = gpu_sub.add_parser(action, help=help_text)
+        command.add_argument("--manifest", required=True)
+        command.add_argument("--out-dir", default=default_out)
+        command.set_defaults(func=gpu_command)
+    prior = sub.add_parser("prior", help="build datasets and run the advisory learned search prior")
+    prior_sub = prior.add_subparsers(dest="prior_command", required=True)
+    prior_sub.add_parser("support", help="show learned-prior authority and capability boundaries").set_defaults(func=prior_command)
+    prior_init = prior_sub.add_parser("init", help="create one canonical learned-prior workflow manifest")
+    prior_init.add_argument("--out", default="vladder-prior.yaml"); prior_init.set_defaults(func=prior_command)
+    prior_run = prior_sub.add_parser("run", help="run dataset, split, training, and shadow evaluation from one manifest")
+    prior_run.add_argument("--manifest", required=True); prior_run.add_argument("--out-dir", default="vladder-prior-out"); prior_run.set_defaults(func=prior_command)
+    prior_template = prior_sub.add_parser("template", help="create an extensible reference-based training-data template")
+    prior_template.add_argument("--out", default="vladder-prior-training-template.yaml"); prior_template.set_defaults(func=prior_command)
+    prior_materialize = prior_sub.add_parser("materialize", help="materialize deterministic records and hashes from a training-data template")
+    prior_materialize.add_argument("--manifest", required=True); prior_materialize.add_argument("--store", required=True); prior_materialize.set_defaults(func=prior_command)
+    prior_matrix = prior_sub.add_parser("evaluate-matrix", help="train and report separate root/project/language/hardware/temporal holdouts")
+    prior_matrix.add_argument("--store", required=True); prior_matrix.add_argument("--out-dir", default="vladder-prior-generalization")
+    prior_matrix.add_argument("--methods", default="root,project,language,hardware,temporal")
+    prior_matrix.add_argument("--ensemble-size", type=int, default=3); prior_matrix.add_argument("--epochs", type=int, default=40)
+    prior_matrix.add_argument("--learning-rate", type=float, default=0.08); prior_matrix.add_argument("--seed", type=int, default=4242)
+    prior_matrix.add_argument("--budget-fraction", type=float, default=0.1); prior_matrix.add_argument("--exploration-fraction", type=float, default=0.2)
+    prior_matrix.set_defaults(func=prior_command)
+    prior_generate = prior_sub.add_parser("generate", help="generate the controlled multilingual pilot corpus")
+    prior_generate.add_argument("--out-dir", default="vladder-prior-corpus"); prior_generate.add_argument("--roots", type=int, default=60); prior_generate.set_defaults(func=prior_command)
+    prior_ingest = prior_sub.add_parser("ingest", help="append an immutable experience bundle")
+    prior_ingest.add_argument("--manifest", required=True); prior_ingest.add_argument("--store", required=True); prior_ingest.set_defaults(func=prior_command)
+    prior_validate = prior_sub.add_parser("validate", help="validate experience identities, labels, and optional split")
+    prior_validate.add_argument("--store", required=True); prior_validate.add_argument("--split"); prior_validate.set_defaults(func=prior_command)
+    prior_split = prior_sub.add_parser("split", help="create a root-grouped leakage-safe split")
+    prior_split.add_argument("--store", required=True); prior_split.add_argument("--out", default="vladder-prior-split.json")
+    prior_split.add_argument("--method", choices=("root", "project", "language", "hardware", "temporal"), default="project")
+    prior_split.add_argument("--seed", type=int, default=4242); prior_split.add_argument("--test-fraction", type=float, default=0.2)
+    prior_split.add_argument("--calibration-fraction", type=float, default=0.2); prior_split.add_argument("--holdout"); prior_split.set_defaults(func=prior_command)
+    prior_train = prior_sub.add_parser("train", help="train a deterministic pooled-graph ensemble pilot")
+    prior_train.add_argument("--store", required=True); prior_train.add_argument("--split", required=True); prior_train.add_argument("--out-dir", default="vladder-prior-model")
+    prior_train.add_argument("--ensemble-size", type=int, default=5); prior_train.add_argument("--epochs", type=int, default=80)
+    prior_train.add_argument("--learning-rate", type=float, default=0.08); prior_train.add_argument("--seed", type=int, default=4242); prior_train.set_defaults(func=prior_command)
+    prior_recommend = prior_sub.add_parser("recommend", help="rank one root's legal candidate descriptors")
+    prior_recommend.add_argument("--model", required=True); prior_recommend.add_argument("--store", required=True); prior_recommend.add_argument("--root-id", required=True)
+    prior_recommend.add_argument("--out", default="vladder-prior-recommendation.json"); prior_recommend.set_defaults(func=prior_command)
+    prior_select = prior_sub.add_parser("select", help="select a baseline- and exploration-preserving search budget")
+    prior_select.add_argument("--recommendation", required=True); prior_select.add_argument("--store", required=True); prior_select.add_argument("--root-id", required=True)
+    prior_select.add_argument("--budget", type=int, required=True); prior_select.add_argument("--exploration-fraction", type=float, default=0.2)
+    prior_select.add_argument("--seed", type=int, default=4242); prior_select.add_argument("--out", default="vladder-prior-decision.json"); prior_select.set_defaults(func=prior_command)
+    prior_evaluate = prior_sub.add_parser("evaluate", help="run counterfactual shadow search evaluation")
+    prior_evaluate.add_argument("--model", required=True); prior_evaluate.add_argument("--store", required=True); prior_evaluate.add_argument("--split", required=True)
+    prior_evaluate.add_argument("--partition", choices=("train", "calibration", "test"), default="test")
+    prior_evaluate.add_argument("--budget-fraction", type=float, default=0.1); prior_evaluate.add_argument("--exploration-fraction", type=float, default=0.2)
+    prior_evaluate.add_argument("--seed", type=int, default=4242); prior_evaluate.add_argument("--out", default="vladder-prior-evaluation.json"); prior_evaluate.set_defaults(func=prior_command)
+    schema = sub.add_parser("schema", help="list and validate stable public artifact schemas")
+    schema_sub = schema.add_subparsers(dest="schema_command", required=True)
+    schema_sub.add_parser("list", help="list stable artifact kinds and compatibility policy").set_defaults(func=schema_command)
+    schema_validate = schema_sub.add_parser("validate", help="validate one JSON artifact")
+    schema_validate.add_argument("--kind", required=True, choices=tuple(sorted(list_artifact_schemas()["artifacts"])))
+    schema_validate.add_argument("--artifact", required=True)
+    schema_validate.set_defaults(func=schema_command)
+    consent = sub.add_parser("consent", help="show or persist explicit user contribution choices")
+    consent_sub = consent.add_subparsers(dest="consent_command", required=True)
+    consent_show = consent_sub.add_parser("show", help="show durable opt-in/opt-out state without network access")
+    consent_show.add_argument("--consent-file", help=argparse.SUPPRESS)
+    consent_show.set_defaults(func=consent_command)
+    consent_set = consent_sub.add_parser("set", help="record the user's explicit contribution choice")
+    consent_set.add_argument("--scope", required=True, choices=tuple(scope.replace("_", "-") for scope in CONSENT_SCOPES))
+    consent_set.add_argument("--decision", required=True, choices=("opt-in", "opt-out"))
+    consent_set.add_argument(
+        "--confirmed-user-choice", action="store_true",
+        help="required assertion that the agent asked and the user explicitly chose this decision",
+    )
+    consent_set.add_argument("--consent-file", help=argparse.SUPPRESS)
+    consent_set.set_defaults(func=consent_command)
+    review = sub.add_parser("review", help="create, validate, or explicitly submit a canonical agent review")
+    review_sub = review.add_subparsers(dest="review_command", required=True)
+    review_template = review_sub.add_parser("template", help="create a strict review record from a promotion summary")
+    review_template.add_argument("--promotion-summary", required=True)
+    review_template.add_argument("--project", required=True)
+    review_template.add_argument("--revision", required=True)
+    review_template.add_argument("--repository")
+    review_template.add_argument("--out", default="vladder-agent-review.json")
+    review_template.set_defaults(func=review_command)
+    review_validate = review_sub.add_parser("validate", help="validate a review without network access")
+    review_validate.add_argument("--review", required=True)
+    review_validate.set_defaults(func=review_command)
+    review_submit = review_sub.add_parser("submit", help="submit only a validated review record after explicit consent")
+    review_submit.add_argument("--review", required=True)
+    review_submit.add_argument("--endpoint", help="override the public review endpoint or VLADDER_REVIEW_ENDPOINT")
+    review_submit.add_argument("--confirm-upload", action="store_true", help="required explicit consent gate")
+    review_submit.add_argument("--validate-only", action="store_true", help="validate through the service without storing")
+    review_submit.add_argument("--timeout", type=float, default=20.0)
+    review_submit.add_argument("--consent-file", help=argparse.SUPPRESS)
+    review_submit.set_defaults(func=review_command)
+    training = sub.add_parser("training", help="create, validate, or explicitly submit source-free training data")
+    training_sub = training.add_subparsers(dest="training_command", required=True)
+    training_template = training_sub.add_parser("template", help="create a strict source-free training bundle")
+    training_template.add_argument("--out", default="vladder-training-bundle.json")
+    training_template.set_defaults(func=training_command)
+    training_prior = training_sub.add_parser("from-prior", help="derive a source-free bundle from a local canonical prior store")
+    training_prior.add_argument("--store", required=True)
+    training_prior.add_argument("--project-id", required=True, help="opaque project identifier, not a repository path")
+    training_prior.add_argument("--agent", required=True)
+    training_prior.add_argument("--model", required=True)
+    training_prior.add_argument("--provider")
+    training_prior.add_argument("--maximum-examples", type=int, default=256)
+    training_prior.add_argument("--out", default="vladder-training-bundle.json")
+    training_prior.set_defaults(func=training_command)
+    training_validate = training_sub.add_parser("validate", help="validate a training bundle without network access")
+    training_validate.add_argument("--bundle", required=True)
+    training_validate.set_defaults(func=training_command)
+    training_submit = training_sub.add_parser("submit", help="submit only a validated source-free bundle after explicit consent")
+    training_submit.add_argument("--bundle", required=True)
+    training_submit.add_argument("--endpoint", help="override the public training endpoint or VLADDER_TRAINING_ENDPOINT")
+    training_submit.add_argument("--confirm-upload", action="store_true", help="required explicit consent gate")
+    training_submit.add_argument("--validate-only", action="store_true", help="validate through the service without storing")
+    training_submit.add_argument("--timeout", type=float, default=20.0)
+    training_submit.add_argument("--consent-file", help=argparse.SUPPRESS)
+    training_submit.set_defaults(func=training_command)
     skill = sub.add_parser("skill", help="validate or install the bundled coding-agent skill")
     skill_sub = skill.add_subparsers(dest="skill_command", required=True)
     skill_validate = skill_sub.add_parser("validate", help="validate the bundled or specified skill")

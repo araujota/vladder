@@ -1,0 +1,20 @@
+schema_version: vladder-release-seeds-v1
+seeds:
+  - id: affine-strength-reduction-good
+    family: u32-affine
+    expected: accept
+    reference: {multiplier: 3, addend: 1}
+    candidate: {x_terms: 1, shifted_x_terms: 1, shift: 1, addend: 1}
+  - id: affine-off-by-one-bad
+    family: u32-affine
+    expected: reject
+    reference: {multiplier: 3, addend: 1}
+    candidate: {x_terms: 1, shifted_x_terms: 1, shift: 1, addend: 2}
+  - id: mask-popcount-good
+    family: u8-mask-count
+    expected: accept
+    candidate_mask: 255
+  - id: mask-drops-high-lane-bad
+    family: u8-mask-count
+    expected: reject
+    candidate_mask: 127

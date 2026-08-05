@@ -10,6 +10,7 @@ from .candidates import Candidate
 from .extractor import ExtractedFunction, extract_function
 from .flow import FlowGraph, analyze_ir, build_flow_graph, emit_target_ir, write_flow_artifacts
 from .report import write_json
+from .region_closure import describe_c_boundary
 from .toolchain import discover_toolchain
 
 
@@ -67,6 +68,7 @@ class AutomaticSupport:
     loop: CanonicalLoop | None
     adapters: tuple[AdapterRequirement, ...]
     proof_layers: tuple[str, ...]
+    region_closure: dict[str, Any] | None = None
 
     @property
     def supported(self) -> bool:
@@ -108,7 +110,43 @@ def inspect_automatic_region(source: Path, function: str, out_dir: Path | None =
         return finish(_unsupported(source, source_digest, function, language, "function-extraction-adapter", str(error), "one defined standalone function", "project-specific extraction adapter"))
     function_digest = hashlib.sha256(extracted.source.encode()).hexdigest()
     if not _canonical_abi(extracted):
-        return finish(_unsupported(source, source_digest, function, language, "abi-adapter", "signature is outside the canonical bounded-region ABI", "void function(float *dst, const float *src, size_t n)", "operator contract adapter", function_digest))
+        boundary = describe_c_boundary(extracted.signature, extracted.name)
+        tc = discover_toolchain()
+        analysis_root = (out_dir or source.parent / ".vladder-inspect").resolve()
+        ir_info = emit_target_ir(tc, source, analysis_root / "analysis", function)
+        normalized_ir = Path(str(ir_info.get("normalized_ir", "")))
+        ir_text = normalized_ir.read_text(errors="replace") if normalized_ir.is_file() else ""
+        lowered_signature = ir_text.splitlines()[0] if ir_text else None
+        closure = {
+            "schema_version": "vladder-region-closure-v1",
+            "status": "abi_closed_grammar_missing" if boundary.modeled else "abi_unmodeled",
+            "c_boundary": boundary.to_dict(),
+            "ir_transform_ready": boundary.modeled and ir_info.get("status") == "ok" and bool(ir_text),
+            "source_transform_ready": False,
+            "compiler_ir": {
+                "status": ir_info.get("status"),
+                "compiler": ir_info.get("compiler"),
+                "compiler_version": ir_info.get("compiler_version"),
+                "target_triple": ir_info.get("target_triple"),
+                "normalized_ir": str(normalized_ir) if ir_text else None,
+                "normalized_ir_sha256": hashlib.sha256(ir_text.encode()).hexdigest() if ir_text else None,
+                "lowered_signature": lowered_signature,
+                "error": ir_info.get("error"),
+            },
+            "claim_boundary": "typed C ABI capture only; an executable semantic grammar is still required",
+        }
+        return finish(_unsupported(
+            source, source_digest, function, language,
+            "grammar-adapter" if boundary.modeled else "abi-adapter",
+            (
+                "the first-order C ABI is modeled, but no executable grammar is registered for this semantic region"
+                if boundary.modeled else "signature is outside the bounded first-order C ABI model"
+            ),
+            "a scalar/POD result and scalar or borrowed pointer/extent inputs",
+            "select a bounded semantic grammar or supply a protocol adapter",
+            function_digest,
+            region_closure=closure,
+        ))
     try:
         loop = extract_canonical_loop(extracted)
     except ValueError as error:
@@ -164,6 +202,7 @@ def _unsupported(
     function_digest: str | None = None,
     family: str | None = None,
     canonical: str | None = None,
+    region_closure: dict[str, Any] | None = None,
 ) -> AutomaticSupport:
     return AutomaticSupport(
         "adapter_required",
@@ -180,6 +219,7 @@ def _unsupported(
         None,
         (AdapterRequirement(kind, reason, boundary, workflow),),
         (),
+        region_closure,
     )
 
 

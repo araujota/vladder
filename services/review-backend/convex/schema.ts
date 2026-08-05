@@ -1,0 +1,54 @@
+import { defineSchema, defineTable } from "convex/server";
+import { v } from "convex/values";
+import { agentReviewValidator } from "./reviewValidators";
+import { trainingBundleValidator } from "./trainingValidators";
+
+export default defineSchema({
+  reviews: defineTable({
+    reviewId: v.string(),
+    releaseVersion: v.string(),
+    projectName: v.string(),
+    disposition: v.string(),
+    approved: v.boolean(),
+    submittedAt: v.number(),
+    payloadHash: v.string(),
+    review: agentReviewValidator,
+  })
+    .index("by_review_id", ["reviewId"])
+    .index("by_approved_and_submitted_at", ["approved", "submittedAt"])
+    .index("by_project_name_and_submitted_at", ["projectName", "submittedAt"])
+    .index("by_release_version_and_submitted_at", ["releaseVersion", "submittedAt"]),
+  mlBundles: defineTable({
+    bundleId: v.string(),
+    schemaVersion: v.string(),
+    reviewId: v.optional(v.id("reviews")),
+    storageId: v.id("_storage"),
+    sha256: v.string(),
+    byteCount: v.number(),
+    consentScope: v.string(),
+    approved: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_bundle_id", ["bundleId"])
+    .index("by_approved_and_created_at", ["approved", "createdAt"]),
+  trainingSubmissions: defineTable({
+    bundleId: v.string(),
+    releaseVersion: v.string(),
+    projectId: v.string(),
+    grammarVersion: v.string(),
+    approved: v.boolean(),
+    submittedAt: v.number(),
+    payloadHash: v.string(),
+    bundle: trainingBundleValidator,
+  })
+    .index("by_bundle_id", ["bundleId"])
+    .index("by_approved_and_submitted_at", ["approved", "submittedAt"])
+    .index("by_project_id_and_submitted_at", ["projectId", "submittedAt"]),
+  submissionRateLimits: defineTable({
+    fingerprintHash: v.string(),
+    bucket: v.string(),
+    kind: v.union(v.literal("review"), v.literal("training")),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_fingerprint_hash_and_bucket_and_kind", ["fingerprintHash", "bucket", "kind"]),
+});

@@ -5,19 +5,34 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc10`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc15`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v5`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v1`, and
-`bounded-julia-regions-v1` adapters. Use vLadder as a proof-gated workflow: semantic
+`bounded-cpp-regions-v6`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v2`, and
+`bounded-julia-regions-v2` adapters and `heterogeneous-execution-v1`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
 chooses which verified realization and implementation graph should exist.
 
+The executable `bounded-dataflow-v1` grammar adds stable variable-output compaction, exact
+fixed-width codecs, transactional state deltas, AoS projected multi-reductions, and deterministic
+4x4 packed blocks. Read [bounded-dataflow.md](references/bounded-dataflow.md) when the observable
+includes indices, values, exact extent, packed bytes, or next state rather than only a scalar.
+
 All supported frontends converge on `SemanticFlowGraph v2`. Read typed `obligations`, `effects`,
 `protocols`, and `claims` before interpreting a graph. An obligation is actionable through its ID,
 scope, proof method, and language binding; do not recover semantics by parsing its human-readable
 statement. A successful graph build with an excluded or unverified claim is not proof of it.
+For C/C++, inspect `region-closure.json` before requesting an adapter. It distinguishes a missing
+grammar from an unmodeled ABI and records aggregate projections, tagged exits, local helper
+relations, and no-growth ownership projections. Treat `closed_at_compiled_abi` as representation
+closure, not proof of a future candidate or an owning wrapper.
+
+The optional learned search prior is subordinate to this workflow. Read
+[learned-prior.md](references/learned-prior.md) before using `vladder prior`. It ranks structured,
+already enumerated grammar actions; it never supplies legality, equivalence, authoritative runtime,
+or promotion evidence. Preserve the baseline, exploration reserve, abstention fallback, and every
+ordinary proof and physical gate.
 
 ## Non-Negotiable Rules
 
@@ -39,18 +54,32 @@ statement. A successful graph build with an excluded or unverified claim is not 
 10. A baseline win is bounded by grammar coverage. Before saying no faster equivalent was found,
     audit known expert forms through representation, derivation, lowering, proof, and performance.
     A pre-performance failure is a grammar/tooling gap, not a negative hardware result.
+11. Optional contribution consent is never inferred. Before offering or performing canonical
+    training-data contribution or an agent-experience review, run `vladder consent show`. For each
+    `unknown` scope, explicitly ask the user to opt in or opt out and persist the exact answer with
+    `vladder consent set ... --confirmed-user-choice`. Honor the two scopes independently.
+12. A saved `opt_out` means do not upload and do not ask again across turns, sessions, or package
+    updates unless the user explicitly requests reconsideration. A saved `opt_in` permits only the
+    optional terminal workflow; it does not waive payload preview, record-level consent,
+    `--confirm-upload`, schema validation, or the prohibition on source/raw-artifact upload.
 
 ## Workflow
 
 ### Canonical Agent Entry
 
-Read [agent-workflow.md](references/agent-workflow.md), then begin with one manifest rather than
+Read [agent-workflow.md](references/agent-workflow.md) and
+[release-evidence.md](references/release-evidence.md), then begin with one manifest rather than
 assembling subcommands from memory:
 
 ```bash
+vladder consent show
 vladder workflow init --kind cpp --out vladder-workflow.yaml
 vladder workflow run --manifest vladder-workflow.yaml --out-dir vladder-workflow-out
 ```
+
+Before the first canonical workflow run, resolve every `unknown` contribution scope by asking the
+user for an explicit opt-in or opt-out. This is a required agent clarification, not a suggestion;
+the optimization itself remains available regardless of either answer.
 
 Read `promotion-summary.json` first. Answer, in order:
 
@@ -62,6 +91,44 @@ Read `promotion-summary.json` first. Answer, in order:
 
 Follow `next_action`; inspect only the five decisive artifacts before expanding into full lineage.
 Do not confuse `workflow_completed` with any later evidence state.
+
+For search-prior dataset and shadow-evaluation work, use its separate one-manifest route:
+
+```bash
+vladder prior init --out prior.yaml
+vladder prior run --manifest prior.yaml --out-dir prior-out
+```
+
+Read `prior-summary.json`. A valid synthetic pilot and a trained model do not imply production
+eligibility or that any live candidate was pruned.
+
+The operational state order is strict:
+
+1. `meaningful_semantic_coverage`
+2. `candidate_generated`
+3. `candidate_proved`
+4. `physically_benchmarked`
+5. `application_integrated` and `production_promoted`
+
+Stop at the first false state and report its named adapter or evidence requirement. Successful
+command execution is not a substitute for any state.
+
+Validate stable public artifacts before interpreting them:
+
+```bash
+vladder schema list
+vladder schema validate --kind promotion-summary --artifact promotion-summary.json
+```
+
+vLadder is local-only by default. Read [consent.md](references/consent.md). Do not upload
+source, compilation databases, IR, proofs, traces,
+benchmarks, patches, prompts, or raw artifacts. Optional agent reviews and derived-feature training
+bundles use `vladder review|training template|validate|submit`. Submission uses the packaged HTTPS
+release endpoint and requires durable scope opt-in, explicit user approval, `--confirm-upload`, and
+record-level consent; no shared token is required. `--validate-only` is also a network action and
+requires the same durable opt-in, though it tests remote acceptance without storage. Training
+bundles are a strict source-free schema, not an upload path for local prior stores or arbitrary
+artifacts. Read [release-evidence.md](references/release-evidence.md) and `docs/privacy.md`.
 
 ### 1. Establish Environment And Attribution
 
@@ -135,6 +202,25 @@ domain contracts. Never call identity-capsule proof whole-wrapper equivalence, a
 source scheduling contract an Alive2 proof of the physical candidate. Read
 [cpp-regions.md](references/cpp-regions.md).
 
+When inspection identifies bounded variable output or a state transition, do not collapse it to a
+count-only proof unit. Preserve masks, stable order, extent, capacity failure, and state
+publication in `bounded-dataflow-v1`:
+
+```bash
+vladder dataflow coverage
+vladder dataflow graph --contract contract.json --target mask-prefix-stable --out graph.json
+vladder dataflow verify --contract contract.json --target guarded-avx2-compaction --out-dir proof
+```
+
+Add `--language c|cpp|zig|julia` to emit the shared derivation natively. Read
+`candidate.lowering_class`: `semantic_scalar_fallback` establishes native semantic execution but
+does not establish a distinct SIMD realization.
+
+No-growth vector closure requires a checked available-capacity guard before any write, trivial
+element lifetime, no throwing local operation, and declared aliases. `reserve()` is not enough.
+An owning wrapper that remains outside this envelope is an explicit adapter, not a blocker for the
+borrowed local kernel and not part of its Z3/Alive2 claim.
+
 For Rust, preserve native ownership and panic semantics and start from Cargo rather than a C FFI
 capsule. Read [rust-regions.md](references/rust-regions.md), then run:
 
@@ -161,6 +247,9 @@ vladder zig synthesize --source src/root.zig --function countEqual --build-root 
 vladder zig optimize --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-out
 ```
 
+Use `--specialization u8` for a compatible `comptime T: type` byte reduction. Capture keeps the
+target at its original module path; a detached source copy is invalid compiler provenance.
+
 For Julia, read [julia-regions.md](references/julia-regions.md). Always provide one exact module,
 method, and tuple signature; a generic function name is not a proof boundary:
 
@@ -170,7 +259,9 @@ vladder julia synthesize --project . --source src/Package.jl --module Package --
 vladder julia optimize --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-out
 ```
 
-Zig and Julia use the shared graph and source-derived exact-reduction schedule proof. Native LLVM
+Zig and Julia use the shared graph and source-derived exact-reduction schedule proof. Julia loads
+the declared package/module and does not invoke arbitrary methods during reflection. Methods beyond
+the executable grammar may still be `local_graph_only` with typed/LLVM/native capture. Native LLVM
 is compiler provenance; the strict Alive2 artifact validates the canonical schedule lowerer. Do
 not claim direct whole-frontend refinement. Zig allocator/error/defer/atomic/FFI protocols and
 Julia other methods/worlds, GC allocation, dynamic dispatch, tasks, globals, `ccall`, and external
@@ -217,7 +308,8 @@ vladder deep rank --language cpp --predicate equal-u8 --processes 10 --repetitio
 ```
 
 Inspect the earliest failed audit stage. Use `bounded_optimal_local` only when finite search is
-saturated and all unique terminal realizations are lowered, proved, and measured.
+saturated, every hot identity is non-empty and resolved, and all unique terminal realizations are
+lowered, proved, and measured.
 Every `deep-v2` terminal has native C, C++20, Rust, Zig, and Julia emission. Select the production
 language; do not translate through C merely to access a deeper grammar. Language runtime scopes
 remain explicit typed obligations rather than claims of arbitrary-language equivalence.
@@ -280,9 +372,25 @@ For application regions, use `vladder benchmark paired` and require exact observ
 Before reporting composed effects, use `vladder benchmark compose`; parent/child or otherwise
 overlapping regions cannot be compounded without an explicit interaction measurement.
 
-For GPU compute, read [gpu-workflow.md](references/gpu-workflow.md). `spirv-val` establishes
-structural validity only. Output parity and device timestamps are required; Vulkan/CUDA host,
-driver, queue, presentation, and topology behavior remains in the supplied runner contract.
+For GPU compute and device-resident flow, read [gpu-workflow.md](references/gpu-workflow.md) and
+start with `vladder gpu support`, `vladder gpu probe`, and `vladder gpu topology`. Use
+`gpu cuda-synthesize|cuda-optimize` for a recognized bounded CUDA pointwise source region; use
+`gpu capture|synthesize|verify|rank` for general SPIR-V/PTX capture and manifest-driven external
+runners. The CUDA optimizer compiles candidates for the probed architecture, inspects JIT resource
+usage, proves schedule coverage/injectivity and expression identity, runs exact output hashes, and
+uses randomized clean CUDA-event timing. It emits source, patch, and launch plan only after physical
+promotion. Apply all three as one candidate.
+
+Model queue synchronization, DMA topology, and presentation ownership independently. Generate
+live-bound templates with `gpu queue-template|dma-template|presentation-template`, then run
+`gpu protocol-verify`. A topology probe is capability evidence, not proof that registration,
+transfer, page flip, or scanout occurred. Direct GPUDirect requires both CUDA export and RDMA NIC
+import capability; DMA templates fail until application ordering mechanisms are supplied;
+presentation templates fail without an active connector. `spirv-val`, static occupancy,
+launch-index proof, protocol proof, and Nsight counters are supporting evidence, not physical
+equivalence. Promotion requires exact outputs, matching device identity, clean device timestamps,
+and a confidence interval excluding the declared minimum effect. Driver scheduling, firmware,
+undeclared device loss, and external actors remain explicit claim boundaries.
 
 ### 7. Rewrite Production Source
 
@@ -320,6 +428,7 @@ result as `bounded_optimal_local` only after exhaustive coverage with sound prun
 - Projection complexes: `vladder projection analyze|profile|synthesize`
 - Attribution-gated kernels: `vladder sksf validate-attribution|synthesize`
 - Production Q4_K research: `vladder q4k ...`
+- Heterogeneous GPU execution: `vladder gpu support|capture|synthesize|verify|rank`
 - Lifetime-aware realization: `vladder lifetime analyze|synthesize|evaluate-corpus`
 
 These modes are contract-specific. Read their example manifests in the installed package before

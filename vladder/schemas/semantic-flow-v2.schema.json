@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/semantic-flow-v2.schema.json",
+  "title": "vLadder SemanticFlowGraph v2",
+  "type": "object",
+  "required": ["schema_version", "name", "source_language", "semantic_ir", "compiler_identity", "function_identity", "nodes", "edges", "obligations", "effects", "protocols", "claims", "graph_hash"],
+  "properties": {
+    "schema_version": {"const": "semantic-flow-v2"},
+    "name": {"type": "string", "minLength": 1},
+    "source_language": {"type": "string", "minLength": 1},
+    "semantic_ir": {"type": "string", "minLength": 1},
+    "compiler_identity": {"type": "string"},
+    "function_identity": {"type": "string"},
+    "nodes": {"type": "array", "items": {"type": "object", "required": ["id", "kind", "operation", "inputs"]}},
+    "edges": {"type": "array", "items": {"type": "object", "required": ["id", "source", "destination"]}},
+    "obligations": {"type": "array", "items": {"type": "object", "required": ["id", "category", "scope", "proof_method"]}},
+    "effects": {"type": "array", "items": {"type": "object", "required": ["id", "kind", "phase", "resource"]}},
+    "protocols": {"type": "array", "items": {"type": "object", "required": ["id", "kind"]}},
+    "claims": {"type": "array", "items": {"type": "object", "required": ["id", "status", "scope", "statement"]}},
+    "graph_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  },
+  "additionalProperties": true
+}

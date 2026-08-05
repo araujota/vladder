@@ -11,7 +11,7 @@ import yaml
 
 from scripts.release_preflight import preflight, project_version, runtime_version
 from scripts.render_homebrew_formula import pypi_sdist, render
-from scripts.audit_release import audit_artifact
+from scripts.audit_release import REQUIRED_PACKAGE_SUFFIXES, audit_artifact
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -24,18 +24,7 @@ class ReleasePackagingTests(unittest.TestCase):
             artifact = root / "minimal.whl"
             import zipfile
             with zipfile.ZipFile(artifact, "w") as archive:
-                for path in (
-                    "vladder/grammars/vladder-v1/capabilities.json",
-                    "vladder/grammars/lifetime-v1/grammar.json",
-                    "vladder/grammars/deep-v2/grammar.json",
-                    "vladder/skills/vladder/SKILL.md",
-                    "vladder/skills/vladder/references/lifetime.md",
-                    "vladder/skills/vladder/references/deep-grammar.md",
-                    "vladder/skills/vladder/references/zig-regions.md",
-                    "vladder/skills/vladder/references/julia-regions.md",
-                    "vladder/zig_adapter.py",
-                    "vladder/julia_adapter.py",
-                ):
+                for path in sorted(REQUIRED_PACKAGE_SUFFIXES):
                     archive.writestr(path, "fixture")
             (root / "build" / "temporary").mkdir(parents=True)
             self.assertEqual(audit_artifact(artifact)["status"], "pass")

@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc10"
+__version__ = "1.0.0rc15"
 
 from .api import (
     AgentWorkflowRequest,
@@ -35,6 +35,14 @@ from .zig_adapter import ZIG_SUPPORT_VERSION
 from .julia_adapter import JULIA_SUPPORT_VERSION
 from .deep_grammar import DeepGrammar, load_deep_grammar, search_deep_grammar
 from .deep_ir import DeepKernelContract, DeepRealizationGraph
+from .dataflow_grammar import BoundedDataflowGrammar, load_bounded_dataflow_grammar
+from .dataflow_ir import BoundedDataflowContract, BoundedDataflowGraph, build_bounded_dataflow_graph
+from .region_closure import build_region_closure_graph, describe_c_boundary, prove_region_closure
+from .gpu_ir import GPUArchitecture, GPUExecutionPlan, GPUKernelCapture, capture_gpu_kernel
+from .cuda_runtime import probe_cuda_architecture, run_cuda_artifact
+from .cuda_synthesis import optimize_cuda_pointwise, synthesize_cuda_pointwise
+from .device_protocol import DeviceProtocolEvidence, verify_device_protocol
+from .device_topology import probe_device_topology, probe_drm_presentation, probe_vulkan_capabilities
 
 __all__ = [
     "BenchmarkPolicy",
@@ -49,10 +57,17 @@ __all__ = [
     "DeepKernelContract",
     "DeepKernelRequest",
     "DeepRealizationGraph",
+    "BoundedDataflowContract",
+    "BoundedDataflowGrammar",
+    "BoundedDataflowGraph",
     "AutomaticRegionRequest",
     "AutomaticSupport",
     "AdapterRequirement",
     "GrammarRegistry",
+    "GPUArchitecture",
+    "GPUExecutionPlan",
+    "GPUKernelCapture",
+    "DeviceProtocolEvidence",
     "LoweringEngine",
     "LoweringMode",
     "LoweringPlan",
@@ -79,6 +94,7 @@ __all__ = [
     "__version__",
     "load_registry",
     "load_deep_grammar",
+    "load_bounded_dataflow_grammar",
     "load_lifetime_flow_graph",
     "inspect_cpp_region",
     "inspect_cpp_matrix",
@@ -87,4 +103,17 @@ __all__ = [
     "build_promotion_summary",
     "run_agent_workflow",
     "search_deep_grammar",
+    "build_bounded_dataflow_graph",
+    "build_region_closure_graph",
+    "describe_c_boundary",
+    "prove_region_closure",
+    "capture_gpu_kernel",
+    "probe_cuda_architecture",
+    "run_cuda_artifact",
+    "synthesize_cuda_pointwise",
+    "optimize_cuda_pointwise",
+    "verify_device_protocol",
+    "probe_device_topology",
+    "probe_drm_presentation",
+    "probe_vulkan_capabilities",
 ]

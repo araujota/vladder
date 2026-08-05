@@ -1,0 +1,26 @@
+kind: queue
+name: scale-then-consume
+resources:
+  - id: output
+    owner: compute
+operations:
+  - id: scale
+    queue: compute-0
+    queue_family: compute
+    accesses:
+      - {resource: output, mode: write, stage: compute}
+    signals:
+      - {semaphore: scale_done, value: 1}
+  - id: consume
+    queue: compute-0
+    queue_family: compute
+    accesses:
+      - {resource: output, mode: read, stage: compute}
+barriers:
+  - src: scale
+    dst: consume
+    resource: output
+    src_stage: compute
+    dst_stage: compute
+    src_access: shader_write
+    dst_access: shader_read

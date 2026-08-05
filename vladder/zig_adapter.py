@@ -18,7 +18,7 @@ from .paired_benchmark import run_paired_benchmark
 from .rust_verification import run_alive2_refinement
 
 
-ZIG_SUPPORT_VERSION = "bounded-zig-regions-v1"
+ZIG_SUPPORT_VERSION = "bounded-zig-regions-v2"
 
 
 @dataclass(frozen=True)
@@ -36,6 +36,7 @@ class ZigRegionRequest:
     benchmark_processes: int = 8
     benchmark_repetitions: int = 2
     cpu: int | None = None
+    specialization: str | None = None
 
 
 @dataclass(frozen=True)
@@ -183,15 +184,23 @@ def optimize_zig_region(request: ZigRegionRequest) -> dict[str, Any]:
         report = {"schema_version": "vladder-zig-optimization-v1", "status": "adapter_required", "synthesis": synthesis, "promotion": {"promotable": False}}
         _write_json(output / "zig-optimization.json", report)
         return report
-    _, baseline = _capture(request)
+    _capture(request)
     candidates = [_candidate_from_dict(item["candidate"]) for item in synthesis["candidates"]]
     harness = output / "benchmark" / "benchmark.zig"
     harness.parent.mkdir(parents=True, exist_ok=True)
-    harness.write_text(_zig_benchmark_source(baseline, candidates, request.benchmark_elements, request.benchmark_inner))
     zig = Path(shutil.which("zig") or "")
+    baseline, import_prelude, target_module = _zig_benchmark_baseline(request, zig)
+    harness.write_text(_zig_benchmark_source(
+        baseline, candidates, request.benchmark_elements, request.benchmark_inner,
+        import_prelude=import_prelude,
+    ))
     subprocess.run([str(zig), "fmt", str(harness)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     executable = output / "benchmark" / "benchmark"
-    compiled = _compile_zig_executable(zig, harness, executable)
+    compiled = (
+        _compile_zig_executable_module(zig, harness, target_module, executable)
+        if target_module is not None else
+        _compile_zig_executable(zig, harness, executable)
+    )
     if compiled["status"] != "pass":
         report = {"schema_version": "vladder-zig-optimization-v1", "status": "benchmark_compile_failed", "benchmark_compile": compiled, "promotion": {"promotable": False}}
         _write_json(output / "zig-optimization.json", report)
@@ -253,14 +262,34 @@ def _capture(request: ZigRegionRequest) -> tuple[LanguageRegionEvidence, str]:
     source = request.source.resolve()
     text = source.read_text()
     function = _extract_zig_function(text, request.function)
-    blockers = _zig_blockers(function)
+    blockers = _zig_blockers(function, request.specialization)
     output = request.output_directory.resolve()
     capture = output / "capture"
     capture.mkdir(parents=True, exist_ok=True)
-    snapshot = capture / "selected.zig"
+    snapshot = capture / "selected-function.zig"
     wrapper_name = request.function.split(".")[-1]
-    snapshot.write_text(text + f"\nexport fn vladder_capture(ptr: [*]const u8, len: usize, needle: u8) usize {{\n    return {wrapper_name}(ptr[0..len], needle);\n}}\n")
-    compiled = _compile_zig(Path(zig), snapshot, capture / "build", request.optimize_mode)
+    snapshot.write_text(function + "\n")
+    wrapper = capture / "capture-root.zig"
+    std_module = _zig_std_module(Path(zig), source)
+    owner = std_module or "target"
+    call = (
+        f"{owner}.{wrapper_name}({request.specialization}, ptr[0..n], needle)"
+        if request.specialization else f"{owner}.{wrapper_name}(ptr[0..n], needle)"
+    )
+    signature_closed = not any(item["kind"] == "type-boundary" for item in blockers)
+    if signature_closed:
+        wrapper.write_text(
+            ('const std = @import("std");\n' if std_module else 'const target = @import("target");\n')
+            +
+            f"export fn vladder_capture(ptr: [*]const u8, n: usize, needle: u8) usize {{\n    return {call};\n}}\n"
+        )
+        compiled = (
+            _compile_zig(Path(zig), wrapper, capture / "build", request.optimize_mode)
+            if std_module else
+            _compile_zig_module(Path(zig), wrapper, source, capture / "build", request.optimize_mode)
+        )
+    else:
+        compiled = _compile_zig(Path(zig), source, capture / "build", request.optimize_mode)
     if compiled["status"] != "pass":
         blockers.append({"kind": "compiler-semantic-failure", "reason": compiled.get("stderr", "")[-1000:], "required_adapter": "fix source/build capture before optimization"})
     version = _command([zig, "version"])
@@ -272,6 +301,7 @@ def _capture(request: ZigRegionRequest) -> tuple[LanguageRegionEvidence, str]:
             config.append({"path": str(path), "sha256": file_sha256(path)})
     artifacts = {key: value for key, value in compiled.items() if key in {"llvm_ir", "assembly", "object"} and isinstance(value, str)}
     artifacts["source_snapshot"] = str(snapshot)
+    artifacts["capture_root"] = str(wrapper) if wrapper.exists() else None
     graph = None
     if not blockers:
         graph = count_equal_graph(
@@ -280,12 +310,13 @@ def _capture(request: ZigRegionRequest) -> tuple[LanguageRegionEvidence, str]:
             contracts={"operation": "count_equal_u8", "safety_mode": request.optimize_mode, "ownership": "borrowed slice", "integer_overflow": "count <= slice.len"},
             excluded_claims=("allocator/error-union/defer protocols", "atomics, volatile I/O, assembly, and external effects"),
         )
-    capabilities = _capabilities(graph is not None, not blockers, artifacts)
-    status = "supported" if graph is not None and not blockers else "local_graph_only" if graph else "adapter_required"
+    compiler_captured = compiled["status"] == "pass"
+    capabilities = _capabilities(compiler_captured, graph is not None, not blockers, artifacts)
+    status = "supported" if graph is not None and not blockers else "local_graph_only" if compiler_captured else "adapter_required"
     evidence = LanguageRegionEvidence(
         LANGUAGE_ADAPTER_PROTOCOL_VERSION, ZigLanguageAdapter.name, "zig", ZIG_SUPPORT_VERSION,
         request.function, status, capabilities, graph,
-        {"zig_identity": version, "optimize_mode": request.optimize_mode, "target": request.target, "build_root": str(build_root), "configuration": config, "source_sha256": file_sha256(source)},
+        {"zig_identity": version, "optimize_mode": request.optimize_mode, "target": request.target, "build_root": str(build_root), "configuration": config, "source_sha256": file_sha256(source), "specialization": request.specialization},
         tuple(blockers), artifacts,
         "selected Zig function under captured safety mode; external ownership, error, and device protocols excluded",
     )
@@ -308,11 +339,17 @@ def _extract_zig_function(text: str, requested: str) -> str:
     raise ValueError(f"unterminated Zig function: {requested}")
 
 
-def _zig_blockers(function: str) -> list[dict[str, str]]:
+def _zig_blockers(function: str, specialization: str | None = None) -> list[dict[str, str]]:
     blockers = []
     def add(kind: str, reason: str, adapter: str) -> None: blockers.append({"kind": kind, "reason": reason, "required_adapter": adapter})
     signature = function[:function.find("{")]
-    if not re.search(r"\[\]const\s+u8", signature) or not re.search(r"\bneedle\s*:\s*u8", signature) or not re.search(r"\)\s*usize", signature):
+    direct = bool(re.search(r"\[\]const\s+u8", signature) and re.search(r"\bneedle\s*:\s*u8", signature))
+    specialized = bool(
+        specialization
+        and re.search(r"comptime\s+\w+\s*:\s*type", signature)
+        and re.search(r"\[\]const\s+\w+", signature)
+    )
+    if not (direct or specialized) or not re.search(r"\)\s*usize", signature):
         add("type-boundary", "Z1 requires ([]const u8, u8) usize", "model the concrete Zig type/ownership boundary")
     checks = [
         (r"\b(anytype|Allocator|alloc|dupe|create)\b", "allocation-ownership", "allocator and ownership protocol"),
@@ -368,11 +405,18 @@ def _zig_proof_source(baseline: str, candidate: str, rule: str, bound: int) -> s
     return baseline + "\n\n" + candidate + f"\nexport fn src_{safe}(bytes: *const [{bound}]u8, needle: u8) usize {{ return baseline_impl(bytes, needle); }}\nexport fn tgt_{safe}(bytes: *const [{bound}]u8, needle: u8) usize {{ return candidate_impl(bytes, needle); }}\n"
 
 
-def _zig_benchmark_source(baseline: str, candidates: list[ZigCandidate], size: int, inner: int) -> str:
-    baseline = re.sub(r"\b(?:pub\s+)?fn\s+\w+", "noinline fn baseline_impl", baseline, count=1)
+def _zig_benchmark_source(
+    baseline: str,
+    candidates: list[ZigCandidate],
+    size: int,
+    inner: int,
+    *,
+    import_prelude: str = "",
+) -> str:
     sources = "\n".join(c.source for c in candidates)
     branches = "\n".join(f'    else if (std.mem.eql(u8, mode, "{c.rule}")) observable = run(candidate_{c.rule}, &data, {inner})' for c in candidates)
     return f'''const std = @import("std");
+{import_prelude}
 const c = @cImport({{@cInclude("stdio.h");}});
 {baseline}
 {sources}
@@ -408,10 +452,45 @@ pub fn main(init: std.process.Init) !void {{
 '''
 
 
+def _zig_benchmark_baseline(
+    request: ZigRegionRequest, zig: Path,
+) -> tuple[str, str, Path | None]:
+    source = request.source.resolve()
+    owner = _zig_std_module(zig, source)
+    target_module = None if owner else source
+    owner = owner or "target"
+    function = request.function.split(".")[-1]
+    arguments = (
+        f"{request.specialization}, bytes, needle"
+        if request.specialization else "bytes, needle"
+    )
+    baseline = (
+        "noinline fn baseline_impl(bytes: []const u8, needle: u8) usize {\n"
+        f"    return {owner}.{function}({arguments});\n"
+        "}\n"
+    )
+    prelude = "" if target_module is None else 'const target = @import("target");'
+    return baseline, prelude, target_module
+
+
 def _compile_zig(zig: Path, source: Path, output: Path, mode: str) -> dict[str, Any]:
     output.mkdir(parents=True, exist_ok=True)
     llvm, assembly, obj = output / "module.ll", output / "module.s", output / "module.o"
     command = [str(zig), "build-obj", str(source), "-O", mode, f"-femit-llvm-ir={llvm}", f"-femit-asm={assembly}", f"-femit-bin={obj}"]
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "llvm_ir": str(llvm), "assembly": str(assembly), "object": str(obj)}
+
+
+def _compile_zig_module(
+    zig: Path, wrapper: Path, target: Path, output: Path, mode: str,
+) -> dict[str, Any]:
+    output.mkdir(parents=True, exist_ok=True)
+    llvm, assembly, obj = output / "module.ll", output / "module.s", output / "module.o"
+    command = [
+        str(zig), "build-obj", "-O", mode, "--dep", "target",
+        f"-Mroot={wrapper}", f"-Mtarget={target}",
+        f"-femit-llvm-ir={llvm}", f"-femit-asm={assembly}", f"-femit-bin={obj}",
+    ]
     result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "llvm_ir": str(llvm), "assembly": str(assembly), "object": str(obj)}
 
@@ -422,9 +501,20 @@ def _compile_zig_executable(zig: Path, source: Path, output: Path) -> dict[str, 
     return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "executable": str(output)}
 
 
-def _capabilities(graph: bool, closed: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
+def _compile_zig_executable_module(
+    zig: Path, source: Path, target: Path, output: Path,
+) -> dict[str, Any]:
+    command = [
+        str(zig), "build-exe", "-O", "ReleaseFast", "-lc", "--dep", "target",
+        f"-Mroot={source}", f"-Mtarget={target}", f"-femit-bin={output}",
+    ]
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "executable": str(output)}
+
+
+def _capabilities(captured: bool, graph: bool, closed: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
     return {
-        "semantic_capture": LanguageCapability(graph, graph, "selected Zig source and safety policy captured", artifacts.get("source_snapshot")),
+        "semantic_capture": LanguageCapability(captured, captured, "native Zig module and safety policy captured", artifacts.get("llvm_ir")),
         "information_flow": LanguageCapability(graph, graph, "shared semantic information-flow graph"),
         "candidate_generation": LanguageCapability(closed, closed, "native Zig exact-reduction schedules"),
         "local_proof": LanguageCapability(closed, closed, "Z3 schedule and fixed-bound LLVM refinement"),
@@ -443,6 +533,21 @@ def _find_zig_root(source: Path) -> Path:
     for parent in (source.parent, *source.parents):
         if (parent / "build.zig.zon").exists() or (parent / "build.zig").exists(): return parent
     return source.parent
+
+
+def _zig_std_module(zig: Path, source: Path) -> str | None:
+    environment = _command([str(zig), "env"])
+    match = re.search(r'\.std_dir\s*=\s*"([^"]+)"', environment)
+    if not match:
+        return None
+    try:
+        relative = source.resolve().relative_to(Path(match.group(1)).resolve())
+    except ValueError:
+        return None
+    parts = list(relative.with_suffix("").parts)
+    if parts[-1] == "std":
+        return "std"
+    return "std." + ".".join(parts)
 
 
 def _available_cpu(cpu: int | None) -> int | None:

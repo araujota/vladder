@@ -204,16 +204,112 @@ attributes #0 = { nounwind nofree nosync }
                 self.assertEqual(candidate["benchmark"]["status"], "ADAPTER_REQUIRED")
                 self.assertFalse(candidate["application_performed"])
 
-    def test_escaping_control_is_a_verbose_local_isolation_boundary(self):
+    def test_local_return_loop_uses_whole_function_cfg_closure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             database = write_database(root, ("adapter_escaping_loop.cpp",))
             report = inspect_cpp_region(
                 FIXTURES / "adapter_escaping_loop.cpp", "first_positive", database, root / "inspect"
             )
-            self.assertFalse(report["closure"]["regions"][0]["eligible"])
-            self.assertIn("escaping_control", report["closure"]["regions"][0]["blockers"])
+            self.assertTrue(report["closure"]["regions"][0]["eligible"])
+            self.assertEqual(report["closure"]["regions"][0]["isolation_mode"], "whole_function_cfg")
+            self.assertEqual(report["region_closure"]["classes"]["multi_exit"], "closed_as_tagged_cfg")
+            self.assertEqual(report["region_closure_proof"]["status"], "PASS")
             self.assertFalse(report["closure"]["global_workflow_blocked"])
+
+            code, isolated = isolate_cpp_region(
+                FIXTURES / "adapter_escaping_loop.cpp", "first_positive", database, root / "isolate"
+            )
+            self.assertEqual(code, 0)
+            cfg_candidates = [item for item in isolated["closure"]["candidates"] if "cfg-unroll" in item["id"]]
+            self.assertEqual(len(cfg_candidates), 2)
+            self.assertTrue(all(item["proof"]["status"] == "SOURCE_CONTRACT_PROVED" for item in cfg_candidates))
+
+    def test_aggregate_helper_and_no_growth_ownership_close_as_typed_channels(self):
+        cases = {
+            "accepted_byte_parser.cpp": "parse_word",
+            "accepted_no_growth_vector.cpp": "collect_changed",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, tuple(cases))
+            parser = inspect_cpp_region(
+                FIXTURES / "accepted_byte_parser.cpp", cases["accepted_byte_parser.cpp"], database, root / "parser"
+            )
+            self.assertEqual(
+                [(item["name"], item["type"]) for item in parser["region_closure"]["aggregate_fields"]],
+                [("ok", "bool"), ("value", "std::uint32_t")],
+            )
+            self.assertEqual(parser["region_closure"]["classes"]["helper_summary"], "closed_inlined_or_call_preserving")
+            self.assertTrue(any(item["mode"] == "inlined_into_selected_ir" for item in parser["region_closure"]["helper_summaries"]))
+            self.assertEqual(parser["region_closure_proof"]["status"], "PASS")
+
+            no_growth = inspect_cpp_region(
+                FIXTURES / "accepted_no_growth_vector.cpp", cases["accepted_no_growth_vector.cpp"], database, root / "no-growth"
+            )
+            region = no_growth["subregions"][0]
+            self.assertEqual(region["closure_mode"], "no_growth_container")
+            self.assertTrue(region["extractable_candidate"])
+            self.assertEqual(no_growth["region_closure"]["classes"]["ownership"], "closed_no_growth_projection")
+            statuses = {item["id"]: item["status"] for item in no_growth["region_closure_proof"]["obligations"]}
+            self.assertEqual(statuses["no-growth-capacity"], "PASS")
+            self.assertIn("ownership-lifetime-adapter", [item["kind"] for item in no_growth["adapters"]])
+
+    def test_definition_visible_helper_summary_allows_call_preserving_loop_closure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("accepted_local_helper_loop.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "accepted_local_helper_loop.cpp", "mix_total", database, root / "inspect"
+            )
+            self.assertEqual(report["status"], "supported")
+            self.assertTrue(report["subregions"][0]["helper_summary_closure"]["closed"])
+            self.assertNotIn("external_call", report["subregions"][0]["hard_hazards"])
+            self.assertEqual(report["region_closure"]["classes"]["helper_summary"], "closed_inlined_or_call_preserving")
+            self.assertTrue(any(item["mode"] == "exact_call_preserving" for item in report["region_closure"]["helper_summaries"]))
+            binding = next(item for item in report["region_closure_proof"]["obligations"] if item["id"].startswith("helper-binding"))
+            self.assertEqual(binding["status"], "PASS")
+
+    def test_capacity_check_after_writes_does_not_close_ownership(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("adapter_late_capacity_guard.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "adapter_late_capacity_guard.cpp", "collect_unchecked", database, root / "inspect"
+            )
+            region = report["subregions"][0]
+            self.assertEqual(region["container_closure"]["mode"], "unclosed")
+            self.assertFalse(region["container_closure"]["guard_dominates_region"])
+            self.assertIn("capacity_mutation", region["hard_hazards"])
+            self.assertEqual(report["region_closure"]["classes"]["ownership"], "requires_adapter")
+
+    def test_nontrivial_elements_do_not_enter_no_growth_projection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("adapter_nontrivial_no_growth.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "adapter_nontrivial_no_growth.cpp", "copy_names", database, root / "inspect"
+            )
+            region = report["subregions"][0]
+            self.assertTrue(region["container_closure"]["guard_dominates_region"])
+            self.assertFalse(region["container_closure"]["trivial_element"])
+            self.assertEqual(region["container_closure"]["mode"], "unclosed")
+            self.assertIn("capacity_mutation", region["hard_hazards"])
+
+    def test_large_aggregate_result_binds_sret_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("accepted_large_result.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "accepted_large_result.cpp", "widen_result", database, root / "inspect"
+            )
+            self.assertTrue(report["typed_abi"]["lowered_sret"])
+            self.assertEqual(
+                [item["name"] for item in report["region_closure"]["aggregate_fields"]],
+                ["first", "second", "third", "fourth"],
+            )
+            self.assertTrue(all(item["channel"] == "sret-memory" for item in report["region_closure"]["aggregate_fields"]))
+            self.assertEqual(report["region_closure_proof"]["status"], "PASS")
 
     def test_external_protocol_scope_does_not_hide_other_vladder_workflows(self):
         with tempfile.TemporaryDirectory() as directory:

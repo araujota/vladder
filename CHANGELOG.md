@@ -1,8 +1,98 @@
 # Changelog
 
+## 1.0.0rc15 - 2026-08-05
+
+- Add Prior v0 immutable experience records, leakage-safe root/project/language/hardware/temporal
+  splits, a language-hidden graph/action/hardware/workload ranking ensemble, calibrated abstention,
+  baseline-safe exploration, and counterfactual shadow evaluation. Controlled Grade C fixtures do
+  not satisfy the production physical-evidence gate. Add open typed graph/action vocabulary,
+  recanonicalizable semantic records, canonicalizer-gated inference, and reference-based templates
+  so future grammar families do not require hand-authored hashes or a core dataset-schema fork.
+- Close the first executable CUDA path with native device probing, JIT resource inspection,
+  bounded pointwise schedule regeneration and Z3 proof, exact-output CUDA-event ranking, Nsight
+  attribution, and promotion-gated source/patch/launch-plan emission.
+- Add live CUDA/Vulkan UUID binding, Vulkan queue-family and synchronization capability capture,
+  PCIe/IOMMU/NIC/RDMA topology discovery, DRM connector discovery, and fail-closed queue, DMA, and
+  presentation protocol templates.
+- Add stable schemas for semantic graphs, promotion summaries, paired benchmarks, and canonical
+  agent reviews with CLI validation and an additive compatibility policy.
+- Add an explicit local-only privacy contract and a dual-consent, HTTPS-only optional review
+  submission path that rejects source and raw artifact inclusion.
+- Add C, C++, and Rust release demonstrations, seeded accepted/rejected Z3 transformations, a
+  deterministic requirement-level release gate, and clean isolated-installer CI.
+- Add grammar, proof-boundary, benchmark-reproducibility, contribution, roadmap, and NeuralFusion
+  case-study documentation plus a concise installed-skill evidence decision tree.
+- Add Ruff, Bandit, SonarCloud, and Snyk CI configuration; hosted scanners remain named external
+  gates until repository credentials and service projects are configured.
+- Add a static-first Next.js release site and an opt-in Convex review backend with indexed approved
+  review retrieval. Add strict source-free training-bundle contributions, credential-free public
+  moderation intake, idempotency, salted rate controls, validate-only checks, and packaged release
+  endpoints. Local optimization does not depend on either service.
+- Add an atomic owner-only consent ledger with independent canonical-training and agent-review
+  decisions. Unknown and opted-out scopes fail before network access, opt-out suppresses repeated
+  agent prompts across sessions and upgrades, and workflow summaries expose contribution only as
+  an optional non-executing terminal stage. Exact-record consent and `--confirm-upload` remain
+  required after durable opt-in.
+
+## 1.0.0rc14 - 2026-08-05
+
+- Add the shared `heterogeneous-execution-v1` model for SPIR-V, PTX, and CUDA-lowered kernel
+  capture, architecture-aware occupancy/register/shared-memory/transaction estimation, and
+  bounded launch or GLSL workgroup-source realization.
+- Add verified Vulkan-style queue/semaphore/barrier, GPU/NIC DMA/topology, and
+  acquire/present/scanout protocol graphs using the existing `SemanticFlowGraph v2` vocabulary.
+- Add counter normalization and randomized paired GPU ranking that requires exact output,
+  matching device identity, and clean device timestamps; profiler-replayed or simulated timing
+  remains attribution-only and cannot promote a candidate.
+- Add `vladder gpu support|capture|synthesize|verify|rank`, an agent-workflow GPU manifest, strict
+  OpenSpec requirements, fail-closed protocol fixtures, and heterogeneous end-to-end tests.
+
+## 1.0.0rc13 - 2026-08-05
+
+- Add `bounded-cpp-regions-v6` and `RegionClosureGraph` for first-order C ABI capture, aggregate
+  live-out projections, tagged ordinary exits, exact local helper relations, and guarded no-growth
+  trivial container output.
+- Add Z3 aggregate, exit-selector, and capacity closure obligations plus whole-function schedule
+  realization for early-return loops. Reallocation, nontrivial destruction, exceptions, indirect
+  calls, and external ownership remain explicit protocol boundaries.
+
+## 1.0.0rc12 - 2026-08-05
+
+- Preserve Zig project/module context during capture and add explicit bounded comptime type
+  specialization for native exact reductions. Physical comparisons call the original baseline
+  through that module rather than copying a dependency-incomplete function body.
+- Load Julia methods through their declared project/module and separate compiler reflection from
+  target execution; broader methods now retain typed/LLVM/native capture as `local_graph_only`.
+- Reject substring-based semantic false positives and empty physical identities.
+- Require resolved physical identity and complete unique measurement before
+  `bounded_optimal_local`.
+- Run Julia's exhaustive differential oracle once before paired timing rather than inside every
+  benchmark process.
+- Add C, Zig, and Julia bindings for every `bounded-dataflow-v1` terminal, with native differential
+  execution and explicit `semantic_scalar_fallback` classification where ISA lowering is absent.
 All notable changes to vLadder are documented here.
 
 ## Unreleased
+
+## 1.0.0rc11 - 2026-08-05
+
+### Added
+
+- `bounded-dataflow-v1`, a language-neutral SemanticFlowGraph v2 grammar for stable variable-output
+  compaction, exact fixed-width codecs, transactional state deltas, AoS projected multi-reductions,
+  and deterministic 4x4 packed blocks.
+- Seventeen native C++20 terminals with guarded AVX2/AVX-512 fallbacks, Z3 sequence/bitvector/state
+  obligations, local codec Alive2 evidence, compiled differential oracles, and source/graph hashes.
+- Contract-bounded no-growth C++ container closure and a fail-closed, tracked-source no-write
+  repository acceptance audit.
+
+### Boundaries
+
+- Owning allocation, nontrivial elements, exceptions, concurrent publication, and external
+  protocols remain explicit adapters. A proved borrowed dataflow region is not a whole-wrapper or
+  application equivalence claim.
+- NeuralFusion validation is read-only archetype acceptance. It generated no production patch and
+  establishes no application speedup.
 
 ## 1.0.0rc10 - 2026-08-05
 

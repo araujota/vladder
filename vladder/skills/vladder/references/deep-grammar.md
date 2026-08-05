@@ -42,5 +42,7 @@ proves compatible vector mask/popcount and compare-to-byte-accumulator cores. Na
 execution checks all 65,536 singleton value/needle pairs and lengths through vector/tail
 boundaries. Physical ranking remains evidence about one target and workload, not semantic proof.
 
-`bounded_optimal_local` means only that every terminal in this finite grammar region was closed and
-measured after assembly deduplication. It is not LLVM-wide, algorithm-wide, or global optimality.
+`bounded_optimal_local` means only that every terminal in this finite grammar region had a
+non-empty symbol-resolved assembly or LLVM identity and every unique identity was closed and
+measured after deduplication. Unresolved identities are measured independently and force
+`best_verified_found`. This is not LLVM-wide, algorithm-wide, or global optimality.
