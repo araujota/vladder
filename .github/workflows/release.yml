@@ -39,10 +39,12 @@ jobs:
       - run: npm ci --prefix apps/release-site
       - run: npm ci --prefix services/review-backend
       - run: npm install --global @fission-ai/openspec@1.7.0
-      - name: Formal release-readiness gate
+      # Online channel controls are verified before tagging. The ephemeral
+      # GITHUB_TOKEN cannot read branch-protection or environment admin APIs.
+      - name: Executable release-candidate gate
         run: >-
-          python scripts/release_readiness.py --execute --online
-          --require-target pypi --out build/release-readiness.json
+          python scripts/release_readiness.py --execute
+          --require-target release_candidate --out build/release-readiness.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
