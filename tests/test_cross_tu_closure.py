@@ -12,9 +12,11 @@ from vladder.whole_build import (
     WholeBuildIndex,
     run_cross_tu_closure,
 )
+from vladder.toolchain import discover_toolchain
 
 
 def _fixture(tmp_path: Path) -> Path:
+    compiler = discover_toolchain().compiler
     sources = {
         "helper.cpp": 'extern "C" int external_authority(int);\nextern "C" int helper(int x) { return external_authority(x) + 3; }\n',
         "root.cpp": 'extern "C" int helper(int);\nextern "C" int root(int x) { return helper(x) + 1; }\n',
@@ -27,7 +29,7 @@ def _fixture(tmp_path: Path) -> Path:
         path = tmp_path / name
         path.write_text(source)
         output = tmp_path / f"{name}.o"
-        arguments = ["clang-20", "-std=c++20", "-O2", "-c", str(path), "-o", str(output)]
+        arguments = [compiler, "-std=c++20", "-O2", "-c", str(path), "-o", str(output)]
         subprocess.run(arguments, check=True, capture_output=True, text=True)
         entries.append({
             "directory": str(tmp_path),
@@ -95,12 +97,13 @@ def test_indirect_calls_and_ownership_are_explicit(tmp_path: Path) -> None:
 
 
 def test_ambiguous_weak_definitions_fail_closed(tmp_path: Path) -> None:
+    compiler = discover_toolchain().compiler
     entries = []
     for name in ("weak_a.cpp", "weak_b.cpp"):
         path = tmp_path / name
         path.write_text('extern "C" __attribute__((weak)) int shared_weak() { return 7; }\n')
         output = tmp_path / f"{name}.o"
-        arguments = ["clang-20", "-c", str(path), "-o", str(output)]
+        arguments = [compiler, "-c", str(path), "-o", str(output)]
         subprocess.run(arguments, check=True, capture_output=True, text=True)
         entries.append({"directory": str(tmp_path), "file": str(path), "output": str(output), "arguments": arguments})
     database = tmp_path / "compile_commands.json"
