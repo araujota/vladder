@@ -5,6 +5,28 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
+## Required Package
+
+This skill is the agent workflow layer; it does not bundle the vLadder CLI. Before running a
+workflow, verify that the attendant [`vladder` package](https://pypi.org/project/vladder/) is
+installed and matches the release targeted below:
+
+```bash
+vladder --version
+```
+
+If the command is unavailable or reports another version, tell the user that the skill requires
+the PyPI package and obtain permission before installing or upgrading it:
+
+```bash
+python3 -m pip install --pre 'vladder==1.0.0rc16'
+vladder doctor --strict
+```
+
+Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or target-project
+toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
+reports any remaining host dependencies before optimization begins.
+
 This skill targets vLadder `1.0.0rc16`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v6`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
