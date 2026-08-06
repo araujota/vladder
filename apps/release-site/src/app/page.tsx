@@ -1,4 +1,4 @@
-import { ArrowDownToLine, BookOpen, Check, Code2, LockKeyhole, MessageSquareText, Route, ShieldCheck, Terminal } from "lucide-react";
+import { ArrowDownToLine, BookOpen, Check, Code2, LockKeyhole, MessageSquareText, Route, ShieldCheck } from "lucide-react";
 import { CopyCommand } from "../components/copy-command";
 
 const github = "https://github.com/araujota/vladder";
@@ -25,11 +25,20 @@ async function approvedReviews(): Promise<Review[]> {
 }
 
 const support = [
-  ["C", "Automatic bounded regions"],
-  ["C++", "Compiled closure + proof units"],
-  ["Rust", "Borrowed monomorphic regions"],
-  ["Zig / Julia", "Native bounded adapters"],
-  ["GPU", "SPIR-V / PTX + protocol evidence"],
+  ["C", "Direct extraction and source regeneration for supported bounded regions"],
+  ["C++", "Local region extraction plus generated proof units around ownership boundaries"],
+  ["Rust", "Borrowed, monomorphic hot regions lowered into the shared model"],
+  ["Zig / Julia", "Native bounded regions with explicit runtime and ABI assumptions"],
+  ["GPU", "SPIR-V and PTX evidence with separate host-protocol verification"],
+];
+
+const workflow = [
+  ["01", "Capture", "Source, build flags, inputs, outputs, and observable behavior"],
+  ["02", "Model", "Values, dependencies, state, placement, and valid lifetimes"],
+  ["03", "Search", "Equivalent loops, layouts, fusion, compaction, reuse, and schedules"],
+  ["04", "Verify", "Z3 and Alive2 where applicable, plus differential and stateful tests"],
+  ["05", "Measure", "Paired candidates in the real executable on the target hardware"],
+  ["06", "Rewrite", "A reviewable source patch only when proof and performance gates pass"],
 ];
 
 export default async function Home() {
@@ -39,6 +48,7 @@ export default async function Home() {
       <header className="topbar">
         <a className="brand" href="#top" aria-label="vLadder home">vLadder</a>
         <nav aria-label="Primary navigation">
+          <a href="#what">What it does</a>
           <a href="#workflow">Workflow</a>
           <a href="#support">Support</a>
           <a href={`${github}/tree/main/docs`}><BookOpen size={17} />Docs</a>
@@ -49,56 +59,70 @@ export default async function Home() {
 
       <section className="intro" id="top">
         <div className="intro-copy">
-          <p className="eyebrow">Velocity Ladder · Release candidate</p>
+          <p className="eyebrow">Verified optimization for systems code</p>
           <h1>vLadder</h1>
-          <p className="lede">Select the verified information-flow graph that should exist, then let the compiler lower it.</p>
+          <p className="lede">Find a faster implementation without changing what the code means.</p>
+          <p className="intro-detail">Point vLadder at a bounded hot path. It models the path as information flow, searches equivalent computation, layout, and data-lifetime choices, proves candidates, and measures them on your hardware. You get a source-level rewrite with the evidence needed to accept or reject it.</p>
+          <p className="audience-note"><strong>For systems engineers:</strong> use the CLI. <strong>For coding agents:</strong> install the included <code>SKILL.md</code> workflow.</p>
           <div className="actions">
-            <a className="primary-action" href={`${github}/releases`}><ArrowDownToLine size={19} />Releases</a>
-            <a className="secondary-action" href={`${github}#install`}><Terminal size={19} />Install guide</a>
+            <a className="primary-action" href={`${github}/releases`}><ArrowDownToLine size={19} />Get vLadder</a>
+            <a className="secondary-action" href="#workflow"><Route size={19} />See how it works</a>
           </div>
           <CopyCommand command={install} />
         </div>
-        <div className="release-status" aria-label="Release evidence status">
-          <div className="status-heading"><ShieldCheck size={22} /><span>Evidence chain</span></div>
+        <div className="release-status" aria-label="vLadder outputs">
+          <div className="status-heading"><ShieldCheck size={22} /><span>What you get</span></div>
           <dl>
-            <div><dt>Semantic IR</dt><dd><Check size={16} />Shared v2 graph</dd></div>
-            <div><dt>Proof gates</dt><dd><Check size={16} />Z3 + Alive2</dd></div>
-            <div><dt>Physical oracle</dt><dd><Check size={16} />Paired hardware</dd></div>
-            <div><dt>Privacy</dt><dd><LockKeyhole size={16} />Local by default</dd></div>
+            <div><dt>Candidate</dt><dd><Check size={16} />Reviewable source patch</dd></div>
+            <div><dt>Correctness</dt><dd><Check size={16} />Proof and parity report</dd></div>
+            <div><dt>Performance</dt><dd><Check size={16} />Paired hardware result</dd></div>
+            <div><dt>Decision</dt><dd><Check size={16} />Promote or reject</dd></div>
           </dl>
+          <p>vLadder is not a replacement compiler. It chooses a better verified implementation graph; your existing compiler still generates the machine code.</p>
+        </div>
+      </section>
+
+      <section className="capability-section" id="what">
+        <div className="section-inner">
+          <div className="section-heading capability-heading">
+            <div>
+              <p className="eyebrow">What it optimizes</p>
+              <h2>More than instruction order</h2>
+            </div>
+            <p>vLadder asks which concrete realization of the required behavior should exist before LLVM or another compiler decides how to encode it.</p>
+          </div>
+          <div className="capability-list">
+            <article><span>01</span><h3>Computation</h3><p>Expressions, loops, reductions, packing, codecs, masks, and stable compaction.</p></article>
+            <article><span>02</span><h3>Information flow</h3><p>Fusion, traversal, data layout, intermediate materialization, and CPU/GPU placement.</p></article>
+            <article><span>03</span><h3>Information lifetime</h3><p>Derive once, reuse while valid, invalidate exactly, or eliminate a representation entirely.</p></article>
+          </div>
         </div>
       </section>
 
       <section className="flow-band" id="workflow">
         <div className="section-inner">
           <div className="section-heading">
-            <p className="eyebrow">Actual optimization path</p>
-            <h2>Evidence before promotion</h2>
+            <p className="eyebrow">How it works</p>
+            <h2>Model meaning first. Optimize realization second.</h2>
+            <p className="section-intro">The workflow keeps semantic capture, candidate generation, proof, physical measurement, and source promotion separate, so a fast microbenchmark cannot masquerade as a production win.</p>
           </div>
           <div className="flow-visual" role="img" aria-label="Source through semantic flow, grammar search, proof, hardware, and source rewrite">
-            {[
-              ["01", "Source + contract"],
-              ["02", "Semantic flow"],
-              ["03", "Bounded grammar"],
-              ["04", "Proof gates"],
-              ["05", "Hardware rank"],
-              ["06", "Source rewrite"],
-            ].map(([number, label], index) => (
+            {workflow.map(([number, label, detail], index) => (
               <div className="flow-step" key={number}>
-                <span>{number}</span><strong>{label}</strong>{index < 5 && <Route className="flow-arrow" size={19} />}
+                <span>{number}</span><strong>{label}</strong><small>{detail}</small>{index < 5 && <Route className="flow-arrow" size={19} />}
               </div>
             ))}
           </div>
-          <p className="boundary-note">A completed workflow is not automatically a proved or retained optimization. Every state is reported independently.</p>
+          <p className="boundary-note"><strong>Fail closed:</strong> inspected, generated, proved, benchmarked, and retained are different states. vLadder reports each one explicitly.</p>
         </div>
       </section>
 
       <section className="support-section" id="support">
         <div className="section-inner support-grid">
           <div>
-            <p className="eyebrow">Supported boundaries</p>
-            <h2>One vocabulary, explicit adapters</h2>
-            <p>Frontends converge on the same information-flow model. Ownership, exceptions, drivers, and external protocols remain named proof boundaries when their state is absent.</p>
+            <p className="eyebrow">Languages and boundaries</p>
+            <h2>One semantic model, honest proof limits</h2>
+            <p>Supported language frontends converge on the same information-flow graph. Bounded local computation can be transformed directly. Ownership, exceptions, drivers, concurrency, and external protocols receive explicit adapters or remain named boundaries rather than being treated as proved.</p>
           </div>
           <div className="support-list">
             {support.map(([name, detail]) => <div key={name}><strong>{name}</strong><span>{detail}</span></div>)}
