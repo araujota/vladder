@@ -29,6 +29,18 @@ class BoundedDataflowTests(unittest.TestCase):
         self.assertEqual(coverage["family_count"], 5)
         self.assertEqual(coverage["terminal_count"], 17)
         self.assertEqual(set(self.grammar.sources), DATAFLOW_FAMILIES)
+        for family in coverage["families"]:
+            classes = family["native_lowering_classes"]
+            self.assertEqual(set(classes), {"c", "cpp", "zig", "julia"})
+            self.assertEqual(set(classes["cpp"].values()), {"native_physical"})
+            for language in ("c", "zig", "julia"):
+                for terminal, lowering_class in classes[language].items():
+                    expected = (
+                        "native_semantic"
+                        if self.grammar.terminals[terminal]["isa"] == "scalar"
+                        else "semantic_scalar_fallback"
+                    )
+                    self.assertEqual(lowering_class, expected)
         for family in DATAFLOW_FAMILIES:
             contract = BoundedDataflowContract(family=family)
             for derivation in self.grammar.search(contract):

@@ -5,10 +5,11 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 
 # vLadder
 
-This skill targets vLadder `1.0.0rc15`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc16`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v6`, plus `bounded-rust-regions-v1`, `bounded-zig-regions-v2`, and
-`bounded-julia-regions-v2` adapters and `heterogeneous-execution-v1`. Use vLadder as a proof-gated workflow: semantic
+`bounded-cpp-regions-v6`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
+`bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
+`heterogeneous-execution-v1`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
@@ -23,6 +24,12 @@ All supported frontends converge on `SemanticFlowGraph v2`. Read typed `obligati
 `protocols`, and `claims` before interpreting a graph. An obligation is actionable through its ID,
 scope, proof method, and language binding; do not recover semantics by parsing its human-readable
 statement. A successful graph build with an excluded or unverified claim is not proof of it.
+When a hot path crosses functions, read [system-closure.md](references/system-closure.md). Compose
+native inspection reports with `vladder system closure` before generating candidates. Protocol
+envelopes constrain legality and add zero candidate dimensions; arbitrary callbacks and undeclared
+third-party APIs remain local boundaries while closed components continue.
+Read [canonical-regions.md](references/canonical-regions.md) for the shared Rust/Zig/Julia
+seven-family extraction model and the semantic-capture versus executable-lowering decision.
 For C/C++, inspect `region-closure.json` before requesting an adapter. It distinguishes a missing
 grammar from an unmodeled ABI and records aggregate projections, tagged exits, local helper
 relations, and no-growth ownership projections. Treat `closed_at_compiled_abi` as representation
@@ -59,9 +66,11 @@ ordinary proof and physical gate.
     `unknown` scope, explicitly ask the user to opt in or opt out and persist the exact answer with
     `vladder consent set ... --confirmed-user-choice`. Honor the two scopes independently.
 12. A saved `opt_out` means do not upload and do not ask again across turns, sessions, or package
-    updates unless the user explicitly requests reconsideration. A saved `opt_in` permits only the
-    optional terminal workflow; it does not waive payload preview, record-level consent,
-    `--confirm-upload`, schema validation, or the prohibition on source/raw-artifact upload.
+    updates unless the user explicitly requests reconsideration. Training opt-in means contribute
+    every eligible anonymized training form at every opportunity without re-prompting; report any
+    form lacking an export adapter. Review opt-in means request a review only when the persistent
+    30-day cadence is due and obtain approval for the exact review before submission. Neither scope
+    waives schema/privacy validation or permits source/raw-artifact upload.
 
 ## Workflow
 
@@ -77,9 +86,10 @@ vladder workflow init --kind cpp --out vladder-workflow.yaml
 vladder workflow run --manifest vladder-workflow.yaml --out-dir vladder-workflow-out
 ```
 
-Before the first canonical workflow run, resolve every `unknown` contribution scope by asking the
-user for an explicit opt-in or opt-out. This is a required agent clarification, not a suggestion;
-the optimization itself remains available regardless of either answer.
+Before the first canonical workflow run, show the user the complete machine-readable notice for
+each `unknown` contribution scope and ask for an explicit opt-in or opt-out. This is a required
+informed clarification, not a suggestion; optimization remains available regardless of either
+answer.
 
 Read `promotion-summary.json` first. Answer, in order:
 
@@ -124,11 +134,22 @@ vLadder is local-only by default. Read [consent.md](references/consent.md). Do n
 source, compilation databases, IR, proofs, traces,
 benchmarks, patches, prompts, or raw artifacts. Optional agent reviews and derived-feature training
 bundles use `vladder review|training template|validate|submit`. Submission uses the packaged HTTPS
-release endpoint and requires durable scope opt-in, explicit user approval, `--confirm-upload`, and
-record-level consent; no shared token is required. `--validate-only` is also a network action and
+release endpoint and requires durable scope opt-in, schema validation, record consent, and
+`--confirm-upload`; no shared token is required. Training opt-in authorizes those per-opportunity
+mechanical gates without repeated questions. Reviews still require exact-record approval.
+`--validate-only` is also a network action and
 requires the same durable opt-in, though it tests remote acceptance without storage. Training
 bundles are a strict source-free schema, not an upload path for local prior stores or arbitrary
 artifacts. Read [release-evidence.md](references/release-evidence.md) and `docs/privacy.md`.
+On first opted-in use, the client obtains an owner-protected, installation-scoped append capability;
+it does not receive a Convex deployment credential. Run `vladder contribution doctor` when release
+service access must be verified. The probe stores no contribution and must show both intended
+append scopes, cross-scope denial, moderation denial, and absence of a private training read path.
+
+When changing vLadder itself, use `vladder release check`. Require `release_candidate` with
+`--execute` during development and `formal_release` with both `--execute --online` before tagging.
+Treat `not_run`, `setup_required`, and `unavailable` as blockers for the target that names them;
+successful execution of a subset is not release readiness.
 
 ### 1. Establish Environment And Attribution
 
@@ -238,6 +259,11 @@ async, atomics, FFI, and external effects remain explicit adapter boundaries. Re
 regeneration, MIR recapture, parametric schedule/Z3 proof, bounded LLVM refinement, differential
 execution, and physical ranking before promotion.
 
+R2 compiler-corroborates exact reductions, pointwise maps, guarded maps, stencils, scans,
+recurrences, and constant-stride indirect reads. A supported graph whose
+`candidate_generation.actual` is false is meaningful semantic capture, not executable synthesis;
+`rust synthesize` returns `lowerer_required` for that case.
+
 For Zig, read [zig-regions.md](references/zig-regions.md), preserve the compiler safety mode, and
 start from native source:
 
@@ -249,6 +275,8 @@ vladder zig optimize --source src/root.zig --function countEqual --build-root . 
 
 Use `--specialization u8` for a compatible `comptime T: type` byte reduction. Capture keeps the
 target at its original module path; a detached source copy is invalid compiler provenance.
+Z3 recognizes the same seven canonical bounded families as Rust and C. Check
+`candidate_generation.actual`; non-reduction families currently require a native family lowerer.
 
 For Julia, read [julia-regions.md](references/julia-regions.md). Always provide one exact module,
 method, and tuple signature; a generic function name is not a proof boundary:
@@ -266,6 +294,9 @@ is compiler provenance; the strict Alive2 artifact validates the canonical sched
 not claim direct whole-frontend refinement. Zig allocator/error/defer/atomic/FFI protocols and
 Julia other methods/worlds, GC allocation, dynamic dispatch, tasks, globals, `ccall`, and external
 effects remain named adapters.
+J3 recognizes the same seven canonical families for concrete, zero-allocation byte or `Float32`
+vector specializations. `status: supported` and `candidate_generation.actual: false` means the
+typed SSA/LLVM-backed graph is closed but no candidate was generated.
 
 ### 3. Select Realization Lifetime And Placement
 

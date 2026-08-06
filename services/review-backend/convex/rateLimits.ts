@@ -5,7 +5,7 @@ export const consume = internalMutation({
   args: {
     fingerprintHash: v.string(),
     bucket: v.string(),
-    kind: v.union(v.literal("review"), v.literal("training")),
+    kind: v.union(v.literal("review"), v.literal("training"), v.literal("credential")),
     limit: v.number(),
   },
   returns: v.object({ allowed: v.boolean(), remaining: v.number() }),

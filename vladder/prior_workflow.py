@@ -14,6 +14,7 @@ from .prior_data import (
 from .prior_model import load_prior_model, recommend_candidates, train_prior_model
 from .prior_search import select_search_budget, shadow_evaluate
 from .prior_synthetic import generate_synthetic_prior_corpus
+from .training_workflow import sync_all_training_bundles_from_prior
 
 
 PRIOR_WORKFLOW_SCHEMA = "vladder-prior-workflow-v0"
@@ -140,6 +141,29 @@ def run_prior_workflow(manifest_path: Path, output_directory: Path) -> dict[str,
         exploration_fraction=float(evaluation_config.get("exploration_fraction", 0.20)),
         seed=int(evaluation_config.get("seed", 4242)),
     )
+    contribution = contribution_stage(CANONICAL_TRAINING_DATA)
+    if contribution["status"] == "continuous_contribution_enabled":
+        try:
+            sync = sync_all_training_bundles_from_prior(
+                store, output_directory / "training-contribution",
+                project_id=str(validation["dataset_hash"]),
+                producer_agent="vladder-agentic-workflow", producer_model="unspecified",
+            )
+            contribution = {
+                **contribution,
+                "status": "continuous_contribution_completed",
+                "network_action_performed": True,
+                "sync_report": str(output_directory / "training-contribution/training-sync.json"),
+                "bundle_count": sync["export"]["bundle_count"],
+            }
+        except Exception as error:
+            contribution = {
+                **contribution,
+                "status": "continuous_contribution_failed",
+                "network_action_performed": False,
+                "error": str(error),
+                "next_action": "retry training sync; optimization evidence remains local and valid",
+            }
     summary = {
         "schema_version": PRIOR_SUMMARY_SCHEMA,
         "status": "pass",
@@ -168,7 +192,7 @@ def run_prior_workflow(manifest_path: Path, output_directory: Path) -> dict[str,
             "run project/root/language/hardware holdouts in shadow mode before enabling budgeted search"
         ),
         "authority": "workflow and counterfactual search evidence only; no legality, proof, measurement, or promotion gate was bypassed",
-        "optional_canonical_training_contribution": contribution_stage(CANONICAL_TRAINING_DATA),
+        "optional_canonical_training_contribution": contribution,
         "dataset": corpus,
         "split_hash": split["split_hash"],
         "model_hash": training["model_hash"],

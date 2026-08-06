@@ -30,10 +30,13 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc15`, the C++ closure matrix is
+The package version is `1.0.0rc16`, the C++ closure matrix is
 `bounded-cpp-regions-v6`; it retains the
-`bounded-regions-v1` C frontend and includes `bounded-rust-regions-v1`,
-`bounded-zig-regions-v2`, and `bounded-julia-regions-v2` adapters. The C frontend fully
+`bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
+`bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
+`canonical-bounded-regions-v1`, which compiler-corroborates exact predicate reductions,
+pointwise maps, guarded maps, stencils, scans, recurrences, and constant-stride indirect reads.
+The C frontend fully
 automates extraction, LLVM-derived classification, transformation, C source regeneration,
 formal refinement, differential execution, hardware benchmarking, and proof-gated patch
 promotion for canonical functions with this ABI:
@@ -118,6 +121,14 @@ static-first release site. Optimization remains local-only by default. Neither s
 artifacts are accepted by the review schema, and review submission requires durable scope consent,
 explicit CLI confirmation, and record-level consent.
 
+rc16 adds compositional semantic closure across systems of selected C, C++, Rust, Zig, and Julia
+functions. Each frontend emits a shared effect/call summary. `vladder system closure` composes
+direct calls through an SCC-aware bounded fixpoint, validates finite ownership/protocol envelopes,
+proves summary joins with Z3, and groups necessary external boundaries without blocking closed
+neighbors. Protocol summaries add zero implementation candidates: they constrain legality and
+proof, while attributed computational grammars remain the only source of search alternatives.
+See [Compositional Semantic Closure](docs/compositional-semantic-closure-v1.md).
+
 This is not arbitrary-C++ or whole-device equivalence. RAII, allocation, exceptions, general
 concurrency, callbacks, syscalls, drivers, presentation, Vulkan/CUDA host protocols, and external
 libraries are proved only through explicit finite adapters over their actual observables.
@@ -126,8 +137,9 @@ The Rust frontend captures one exact Cargo package/target/profile, compiler iden
 LLVM IR, and assembly. It lowers supported functions into the same language-neutral
 `SemanticFlowGraph` used by the existing frontends; Rust borrow, panic, `Drop`, unsafe, and
 monomorphization facts remain proof contracts and provenance rather than a separate semantic
-vocabulary. R1 automatically regenerates and verifies safe, monomorphic, allocation-free
-borrowed-slice reductions. It emits native Rust, recaptures MIR, proves the schedule with Z3,
+vocabulary. R2 recognizes the seven canonical bounded families over borrowed byte or `f32`
+slices and corroborates them against the selected MIR and LLVM. Exact byte reductions additionally
+have executable native regeneration: vLadder recaptures MIR, proves the schedule with Z3,
 checks fixed-bound LLVM refinement with Alive2, runs adversarial differential tests, and ranks
 candidates in a randomized same-executable benchmark. Unsafe contracts, owning allocation,
 custom destruction, async, concurrency, FFI, unresolved calls, and external protocols fail closed
@@ -135,7 +147,8 @@ with explicit adapter requirements.
 
 The Zig frontend captures a selected native function in its original module graph, compiler/build
 identity, safety mode, LLVM IR, and assembly. Z2 accepts explicit bounded comptime type
-specializations such as `countScalar(u8, ...)` and closes allocation-free exact byte reductions over borrowed slices, regenerates
+specializations such as `countScalar(u8, ...)`; Z3 additionally recognizes the seven canonical
+bounded families over borrowed byte or `f32` slices. Exact byte reductions regenerate
 Zig, derives the realized schedule back from source, proves it with Z3 and canonical Alive2 LLVM,
 runs differential tests, and ranks variants in one executable. Allocator ownership, error unions,
 `defer`, volatile/atomic effects, assembly, FFI, and unresolved calls remain explicit boundaries.
@@ -143,10 +156,16 @@ runs differential tests, and ranks variants in one executable. Allocator ownersh
 The Julia frontend captures one concrete module/method/tuple specialization through the declared
 project and package module, Julia version, project/manifest, world counter, inferred effects,
 lowered/typed IR, LLVM IR, and native assembly. Reflection does not execute arbitrary target
-methods. J2 closes type-stable zero-allocation exact byte reductions and ranks warmed
-steady-state native Julia candidates in independent processes. Other methods/worlds, dynamic
+methods. J3 recognizes the seven canonical bounded families for concrete, type-stable,
+zero-allocation byte or `Float32` vector specializations. Exact byte reductions additionally rank
+warmed steady-state native Julia candidates in independent processes. Other methods/worlds, dynamic
 dispatch, GC-visible allocation, globals, exceptions, tasks, `ccall`, nondeterminism, and external
 effects fail closed.
+
+For Rust, Zig, and Julia, `status: supported` establishes compiler-corroborated semantic capture,
+not automatic optimization by itself. Read the independent `candidate_generation`, `local_proof`,
+`benchmark`, and `source_rewrite` capabilities. Families without an executable native lowerer
+return `lowerer_required` and never enter the byte-reduction generator.
 
 The package also contains specialist operator, pipeline, projection, quantized-kernel, and
 weight-traversal research adapters. Use `vladder grammar` and `vladder lower list` to distinguish
@@ -220,14 +239,19 @@ closed when source mode is requested.
 Run the complete local release decision from one command:
 
 ```bash
-python3 scripts/public_release_gate.py --execute
+vladder release check --execute --require-target release_candidate \
+  --out build/release-readiness.json
 ```
 
-The report evaluates every requirement independently. Local checks can pass while hosted Sonar,
-Snyk, Convex, or Vercel deployment remains an `external_gate`; these states are never collapsed
-into one optimistic result. Three small C, C++, and Rust demonstrations are documented in
+The report evaluates source identity, the full test and proof surfaces, quality checks, release
+demonstrations, service builds, wheel and sdist contents, clean isolated installs, and each
+publication channel independently. Add `--online --require-target formal_release` for the final
+GitHub/PyPI/Homebrew decision. `pass`, `fail`, `not_run`, `setup_required`, and `unavailable` are
+never collapsed into one optimistic result. Three small C, C++, and Rust demonstrations are documented in
 [`demos/README.md`](demos/README.md). The substantial application study is
 [`docs/case-studies/neuralfusion.md`](docs/case-studies/neuralfusion.md).
+Use `--online --reuse-local-report build/release-readiness.json` when only publication-account
+state changed; root and version identity are checked before local evidence is reused.
 
 Public artifacts are schema-versioned:
 
@@ -241,7 +265,9 @@ vladder review validate --review agent-review.json
 
 Optional source-free contributions use the shipped release service. They require a durable,
 scope-specific user decision in addition to `--confirm-upload` and
-`privacy.submission_consent=true`; no shared credential is required. Unknown state is not consent:
+`privacy.submission_consent=true`; no shared credential is packaged. On first opted-in use, the
+client obtains a random installation-scoped `training:write` or `review:write` capability and
+stores it under `$XDG_CONFIG_HOME/vladder` with mode `0600`. Unknown state is not consent:
 
 ```bash
 vladder consent show
@@ -249,17 +275,39 @@ vladder consent set --scope canonical-training-data --decision opt-in --confirme
 vladder consent set --scope agent-experience-review --decision opt-out --confirmed-user-choice
 ```
 
-Agents must explicitly ask for opt in or opt out before recording an unknown scope. Training and
-review are independent. A saved opt-out suppresses upload and repeated requests across sessions
-and package updates until the user explicitly asks to change it. A saved opt-in still requires
-review of the exact source-free payload and both per-submission gates:
+Agents must present the full `consent show` notice and explicitly ask for opt in or opt out before
+recording an unknown scope. Training and review are independent. A saved opt-out suppresses upload
+and repeated requests across sessions and package updates until the user explicitly asks to change
+it. Training opt-in authorizes continuous contribution at every eligible opportunity of all
+anonymized source-free forms the installed release can encode. Review opt-in authorizes a review
+request at most once every 30 days, with exact-review approval still required.
+
+The capability is append-only and scope-specific. It cannot read pending records, approve or
+modify records, invoke internal Convex functions, or access the deployment. Convex exposes no
+direct table API to the client; this registered-function authorization boundary is the service's
+equivalent of row-level access control. Verify both positive paths and the negative boundaries
+without storing a contribution:
 
 ```bash
-vladder review submit --review agent-review.json --confirm-upload
-vladder training template --out training-bundle.json
-vladder training validate --bundle training-bundle.json
-vladder training submit --bundle training-bundle.json --confirm-upload
+vladder contribution doctor
 ```
+
+Where a canonical store already exists, run `vladder training export-prior` without durable
+consent first and disclose its record, bundle, and byte estimate. This preflight is local-only.
+
+For a canonical prior store, the continuous path is:
+
+```bash
+vladder training sync-prior --store experience --project-id PROJECT_ID \
+  --agent AGENT --model MODEL --out-dir training-sync
+vladder review submit --review agent-review.json --confirm-upload
+```
+
+The training exporter includes anonymized canonical graph features/hashes, structured grammar
+actions, all supported outcome classes and negative results, evidence quality, and coarsened
+hardware/workload descriptors. It excludes source, paths, raw artifacts, prompts, personal data,
+and the unredacted prior store. Agents must report an eligible form lacking an exporter rather than
+silently treating it as contributed.
 
 The consent ledger is stored outside the package under the user's configuration directory (or
 `VLADDER_CONSENT_FILE`) with owner-only permissions. Use `--validate-only` to test the remote path
@@ -280,10 +328,10 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc15` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc16` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc15'
+python3 -m pip install --pre 'vladder==1.0.0rc16'
 vladder doctor
 ```
 
@@ -327,10 +375,11 @@ python3 -m venv .venv
 .venv/bin/vladder doctor --strict
 ```
 
-The release workflow emits an exact-hash `vladder.rb` formula. After the project tap is created:
+The release workflow emits and tests an exact-hash `vladder.rb` formula. After the public tap is
+configured and a release is published:
 
 ```bash
-brew install OWNER/tap/vladder
+brew install araujota/tap/vladder
 vladder doctor
 ```
 
@@ -357,7 +406,7 @@ inputs resume deterministically and are classified as revalidation rather than a
 
 The operational decision tree is:
 
-1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `lifetime`, `gpu`, `shader`, or `protocol` from the region's actual semantic boundary.
+1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `system`, `lifetime`, `gpu`, `shader`, or `protocol` from the region's actual semantic boundary.
 2. Run inspection and read `meaningful_semantic_coverage`.
 3. If an adapter remains, generate or complete it; do not relabel local proof as wrapper proof.
 4. Require candidate proof and randomized paired physical evidence.
@@ -777,7 +826,7 @@ python3 -m venv .venv
 .venv/bin/pip install '.[dev]'
 python3 scripts/audit_release.py --root .
 .venv/bin/python -m pytest -q
-python3 scripts/public_release_gate.py --execute
+.venv/bin/vladder release check --execute --require-target release_candidate
 openspec validate release-vladder-library --strict
 openspec validate release-channels-rc4 --strict
 openspec validate lifetime-aware-realization-v1 --strict
@@ -786,15 +835,16 @@ openspec validate deep-shared-grammar-v2 --strict
 python3 -m build
 python3 -m twine check dist/*
 python3 scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz
-python3 scripts/release_preflight.py --repository OWNER/REPOSITORY
+python3 scripts/release_preflight.py --repository araujota/vladder
 ```
 
 The optional website and review service are independently buildable under `apps/release-site` and
 `services/review-backend`. Their deployment credentials are never prerequisites for local
 optimization.
 
-The release audit rejects generated outputs, caches, model files, vendored application trees,
-credentials, compiled objects, and oversized machine-local artifacts.
+The source audit checks every tracked and non-ignored release input. Distribution audits reject
+generated outputs, caches, model files, vendored application trees, credentials, compiled objects,
+and oversized machine-local artifacts even when the checkout contains ignored development output.
 
 The pinned no-write C, C++, Zig, and Julia acceptance study is documented in
 [docs/cross-language-rc12-evaluation.md](docs/cross-language-rc12-evaluation.md). It distinguishes
@@ -803,9 +853,11 @@ than treating successful command execution as optimization success.
 
 ## Publishing
 
-Tag-triggered GitHub Actions build and test the package, create checksums and a Homebrew formula,
-publish a GitHub prerelease, and upload the same wheel and sdist to PyPI through Trusted
-Publishing. Optional tap publication is protected by a separate GitHub environment. Maintainer
+Tag-triggered GitHub Actions first require the formal release-readiness target, then build and test
+the package, verify the exact Homebrew formula on macOS, create checksums, publish a GitHub
+prerelease, and upload the same wheel and sdist to PyPI through Trusted Publishing. Tap publication
+is protected by a separate GitHub environment. PyPI and Homebrew remain `setup_required` until the
+one-time account configuration in the release guide has been completed. Maintainer
 setup and release commands are in [docs/releasing.md](docs/releasing.md); changes are summarized
 in [CHANGELOG.md](CHANGELOG.md).
 

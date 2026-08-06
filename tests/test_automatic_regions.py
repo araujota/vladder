@@ -77,6 +77,8 @@ class AutomaticRegionTests(unittest.TestCase):
             self.assertEqual(report.region_closure["status"], "abi_closed_grammar_missing")
             self.assertTrue(report.region_closure["c_boundary"]["modeled"])
             self.assertEqual(report.region_closure["c_boundary"]["return_type"], "uint32_t")
+            self.assertEqual(report.compositional_summary["source_language"], "c")
+            self.assertEqual(report.compositional_summary["id"], "c::checksum_bytes")
 
     def test_generated_ordered_source_and_proof_source_compile(self):
         source = FIXTURES / "supported_recurrence.c"

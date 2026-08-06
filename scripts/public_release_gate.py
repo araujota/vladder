@@ -13,6 +13,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+    import tomli as tomllib
+
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMP_ROOT = Path(tempfile.gettempdir())
@@ -281,7 +286,7 @@ def main() -> int:
     summary = {state: sum(check.status == state for check in checks) for state in ("pass", "fail", "not_run", "external_gate")}
     report = {
         "schema": "vladder-public-release-gate-v1",
-        "release_version": "1.0.0rc15",
+        "release_version": tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"],
         "checks": [check.to_dict() for check in checks],
         "summary": summary,
         "ready_for_local_release": summary["fail"] == 0 and summary["not_run"] == 0,

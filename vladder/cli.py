@@ -14,7 +14,11 @@ import time
 import yaml
 
 from . import __version__
-from .consent import CONSENT_SCOPES, load_consent, set_consent
+from .consent import (
+    AGENT_EXPERIENCE_REVIEW, CANONICAL_TRAINING_DATA, CONSENT_SCOPES,
+    load_consent, record_review_request, require_consent, set_consent,
+)
+from .contribution_transport import DEFAULT_CONTRIBUTION_BASE, probe_contribution_service
 from .candidates import Candidate, generate_candidates
 from .automatic import inspect_automatic_region
 from .cpp_regions import inspect_cpp_matrix, inspect_cpp_region, isolate_cpp_region, optimize_cpp_region
@@ -52,8 +56,8 @@ from .report import write_csv, write_html, write_json
 from .replacement import verify_applied_replacement
 from .review_workflow import create_review_template, submit_review, validate_review
 from .training_workflow import (
-    create_training_bundle_from_prior, create_training_template, submit_training_bundle,
-    validate_training_bundle,
+    create_training_bundle_from_prior, create_training_template, export_all_training_bundles_from_prior,
+    submit_training_bundle, sync_all_training_bundles_from_prior, validate_training_bundle,
 )
 from .schema_registry import list_artifact_schemas, validate_artifact
 from .toolchain import alive2_check, compile_c, compiler_version, cpu_flags, cpu_model, discover_toolchain, emit_alive2_ir, run, static_estimates, tool_version
@@ -87,6 +91,7 @@ from .prior_workflow import (
     split_prior_dataset, train_prior, validate_prior_dataset,
 )
 from .state_protocol import verify_state_protocol
+from .system_closure import run_system_closure
 from .rust_adapter import (
     RustRegionRequest,
     audit_rust_regions,
@@ -727,6 +732,32 @@ def doctor_command(args: argparse.Namespace) -> int:
     if args.out:
         Path(args.out).resolve().write_text(output + "\n")
     return 0 if report["status"] == "pass" else 1
+
+
+def release_command(args: argparse.Namespace) -> int:
+    from .release_readiness import evaluate_release_readiness, refresh_online_release_readiness, write_release_readiness
+
+    if args.reuse_local_report:
+        if not args.online:
+            raise ValueError("--reuse-local-report requires --online")
+        report = refresh_online_release_readiness(json.loads(Path(args.reuse_local_report).read_text()), Path(args.root))
+    else:
+        report = evaluate_release_readiness(
+            Path(args.root), execute=args.execute, online=args.online,
+            work_directory=Path(args.work_dir) if args.work_dir else None,
+        )
+    output = Path(args.out)
+    write_release_readiness(report, output)
+    target = report["targets"][args.require_target]
+    print(
+        "vLadder release: "
+        f"target={args.require_target} ready={str(target['ready']).lower()} "
+        f"blockers={target['blocker_count']}"
+    )
+    for blocker in target["blockers"]:
+        print(f"  - {blocker}")
+    print(f"vLadder release: wrote {output.resolve()}")
+    return 0 if target["ready"] else 1
 
 
 def grammar_command(args: argparse.Namespace) -> int:
@@ -1373,6 +1404,10 @@ def consent_command(args: argparse.Namespace) -> int:
     consent_path = Path(args.consent_file).expanduser() if args.consent_file else None
     if args.consent_command == "show":
         report = load_consent(consent_path)
+    elif args.consent_command == "review-requested":
+        report = record_review_request(
+            path=consent_path, confirmed_user_prompt=args.confirmed_user_prompt,
+        )
     else:
         report = set_consent(
             args.scope.replace("-", "_"),
@@ -1382,6 +1417,14 @@ def consent_command(args: argparse.Namespace) -> int:
         )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
+
+
+def contribution_command(args: argparse.Namespace) -> int:
+    require_consent(CANONICAL_TRAINING_DATA)
+    require_consent(AGENT_EXPERIENCE_REVIEW)
+    report = probe_contribution_service(base_url=args.base_url, timeout_seconds=args.timeout)
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report["status"] == "pass" else 2
 
 
 def review_command(args: argparse.Namespace) -> int:
@@ -1411,6 +1454,24 @@ def training_command(args: argparse.Namespace) -> int:
             Path(args.store), Path(args.out), project_id=args.project_id,
             producer_agent=args.agent, producer_model=args.model, producer_provider=args.provider,
             maximum_examples=args.maximum_examples,
+            apply_durable_consent=args.apply_durable_consent,
+            consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
+        )
+    elif args.training_command == "export-prior":
+        report = export_all_training_bundles_from_prior(
+            Path(args.store), Path(args.out_dir), project_id=args.project_id,
+            producer_agent=args.agent, producer_model=args.model, producer_provider=args.provider,
+            examples_per_bundle=args.examples_per_bundle,
+            apply_durable_consent=args.apply_durable_consent,
+            consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
+        )
+    elif args.training_command == "sync-prior":
+        report = sync_all_training_bundles_from_prior(
+            Path(args.store), Path(args.out_dir), project_id=args.project_id,
+            producer_agent=args.agent, producer_model=args.model, producer_provider=args.provider,
+            examples_per_bundle=args.examples_per_bundle, endpoint=args.endpoint, token=None,
+            validate_only=args.validate_only, timeout_seconds=args.timeout,
+            consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
         )
     elif args.training_command == "validate":
         report = validate_training_bundle(Path(args.bundle))
@@ -1423,7 +1484,7 @@ def training_command(args: argparse.Namespace) -> int:
         )
     print(json.dumps(report, indent=2, sort_keys=True))
     accepted = {"pass", "submitted", "validated_remotely"}
-    return 0 if report.get("status") in accepted or args.training_command == "template" else 2
+    return 0 if report.get("status") in accepted or args.training_command in {"template", "from-prior", "export-prior"} else 2
 
 
 def lifetime_command(args: argparse.Namespace) -> int:
@@ -1446,6 +1507,18 @@ def lifetime_command(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def system_closure_command(args: argparse.Namespace) -> int:
+    report = run_system_closure(Path(args.manifest), Path(args.out_dir))
+    graph = report["system_graph"]
+    print(
+        "vLadder system-closure: "
+        f"status={report['status']} functions={len(graph['functions'])} "
+        f"boundaries={len(graph['boundaries'])} candidates={graph['computational_candidate_count']}"
+    )
+    print(f"vLadder system-closure: wrote {Path(args.out_dir).resolve() / 'system-closure-report.json'}")
+    return 0 if report["status"] == "pass" else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vladder",
@@ -1456,7 +1529,7 @@ def build_parser() -> argparse.ArgumentParser:
     workflow = sub.add_parser("workflow", help="run and summarize the canonical agent optimization workflow")
     workflow_sub = workflow.add_subparsers(dest="workflow_command", required=True)
     workflow_init = workflow_sub.add_parser("init", help="create a canonical workflow manifest")
-    workflow_init.add_argument("--kind", choices=("c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "gpu", "protocol"), required=True)
+    workflow_init.add_argument("--kind", choices=("c", "cpp", "rust", "zig", "julia", "system", "lifetime", "shader", "gpu", "protocol"), required=True)
     workflow_init.add_argument("--out", default="vladder-workflow.yaml")
     workflow_init.set_defaults(func=workflow_command)
     workflow_run = workflow_sub.add_parser("run", help="route one manifest and emit a promotion summary")
@@ -1472,10 +1545,30 @@ def build_parser() -> argparse.ArgumentParser:
     workflow_query.add_argument("--summary", required=True)
     workflow_query.add_argument("--artifact", required=True)
     workflow_query.set_defaults(func=workflow_command)
+    system = sub.add_parser("system", help="compose function summaries without expanding implementation search")
+    system_sub = system.add_subparsers(dest="system_command", required=True)
+    system_closure = system_sub.add_parser("closure", help="build and prove a bounded system-of-functions closure graph")
+    system_closure.add_argument("--manifest", required=True)
+    system_closure.add_argument("--out-dir", default="vladder-system-closure")
+    system_closure.set_defaults(func=system_closure_command)
     doctor = sub.add_parser("doctor", help="validate compilers, solvers, validators, and performance tools")
     doctor.add_argument("--strict", action="store_true", help="require Alive2 and perf in addition to the core toolchain")
     doctor.add_argument("--out", help="also write the JSON report to this path")
     doctor.set_defaults(func=doctor_command)
+    release = sub.add_parser("release", help="evaluate source, tests, artifacts, access paths, and publication channels")
+    release_sub = release.add_subparsers(dest="release_command", required=True)
+    release_check = release_sub.add_parser("check", help="emit one target-aware release-readiness report")
+    release_check.add_argument("--root", default=".", help="vLadder source checkout")
+    release_check.add_argument("--execute", action="store_true", help="run tests, builds, clean installs, and service builds")
+    release_check.add_argument("--online", action="store_true", help="inspect GitHub, PyPI, Homebrew, and hosted service state")
+    release_check.add_argument(
+        "--require-target", choices=("local_development", "release_candidate", "github_release", "pypi", "homebrew", "formal_release"),
+        default="local_development",
+    )
+    release_check.add_argument("--work-dir", help="retain generated build/install evidence in this directory")
+    release_check.add_argument("--reuse-local-report", help="refresh online state on a matching report produced with --execute")
+    release_check.add_argument("--out", default="build/release-readiness.json")
+    release_check.set_defaults(func=release_command)
     grammar = sub.add_parser("grammar", help="inspect the versioned C/C++ capability registry")
     grammar.add_argument("--family", help="show one grammar family")
     grammar.add_argument("--registry", help="load an alternate capabilities.json")
@@ -1908,6 +2001,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     consent_set.add_argument("--consent-file", help=argparse.SUPPRESS)
     consent_set.set_defaults(func=consent_command)
+    consent_review = consent_sub.add_parser(
+        "review-requested", help="record a periodic review request and advance its cadence",
+    )
+    consent_review.add_argument(
+        "--confirmed-user-prompt", action="store_true",
+        help="required assertion that the agent actually requested the review",
+    )
+    consent_review.add_argument("--consent-file", help=argparse.SUPPRESS)
+    consent_review.set_defaults(func=consent_command)
+    contribution = sub.add_parser("contribution", help="verify scoped release-service contribution access")
+    contribution_sub = contribution.add_subparsers(dest="contribution_command", required=True)
+    contribution_doctor = contribution_sub.add_parser(
+        "doctor", help="probe both opted-in append paths and negative authorization boundaries without storing records",
+    )
+    contribution_doctor.add_argument("--base-url", default=DEFAULT_CONTRIBUTION_BASE)
+    contribution_doctor.add_argument("--timeout", type=float, default=20.0)
+    contribution_doctor.set_defaults(func=contribution_command)
     review = sub.add_parser("review", help="create, validate, or explicitly submit a canonical agent review")
     review_sub = review.add_subparsers(dest="review_command", required=True)
     review_template = review_sub.add_parser("template", help="create a strict review record from a promotion summary")
@@ -1939,9 +2049,42 @@ def build_parser() -> argparse.ArgumentParser:
     training_prior.add_argument("--agent", required=True)
     training_prior.add_argument("--model", required=True)
     training_prior.add_argument("--provider")
-    training_prior.add_argument("--maximum-examples", type=int, default=256)
+    training_prior.add_argument("--maximum-examples", type=int, default=8)
+    training_prior.add_argument(
+        "--apply-durable-consent", action="store_true",
+        help="set record consent from the saved training opt-in for continuous contribution",
+    )
+    training_prior.add_argument("--consent-file", help=argparse.SUPPRESS)
     training_prior.add_argument("--out", default="vladder-training-bundle.json")
     training_prior.set_defaults(func=training_command)
+    training_export = training_sub.add_parser(
+        "export-prior", help="export every supported anonymized prior record into bounded bundles",
+    )
+    training_export.add_argument("--store", required=True)
+    training_export.add_argument("--project-id", required=True, help="identifier is hashed before export")
+    training_export.add_argument("--agent", required=True)
+    training_export.add_argument("--model", required=True)
+    training_export.add_argument("--provider")
+    training_export.add_argument("--examples-per-bundle", type=int, default=12)
+    training_export.add_argument("--apply-durable-consent", action="store_true")
+    training_export.add_argument("--consent-file", help=argparse.SUPPRESS)
+    training_export.add_argument("--out-dir", default="vladder-training-export")
+    training_export.set_defaults(func=training_command)
+    training_sync = training_sub.add_parser(
+        "sync-prior", help="continuously export and submit all supported anonymized prior records after opt-in",
+    )
+    training_sync.add_argument("--store", required=True)
+    training_sync.add_argument("--project-id", required=True, help="identifier is hashed before export")
+    training_sync.add_argument("--agent", required=True)
+    training_sync.add_argument("--model", required=True)
+    training_sync.add_argument("--provider")
+    training_sync.add_argument("--examples-per-bundle", type=int, default=12)
+    training_sync.add_argument("--endpoint", help="override VLADDER_TRAINING_ENDPOINT")
+    training_sync.add_argument("--validate-only", action="store_true")
+    training_sync.add_argument("--timeout", type=float, default=20.0)
+    training_sync.add_argument("--consent-file", help=argparse.SUPPRESS)
+    training_sync.add_argument("--out-dir", default="vladder-training-sync")
+    training_sync.set_defaults(func=training_command)
     training_validate = training_sub.add_parser("validate", help="validate a training bundle without network access")
     training_validate.add_argument("--bundle", required=True)
     training_validate.set_defaults(func=training_command)

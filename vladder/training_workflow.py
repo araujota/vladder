@@ -82,16 +82,22 @@ def create_training_bundle_from_prior(
     producer_agent: str,
     producer_model: str,
     producer_provider: str | None = None,
-    maximum_examples: int = 256,
+    maximum_examples: int = 8,
+    apply_durable_consent: bool = False,
+    consent_path: Path | None = None,
+    candidate_offset: int = 0,
 ) -> dict[str, Any]:
     if maximum_examples < 1 or maximum_examples > 256:
         raise ValueError("maximum_examples must be between 1 and 256")
+    if apply_durable_consent:
+        require_consent(CANONICAL_TRAINING_DATA, consent_path)
     dataset = PriorExperienceStore(store_path).load()
     roots = {item["root_id"]: item for item in dataset["roots"]}
     observations: dict[str, list[dict[str, Any]]] = {}
     for observation in dataset["observations"]:
         observations.setdefault(observation["candidate_id"], []).append(observation)
-    candidates = sorted(dataset["candidates"], key=lambda item: item["candidate_id"])
+    all_candidates = sorted(dataset["candidates"], key=lambda item: item["candidate_id"])
+    candidates = all_candidates[candidate_offset:candidate_offset + maximum_examples]
     examples = []
     for candidate in candidates[:maximum_examples]:
         root = roots[candidate["root_id"]]
@@ -128,9 +134,24 @@ def create_training_bundle_from_prior(
         numeric.update(_numeric_features("action", action.get("parameters", {})))
         numeric.update(_numeric_features("hardware", candidate.get("hardware", {})))
         numeric.update(_numeric_features("workload", candidate.get("workload", {})))
-        family = _token(action.get("family", "baseline"), "baseline")
+        canonical = root.get("canonical_graph", {})
+        for label, count in canonical.get("nodes", []):
+            numeric[f"canonical.node.{str(label)[:24]}"] = float(count)
+        for label, count in canonical.get("edges", []):
+            numeric[f"canonical.edge.{str(label)[:24]}"] = float(count)
+        for label, count in canonical.get("feature_inventory", {}).items():
+            numeric[f"canonical.feature.{canonical_hash(str(label))[:24]}"] = float(count)
+        for item in observed:
+            kind = _token(item.get("kind", "unknown"), "unknown")
+            outcome = _token(item.get("outcome", "unknown"), "unknown")
+            kind_key = f"observation.kind.{kind}.count"
+            outcome_key = f"observation.outcome.{outcome}.count"
+            numeric[kind_key] = numeric.get(kind_key, 0.0) + 1.0
+            numeric[outcome_key] = numeric.get(outcome_key, 0.0) + 1.0
+            numeric.update(_numeric_features(f"observation.{kind}", item.get("payload", {})))
+        family = _anonymous_label("family", action.get("family", "baseline"))
         primitives = action.get("primitives", [])
-        rule = _token(primitives[0] if primitives else family, family)
+        rule = _anonymous_label("rule", primitives[0] if primitives else action.get("family", "baseline"))
         categories = {
             "action.family_version": str(action.get("family_version", 1)),
             "candidate.baseline": "true" if candidate.get("baseline") else "false",
@@ -141,7 +162,9 @@ def create_training_bundle_from_prior(
             "semantic_root_hash": candidate["root_id"],
             "candidate_hash": candidate["candidate_id"],
             "language": language,
-            "region_kind": _token(root.get("contract", {}).get("semantic_family", "bounded_region"), "bounded_region"),
+            "region_kind": _anonymous_label(
+                "region", root.get("contract", {}).get("semantic_family", "bounded_region"),
+            ),
             "grammar_family": family,
             "grammar_rule": rule,
             "numeric_features": [
@@ -174,7 +197,7 @@ def create_training_bundle_from_prior(
         "vladder_version": __version__,
         "producer": {"agent": producer_agent, "model": producer_model, "provider": producer_provider},
         "dataset": {
-            "project_id": project_id,
+            "project_id": f"project:{canonical_hash(project_id)[:24]}",
             "grammar_version": "structured-open-actions-v1",
             "grammar_hash": canonical_hash([item["action"] for item in candidates]),
             "hardware_class": "mixed" if len({item["hardware_id"] for item in candidates}) > 1 else _token(hardware_descriptors[0].get("architecture", "unknown"), "unknown"),
@@ -186,7 +209,7 @@ def create_training_bundle_from_prior(
             "raw_artifacts_included": False,
             "prompts_included": False,
             "personal_data_included": False,
-            "submission_consent": False,
+            "submission_consent": apply_durable_consent,
         },
     }
     output_path = output_path.resolve()
@@ -196,6 +219,208 @@ def create_training_bundle_from_prior(
     if validation["status"] != "pass":
         raise ValueError(f"derived training bundle failed schema validation: {validation['errors']}")
     return bundle
+
+
+def export_all_training_bundles_from_prior(
+    store_path: Path,
+    output_directory: Path,
+    *,
+    project_id: str,
+    producer_agent: str,
+    producer_model: str,
+    producer_provider: str | None = None,
+    examples_per_bundle: int = 12,
+    apply_durable_consent: bool = False,
+    consent_path: Path | None = None,
+) -> dict[str, Any]:
+    if examples_per_bundle < 1 or examples_per_bundle > 64:
+        raise ValueError("examples_per_bundle must be between 1 and 64")
+    dataset = PriorExperienceStore(store_path).load()
+    candidate_count = len(dataset["candidates"])
+    if not candidate_count:
+        raise ValueError("the prior store contains no candidates")
+    output_directory = output_directory.resolve()
+    output_directory.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for offset in range(0, candidate_count, examples_per_bundle):
+        path = output_directory / f"training-bundle-{offset // examples_per_bundle:04d}.json"
+        create_training_bundle_from_prior(
+            store_path, path, project_id=project_id,
+            producer_agent=producer_agent, producer_model=producer_model,
+            producer_provider=producer_provider, maximum_examples=examples_per_bundle,
+            apply_durable_consent=apply_durable_consent, consent_path=consent_path,
+            candidate_offset=offset,
+        )
+        paths.append(str(path))
+    observation_kinds = sorted({str(item.get("kind")) for item in dataset["observations"]})
+    report = {
+        "schema_version": "vladder-training-export-v1",
+        "status": "pass",
+        "candidate_count": candidate_count,
+        "bundle_count": len(paths),
+        "all_supported_candidates_exported": True,
+        "bundles": paths,
+        "total_bytes": sum(Path(path).stat().st_size for path in paths),
+        "record_forms": {
+            "canonical_semantic_graph_features": True,
+            "structured_grammar_actions": True,
+            "candidate_and_negative_dispositions": True,
+            "observation_kinds": observation_kinds,
+            "hardware_and_workload_descriptors": True,
+        },
+        "export_gaps": [],
+        "privacy": "source-free anonymized canonical features; no local prior records are transmitted directly",
+    }
+    (output_directory / "training-export.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    return report
+
+
+def sync_all_training_bundles_from_prior(
+    store_path: Path,
+    output_directory: Path,
+    *,
+    project_id: str,
+    producer_agent: str,
+    producer_model: str,
+    producer_provider: str | None = None,
+    examples_per_bundle: int = 12,
+    endpoint: str | None = None,
+    token: str | None = None,
+    validate_only: bool = False,
+    timeout_seconds: float = 20.0,
+    consent_path: Path | None = None,
+) -> dict[str, Any]:
+    require_consent(CANONICAL_TRAINING_DATA, consent_path)
+    exported = export_all_training_bundles_from_prior(
+        store_path, output_directory, project_id=project_id,
+        producer_agent=producer_agent, producer_model=producer_model,
+        producer_provider=producer_provider, examples_per_bundle=examples_per_bundle,
+        apply_durable_consent=True, consent_path=consent_path,
+    )
+    submissions = [
+        submit_training_bundle(
+            Path(path), endpoint=endpoint, token=token, confirm_upload=True,
+            validate_only=validate_only, timeout_seconds=timeout_seconds, consent_path=consent_path,
+        )
+        for path in exported["bundles"]
+    ]
+    report = {
+        "schema_version": "vladder-training-sync-v1",
+        "status": "pass",
+        "continuous_opt_in_applied": True,
+        "export": exported,
+        "submissions": submissions,
+    }
+    (output_directory.resolve() / "training-sync.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    return report
+
+
+def create_training_bundle_from_promotion_summary(
+    summary: dict[str, Any],
+    output_path: Path,
+    *,
+    producer_agent: str = "vladder-agentic-workflow",
+    producer_model: str = "unspecified",
+    consent_path: Path | None = None,
+) -> dict[str, Any]:
+    require_consent(CANONICAL_TRAINING_DATA, consent_path)
+    if summary.get("schema_version") != "vladder-promotion-summary-v1":
+        raise ValueError("promotion contribution requires vladder-promotion-summary-v1")
+    workflow_key = str(summary.get("workflow_key") or canonical_hash(summary.get("manifest_identity")))
+    root_hash = workflow_key if len(workflow_key) == 64 else canonical_hash(workflow_key)
+    candidate_hash = canonical_hash({
+        "root": root_hash,
+        "candidate": summary.get("candidate_identity"),
+        "disposition": summary.get("disposition"),
+        "result": summary.get("result_classification"),
+    })
+    states = summary.get("states", {})
+    numeric = {f"workflow.state.{key}": float(bool(value)) for key, value in states.items()}
+    numeric.update({
+        "workflow.blocker_count": float(len(summary.get("blockers", []))),
+        "workflow.architectural_finding_count": float(len(summary.get("architectural_findings", []))),
+        "workflow.decisive_artifact_count": float(len(summary.get("decisive_artifacts", []))),
+    })
+    semantic_outcome = "proof_passed" if states.get("candidate_proved") else "proof_unknown"
+    physical_outcome = "composed_win" if states.get("production_promoted") else "not_measured"
+    example = {
+        "example_id": f"example:{candidate_hash[:32]}",
+        "semantic_root_hash": root_hash,
+        "candidate_hash": candidate_hash,
+        "language": str(summary.get("workflow_kind")) if summary.get("workflow_kind") in {"c", "cpp", "rust", "zig", "julia"} else "other",
+        "region_kind": _anonymous_label("region", summary.get("workflow_kind", "unknown")),
+        "grammar_family": _anonymous_label("family", summary.get("disposition", "unknown")),
+        "grammar_rule": _anonymous_label("rule", summary.get("result_classification", "unknown")),
+        "numeric_features": [
+            {"name": _feature_name(name), "value": value} for name, value in sorted(numeric.items())
+        ],
+        "categorical_features": [
+            {"name": "workflow.proof_class_hash", "value": canonical_hash(str(summary.get("proof_class")))[:32]},
+            {"name": "workflow.coverage_hash", "value": canonical_hash(str(summary.get("meaningful_coverage")))[:32]},
+            {"name": "workflow.blockers_hash", "value": canonical_hash(sorted(str(item) for item in summary.get("blockers", [])))[:32]},
+        ],
+        "evidence": {
+            "semantic_outcome": semantic_outcome,
+            "physical_outcome": physical_outcome,
+            "proof_class": semantic_outcome,
+            "quality_grade": "B" if states.get("physically_benchmarked") else "C",
+            "benchmark_scope": "end_to_end" if states.get("production_promoted") else "none",
+            "speedup_percent": None,
+            "ci_lower_percent": None,
+            "ci_upper_percent": None,
+            "sample_count": 0,
+        },
+    }
+    bundle = {
+        "schema_version": TRAINING_SCHEMA_VERSION,
+        "bundle_id": f"bundle:{uuid.uuid4()}",
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "vladder_version": __version__,
+        "producer": {"agent": producer_agent, "model": producer_model, "provider": None},
+        "dataset": {
+            "project_id": f"project:{canonical_hash(root_hash)[:24]}",
+            "grammar_version": "promotion-summary-v1",
+            "grammar_hash": canonical_hash(summary.get("manifest_identity")),
+            "hardware_class": "redacted",
+            "hardware_manifest_hash": canonical_hash("redacted-hardware"),
+        },
+        "examples": [example],
+        "privacy": {
+            "source_included": False, "raw_artifacts_included": False,
+            "prompts_included": False, "personal_data_included": False,
+            "submission_consent": True,
+        },
+    }
+    output_path = output_path.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n")
+    validation = validate_training_bundle(output_path)
+    if validation["status"] != "pass":
+        raise ValueError(f"promotion training bundle failed schema validation: {validation['errors']}")
+    return bundle
+
+
+def sync_promotion_summary(
+    summary: dict[str, Any], output_directory: Path, *, consent_path: Path | None = None,
+) -> dict[str, Any]:
+    output_directory = output_directory.resolve()
+    bundle_path = output_directory / "promotion-training-bundle.json"
+    create_training_bundle_from_promotion_summary(summary, bundle_path, consent_path=consent_path)
+    submission = submit_training_bundle(
+        bundle_path, endpoint=None, token=None, confirm_upload=True, consent_path=consent_path,
+    )
+    report = {
+        "schema_version": "vladder-promotion-training-sync-v1",
+        "status": "pass",
+        "bundle": str(bundle_path),
+        "submission": submission,
+        "record_forms": [
+            "workflow_disposition", "proof_and_promotion_state", "negative_result",
+            "architectural_lifetime_finding", "adapter_gap",
+        ],
+    }
+    (output_directory / "promotion-training-sync.json").write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    return report
 
 
 def _preferred_outcome(observations: list[dict[str, Any]], allowed: frozenset[str], default: str) -> str:
@@ -228,6 +453,10 @@ def _token(value: Any, default: str) -> str:
     if cleaned and not cleaned[0].isalnum():
         cleaned = f"value_{cleaned}"
     return (cleaned or default)[:128]
+
+
+def _anonymous_label(kind: str, value: Any) -> str:
+    return f"{kind}:{canonical_hash(str(value))[:24]}"
 
 
 def submit_training_bundle(

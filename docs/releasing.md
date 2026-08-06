@@ -1,71 +1,139 @@
 # Releasing vLadder
 
-## One-Time Repository Setup
+The release decision is target-specific. A local development pass does not imply that GitHub,
+PyPI, Homebrew, or the complete formal release is ready.
 
-1. Create the public GitHub repository and push this tree on `main`.
-2. Protect `main` and require the `CI` workflow.
-3. Create GitHub environments named `testpypi`, `pypi`, and `homebrew`. Require approval for
-   `pypi` and `homebrew`.
-4. On PyPI and TestPyPI, configure GitHub Trusted Publishers for this repository, workflow
-   `release.yml` or `test-publish.yml`, and the matching environment.
-5. Create a tap named `<owner>/homebrew-tap`. Set repository variable
-   `HOMEBREW_TAP_REPOSITORY=<owner>/homebrew-tap` and environment secret
-   `HOMEBREW_TAP_TOKEN` with write access to that tap. Leave the variable unset to receive a
-   formula artifact without automatically updating a tap.
+## Canonical Check
 
-PyPI publication uses OIDC. Do not add `PYPI_API_TOKEN` or credentials to the repository.
+From a source checkout with development dependencies and `@fission-ai/openspec@1.7.0` installed:
+
+```bash
+vladder release check --execute --require-target release_candidate \
+  --out build/release-readiness.json
+```
+
+Immediately before tagging:
+
+```bash
+vladder release check --execute --online --require-target formal_release \
+  --out build/release-readiness.json
+```
+
+When only account-side state changed, reuse a matching full local report instead of repeating the
+five-minute functional suite:
+
+```bash
+vladder release check --online --reuse-local-report build/release-readiness.json \
+  --require-target formal_release --out build/release-readiness.json
+```
+
+Reuse fails if the root, version, report schema, or prior `--execute` evidence does not match.
+
+The JSON report records every check as `pass`, `fail`, `not_run`, `setup_required`, `unavailable`,
+or `warning`, lists which release targets it blocks, and supplies one remediation. Do not publish
+based on a subset of green commands.
+
+## One-Time GitHub Setup
+
+1. Keep `araujota/vladder` public with `main` as the default branch.
+2. Protect `main` and require the `CI` workflow before merge.
+3. Create protected GitHub environments named `testpypi`, `pypi`, and `homebrew`. Require
+   maintainer approval for publication environments.
+4. Create the public tap repository `araujota/homebrew-tap` with `brew tap-new araujota/tap`.
+5. Set repository variable `HOMEBREW_TAP_REPOSITORY=araujota/homebrew-tap`.
+6. Add environment secret `HOMEBREW_TAP_TOKEN` containing a fine-grained token with contents write
+   access only to `araujota/homebrew-tap`.
+7. Set `tap_configured = true` in `release/channels.toml` only after the tap is usable.
+
+## PyPI And TestPyPI Setup
+
+The package name is `vladder`. It must be configured independently on PyPI and TestPyPI.
+
+For an unclaimed project, create a pending Trusted Publisher with:
+
+| Field | PyPI | TestPyPI |
+|---|---|---|
+| Owner | `araujota` | `araujota` |
+| Repository | `vladder` | `vladder` |
+| Workflow | `release.yml` | `test-publish.yml` |
+| Environment | `pypi` | `testpypi` |
+| Project | `vladder` | `vladder` |
+
+For an existing project, add the same publisher from its publishing settings. Trusted Publishing
+uses GitHub OIDC and `id-token: write`; do not add a PyPI username, password, or API token. The
+official procedures are [PyPI Trusted Publishers](https://docs.pypi.org/trusted-publishers/using-a-publisher/)
+and [creating a project through OIDC](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/).
+
+The GitHub environments enforce the other half of this trust relationship:
+
+* `pypi` requires maintainer approval and accepts only tags matching `v*`.
+* `testpypi` requires maintainer approval and accepts only the `main` branch.
+
+The environment name is part of the OIDC identity and must exactly match the corresponding Trusted
+Publisher form. No environment secret is required or expected.
+
+After both publishers exist, set their `trusted_publisher_configured` values to `true` in
+`release/channels.toml`. This is a reviewed local attestation because PyPI does not expose pending
+publisher configuration through its public project JSON API.
 
 ## Release Procedure
 
-1. Update `CHANGELOG.md`, `pyproject.toml`, `vladder/__init__.py`, README, and the release version
-   assertion in `tests/test_release_vladder.py`.
-2. Run:
+1. Update `CHANGELOG.md`; synchronize the version in `pyproject.toml`, `vladder/__init__.py`, and
+   release assertions.
+2. Run the release-candidate check and inspect every non-pass result.
+3. Trigger the `TestPyPI` workflow. Install that exact prerelease in a clean environment and run:
 
    ```bash
-   python3 scripts/release_preflight.py --repository OWNER/REPOSITORY
-   python3 scripts/audit_release.py --root .
-   python3 -m pytest -q
-   openspec validate lifetime-aware-realization-v1 --strict
-   python3 -m vladder lifetime evaluate-corpus \
-     --manifest examples/lifetime/lifetime_corpus.yaml \
-     --trace examples/lifetime/lifetime_trace.json \
-     --out-dir /tmp/vladder-lifetime-release-evaluation
-   python3 -m build
-   python3 -m twine check dist/*
-   python3 scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz
-   python3 scripts/release_preflight.py --repository OWNER/REPOSITORY --require-artifacts
+   python3 -m pip install --index-url https://test.pypi.org/simple/ \
+     --extra-index-url https://pypi.org/simple/ --pre 'vladder==<VERSION>'
+   vladder --version
+   vladder schema list
+   vladder skill validate
    ```
 
-3. Exercise TestPyPI with the manual `TestPyPI` workflow.
-4. Commit the release changes, create an annotated tag matching the package version, and push:
+4. Commit all reviewed release changes so the formal online check sees a clean tree.
+5. Run the formal release check.
+6. Create and push an annotated tag matching the package version:
 
    ```bash
-   git tag -a v1.0.0rc4 -m "vLadder 1.0.0rc4"
-   git push origin main v1.0.0rc4
+   git tag -a v<VERSION> -m "vLadder <VERSION>"
+   git push origin main v<VERSION>
    ```
 
-5. The `Release` workflow validates the tag, builds once, generates checksums and `vladder.rb`,
-   creates the GitHub prerelease, publishes the same Python distributions to PyPI, and optionally
-   updates the tap.
+The tag workflow reruns the formal check, builds one wheel and one sdist, verifies the generated
+formula on macOS, creates the GitHub release, publishes the same distributions to PyPI using OIDC,
+and updates the configured tap. It fails before publication if any required channel is not ready.
 
-## Verification
+## Homebrew Verification
+
+The formula contains exact hashes for vLadder and every Python resource. The release workflow runs
+a source build and formula test on macOS before publication. The tap update additionally runs the
+official audit against published URLs. Homebrew maintainers recommend `brew audit`, source install,
+and `brew test`; see the [Formula Cookbook](https://docs.brew.sh/Formula-Cookbook) and
+[tap maintenance guide](https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap).
 
 After publication:
 
 ```bash
-python3 -m pip install --isolated --no-cache-dir vladder==1.0.0rc4
+brew tap araujota/tap
+brew audit --strict --online araujota/tap/vladder
+brew install --build-from-source araujota/tap/vladder
+brew test araujota/tap/vladder
 vladder doctor
+```
+
+## Post-Publication Verification
+
+```bash
+python3 -m pip install --isolated --no-cache-dir 'vladder==<VERSION>'
+vladder --version
+vladder schema list
+vladder lower validate
 vladder skill validate
-gh release download v1.0.0rc4
+gh release download v<VERSION>
 sha256sum -c SHA256SUMS
 ```
 
-For the tap, run `brew audit --strict --online OWNER/tap/vladder`, install it in a clean runner,
-and execute `brew test OWNER/tap/vladder`. Homebrew installs the package and core LLVM/Z3 tools;
-strict Alive2/perf availability remains platform-specific and is reported by `vladder doctor`.
-
-## Release Claim
-
-A successful publication means the audited package and workflow are reproducible. It does not
-convert research-only grammar routes into automatic source lowerers or create a performance claim
-for a workload that was not measured.
+Update `release/channels.toml` only from observed account state. A successful publication means the
+audited package and workflows are reproducible. It does not enlarge any proof boundary or create a
+performance claim for an unmeasured workload.

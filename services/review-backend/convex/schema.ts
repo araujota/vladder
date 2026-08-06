@@ -44,10 +44,21 @@ export default defineSchema({
     .index("by_bundle_id", ["bundleId"])
     .index("by_approved_and_submitted_at", ["approved", "submittedAt"])
     .index("by_project_id_and_submitted_at", ["projectId", "submittedAt"]),
+  contributorCapabilities: defineTable({
+    credentialId: v.string(),
+    tokenHash: v.string(),
+    scope: v.union(v.literal("review:write"), v.literal("training:write")),
+    clientVersion: v.string(),
+    createdAt: v.number(),
+    lastUsedAt: v.union(v.number(), v.null()),
+    revoked: v.boolean(),
+  })
+    .index("by_token_hash", ["tokenHash"])
+    .index("by_credential_id", ["credentialId"]),
   submissionRateLimits: defineTable({
     fingerprintHash: v.string(),
     bucket: v.string(),
-    kind: v.union(v.literal("review"), v.literal("training")),
+    kind: v.union(v.literal("review"), v.literal("training"), v.literal("credential")),
     count: v.number(),
     updatedAt: v.number(),
   }).index("by_fingerprint_hash_and_bucket_and_kind", ["fingerprintHash", "bucket", "kind"]),

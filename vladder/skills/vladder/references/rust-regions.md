@@ -8,12 +8,17 @@ preconditions, monomorphization, and runtime effects are contracts or proof boun
 common nodes and edges. Add a language-specific semantic kind only when common value, state,
 control, materialization, transfer, and lifetime concepts cannot express it.
 
-## Automatic R1 Envelope
+## Automatic R2 Envelope
 
-R1 admits one concrete, safe, monomorphic, allocation-free function over primitives, arrays, and
-borrowed slices when its operation is registered in the common grammar. The first executable
-operation is an exact byte-equality reduction. vLadder captures the exact Cargo package, target,
+R2 admits one concrete, safe, monomorphic, allocation-free function over primitives, arrays, and
+borrowed slices when its operation is registered in the common grammar. It recognizes exact
+predicate reductions, pointwise maps, guarded maps, stencils, scans, recurrences, and
+constant-stride indirect reads. vLadder captures the exact Cargo package, target,
 profile, features, rustc identity, source hash, MIR, LLVM IR, and assembly.
+
+Only exact byte reductions currently have the complete native candidate/proof/benchmark lowerer.
+Other families can be `supported` at semantic capture while returning `lowerer_required` from
+`synthesize`; inspect capability fields rather than inferring synthesis from capture.
 
 Fail closed for unsafe contracts, allocation/owning collections, custom destruction, panic
 recovery, async/coroutines, atomics or concurrency, FFI, inline assembly, unresolved calls, and

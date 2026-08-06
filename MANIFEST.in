@@ -1,4 +1,4 @@
-include CHANGELOG.md LICENSE README.md
+include CHANGELOG.md LICENSE README.md SECURITY.md
 recursive-include vladder/grammars *.json
 recursive-include vladder/skills *.md *.yaml
 recursive-include vladder/reviews *.md
@@ -11,4 +11,5 @@ recursive-include demos *.md
 recursive-include openspec *.md *.yaml
 recursive-include packaging *.in
 recursive-include scripts *.sh *.py
+include release/channels.toml
 prune third_party

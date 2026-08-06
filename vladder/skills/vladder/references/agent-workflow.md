@@ -2,7 +2,7 @@
 
 ## One Entry Point
 
-Create a manifest with `vladder workflow init --kind c|cpp|rust|lifetime|shader|protocol`. Record source,
+Create a manifest with `vladder workflow init --kind c|cpp|rust|zig|julia|system|lifetime|shader|gpu|protocol`. Record source,
 compiler configuration, semantic contract, attribution report, workload identity, held-out policy,
 and minimum effect. Run `vladder workflow run` and read `promotion-summary.json` before any detailed
 artifact.
@@ -11,14 +11,17 @@ artifact.
 
 Before the first canonical workflow run, run `vladder consent show`. The two scopes
 are independent: `canonical_training_data` and `agent_experience_review`. If either is `unknown`,
-the agent must ask the user to explicitly opt in or opt out for that scope and persist the answer
+the agent must present its complete informed-decision notice, ask the user to explicitly opt in or
+opt out for that scope, and persist the answer
 with `vladder consent set --scope ... --decision ... --confirmed-user-choice`. Do not infer consent
 from use of vLadder, prior uploads, this workflow, or silence.
 
 A durable opt-out suppresses both upload and repeated prompts in future sessions until the user
-explicitly requests a change. A durable opt-in enables only a terminal contribution stage. The
-workflow never uploads automatically, and exact-payload review, record consent, schema validation,
-and `--confirm-upload` remain mandatory.
+explicitly requests a change. Training opt-in directs the agent to submit every supported
+anonymized training form at each eligible opportunity without a new question. Review opt-in allows
+a request at most once per 30 days; exact-review submission remains separately approved. Prior
+workflows sync registered training exporters only under training opt-in, and schema/privacy checks
+remain mandatory.
 
 ## Evidence States
 
@@ -40,6 +43,8 @@ lineage. A matching resumable key reports `revalidated`; it is not a new optimiz
 
 - Selection ambiguity: select the exact compilation command and mangled overload/template symbol.
 - Local C++ closure only: run `cpp isolate`, then generate an application adapter.
+- Multi-function path: compose native inspection reports with `system closure`; search only closed
+  attributed components and keep protocol summaries out of the candidate count.
 - Rust closure failure: inspect the named unsafe, ownership, destruction, panic, async,
   concurrency, FFI, call, or operation boundary. Isolate a safe borrowed region or add a
   compositional contract; do not translate it through C merely to make the frontend accept it.
@@ -65,5 +70,7 @@ read `prior-summary.json`. `model_trained` means only that a model artifact exis
 `shadow_evaluation_completed` is counterfactual. `production_model_status` is a corpus gate.
 `live_search_pruned` is the only state saying the prior affected an executed search, and even then
 all selected candidates still require the ordinary proof and physical-promotion workflow.
-`optional_canonical_training_contribution` reports consent state and always records
-`network_action_performed=false`; contribution remains a separate user-confirmed command.
+`optional_canonical_training_contribution` reports consent and sync state. Unknown or opt-out never
+uses the network. A prior workflow with continuous training opt-in automatically runs every
+registered anonymized prior exporter; inspect its bundle count and export gaps. For other workflow
+kinds, run registered exporters after completion and report missing adapters explicitly.

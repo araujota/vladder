@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: testpypi-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -14,9 +18,14 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: python -m pip install --upgrade pip build twine
+      - run: python -m pip install --upgrade pip '.[dev]'
+      - run: python scripts/audit_release.py --root .
       - run: python -m build
-      - run: python -m twine check dist/*
+      - name: Validate exact TestPyPI artifacts
+        run: |
+          python -m twine check dist/*
+          python scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz
+          python scripts/release_preflight.py --require-artifacts
       - uses: actions/upload-artifact@v4
         with:
           name: testpypi-distributions
@@ -26,7 +35,9 @@ jobs:
   publish:
     needs: build
     runs-on: ubuntu-24.04
-    environment: testpypi
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/vladder
     permissions:
       id-token: write
     steps:
@@ -34,6 +45,7 @@ jobs:
         with:
           name: testpypi-distributions
           path: dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish distributions to TestPyPI with OIDC
+        uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/

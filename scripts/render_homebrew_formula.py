@@ -15,7 +15,15 @@ except ModuleNotFoundError:  # Python 3.10 development environments
     import tomli as tomllib
 
 
-DEPENDENCIES = {"PyYAML": "6.0.3", "z3-solver": "4.16.0.0"}
+DEPENDENCIES = {
+    "attrs": "26.1.0",
+    "jsonschema": "4.26.0",
+    "jsonschema-specifications": "2025.9.1",
+    "PyYAML": "6.0.3",
+    "referencing": "0.37.0",
+    "rpds-py": "2026.6.3",
+    "z3-solver": "4.16.0.0",
+}
 
 
 def sha256(path: Path) -> str:
@@ -61,11 +69,11 @@ def render(
         "@VERSION@": version,
         "@SOURCE_URL@": source_url,
         "@SOURCE_SHA256@": source_sha256,
-        "@PYYAML_URL@": resources["PyYAML"]["url"],
-        "@PYYAML_SHA256@": resources["PyYAML"]["sha256"],
-        "@Z3_SOLVER_URL@": resources["z3-solver"]["url"],
-        "@Z3_SOLVER_SHA256@": resources["z3-solver"]["sha256"],
     }
+    for project, resource in resources.items():
+        marker = re.sub(r"[^A-Z0-9]", "_", project.upper())
+        substitutions[f"@{marker}_URL@"] = resource["url"]
+        substitutions[f"@{marker}_SHA256@"] = resource["sha256"]
     result = template
     for marker, value in substitutions.items():
         result = result.replace(marker, value)

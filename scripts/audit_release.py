@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path, PurePosixPath
+import subprocess
 import tarfile
 import zipfile
 
@@ -29,6 +30,7 @@ REQUIRED_TREE = {
     "LICENSE",
     "README.md",
     "ROADMAP.md",
+    "SECURITY.md",
     "docs/artifact-schemas.md",
     "docs/benchmark-reproducibility.md",
     "docs/grammar-authoring.md",
@@ -37,6 +39,7 @@ REQUIRED_TREE = {
     "docs/releasing.md",
     "packaging/homebrew/vladder.rb.in",
     "pyproject.toml",
+    "release/channels.toml",
     "vladder/__init__.py",
     "vladder/grammars/vladder-v1/capabilities.json",
     "vladder/grammars/lifetime-v1/grammar.json",
@@ -52,6 +55,7 @@ REQUIRED_TREE = {
     "scripts/install.sh",
     "scripts/bootstrap_language_toolchains.sh",
     "scripts/public_release_gate.py",
+    "scripts/release_readiness.py",
     "scripts/run_release_demos.py",
     "scripts/validate_release_seeds.py",
     "vladder/reviews/agent-review-prompt.md",
@@ -60,6 +64,7 @@ REQUIRED_TREE = {
     "vladder/schemas/promotion-summary-v1.schema.json",
     "vladder/schemas/registry.json",
     "vladder/schemas/semantic-flow-v2.schema.json",
+    "vladder/schemas/system-closure-v1.schema.json",
     "vladder/schemas/training-bundle-v1.schema.json",
 }
 REQUIRED_PACKAGE_SUFFIXES = {
@@ -74,24 +79,28 @@ REQUIRED_PACKAGE_SUFFIXES = {
     "vladder/skills/vladder/references/julia-regions.md",
     "vladder/zig_adapter.py",
     "vladder/julia_adapter.py",
+    "vladder/release_readiness.py",
     "vladder/reviews/agent-review-prompt.md",
     "vladder/schemas/agent-review-v1.schema.json",
     "vladder/schemas/benchmark-result-v1.schema.json",
     "vladder/schemas/promotion-summary-v1.schema.json",
     "vladder/schemas/registry.json",
     "vladder/schemas/semantic-flow-v2.schema.json",
+    "vladder/schemas/system-closure-v1.schema.json",
     "vladder/schemas/training-bundle-v1.schema.json",
 }
 REQUIRED_SDIST_SUFFIXES = {
     "CHANGELOG.md",
     "LICENSE",
     "README.md",
+    "SECURITY.md",
     "docs/releasing.md",
     "packaging/homebrew/vladder.rb.in",
     "scripts/install.sh",
     "scripts/bootstrap_language_toolchains.sh",
     "scripts/audit_release.py",
     "scripts/public_release_gate.py",
+    "scripts/release_readiness.py",
     "scripts/release_preflight.py",
     "scripts/render_homebrew_formula.py",
     "scripts/run_release_demos.py",
@@ -105,6 +114,7 @@ REQUIRED_SDIST_SUFFIXES = {
     "examples/release_seeds/transformations.yaml",
     "examples/lifetime/lifetime_corpus.yaml",
     "examples/lifetime/lifetime_trace.json",
+    "release/channels.toml",
 }
 
 
@@ -126,11 +136,24 @@ def audit_tree(root: Path) -> dict[str, object]:
     for required in sorted(REQUIRED_TREE):
         if not (root / required).exists():
             failures.append(f"missing required release file: {required}")
+    completed = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+        cwd=root,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+    )
+    if completed.returncode == 0:
+        candidates = [root / value.decode() for value in completed.stdout.split(b"\0") if value]
+    else:
+        candidates = [
+            item
+            for item in root.rglob("*")
+            if item.is_file() and not set(item.relative_to(root).parts) & FORBIDDEN_PARTS
+        ]
     scanned = 0
-    for item in root.rglob("*"):
+    for item in candidates:
         relative = PurePosixPath(item.relative_to(root).as_posix())
-        if ".git" in relative.parts:
-            continue
         if _is_forbidden(relative):
             failures.append(f"forbidden release residue: {relative}")
         if item.is_file():

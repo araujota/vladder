@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import os
 from pathlib import Path
@@ -9,11 +9,50 @@ from typing import Any
 
 
 CONSENT_SCHEMA_VERSION = "vladder-consent-v1"
-CONSENT_POLICY_VERSION = "vladder-contribution-consent-v1"
+CONSENT_POLICY_VERSION = "vladder-contribution-consent-v2"
 CANONICAL_TRAINING_DATA = "canonical_training_data"
 AGENT_EXPERIENCE_REVIEW = "agent_experience_review"
 CONSENT_SCOPES = (CANONICAL_TRAINING_DATA, AGENT_EXPERIENCE_REVIEW)
 CONSENT_DECISIONS = ("opt_in", "opt_out")
+REVIEW_REQUEST_INTERVAL_DAYS = 30
+
+SCOPE_NOTICES: dict[str, dict[str, Any]] = {
+    CANONICAL_TRAINING_DATA: {
+        "title": "Anonymized canonical optimization training data",
+        "opt_in_effect": (
+            "At every eligible optimization opportunity, the agent sends all source-free training "
+            "record forms supported by the installed vLadder release to the configured Convex moderation database."
+        ),
+        "frequency": "at every eligible newly produced workflow, candidate, proof, rejection, and measurement opportunity",
+        "included": [
+            "anonymized canonical information-flow/lifetime graph features and content hashes",
+            "structured grammar actions, candidate dispositions, and negative results",
+            "proof, differential, compilation, assembly-identity, cost, counter, benchmark, and composition labels",
+            "coarsened hardware and workload descriptors plus confidence and quality metadata",
+        ],
+        "excluded": [
+            "source code and source paths", "raw IR, assembly, proofs, traces, patches, prompts, and model files",
+            "credentials and declared personal data", "the unredacted local prior store",
+        ],
+        "destination": "the configured vLadder Convex contribution endpoint; records are private pending moderation",
+        "revocation": "opt out at any time; the new decision stops future sends but cannot recall already submitted records",
+    },
+    AGENT_EXPERIENCE_REVIEW: {
+        "title": "Periodic agent experience review",
+        "opt_in_effect": (
+            "The agent may periodically ask for a source-free qualitative review of the vLadder experience. "
+            "Opt-in does not submit a review without presenting the exact review record for approval."
+        ),
+        "frequency": f"at most once every {REVIEW_REQUEST_INTERVAL_DAYS} days, not after every workflow",
+        "included": [
+            "rating and outcome classification", "bounded strengths, limitations, rejected candidates, and recommendations",
+            "artifact hashes, proof class, benchmark summary, and unresolved-boundary summaries",
+        ],
+        "excluded": ["source code", "raw artifacts or prompts", "credentials and declared personal data"],
+        "destination": "the configured vLadder Convex review endpoint; reviews are private pending moderation",
+        "revocation": "opt out at any time; future review requests stop, while already submitted reviews remain moderated records",
+    },
+}
 
 
 class ConsentRequiredError(ValueError):
@@ -39,6 +78,7 @@ def _empty_ledger() -> dict[str, Any]:
         "policy_version": CONSENT_POLICY_VERSION,
         "updated_at": None,
         "decisions": {},
+        "activity": {},
     }
 
 
@@ -50,7 +90,11 @@ def load_consent(path: Path | None = None) -> dict[str, Any]:
         value = json.loads(ledger_path.read_text())
         if not isinstance(value, dict) or value.get("schema_version") != CONSENT_SCHEMA_VERSION:
             raise ValueError(f"unsupported vLadder consent ledger at {ledger_path}")
-        if value.get("policy_version") != CONSENT_POLICY_VERSION or not isinstance(value.get("decisions"), dict):
+        if (
+            value.get("policy_version") != CONSENT_POLICY_VERSION
+            or not isinstance(value.get("decisions"), dict)
+            or not isinstance(value.get("activity", {}), dict)
+        ):
             raise ValueError(f"invalid vLadder consent ledger at {ledger_path}")
         unknown_scopes = set(value["decisions"]) - set(CONSENT_SCOPES)
         if unknown_scopes:
@@ -70,12 +114,15 @@ def load_consent(path: Path | None = None) -> dict[str, Any]:
         record = ledger["decisions"].get(scope)
         decision = record.get("decision") if isinstance(record, dict) else None
         states[scope] = decision if decision in CONSENT_DECISIONS else "unknown"
-    return {
+    result = {
         **ledger,
         "path": str(ledger_path),
         "states": states,
         "requires_user_clarification": [scope for scope, decision in states.items() if decision == "unknown"],
+        "scope_notices": SCOPE_NOTICES,
     }
+    result["review_request"] = _review_request_state(result)
+    return result
 
 
 def set_consent(
@@ -107,21 +154,31 @@ def set_consent(
         "policy_version": CONSENT_POLICY_VERSION,
         "updated_at": now,
         "decisions": decisions,
+        "activity": loaded.get("activity", {}),
     }
-    ledger_path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary_name = tempfile.mkstemp(prefix=".consent-", suffix=".json", dir=ledger_path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(payload, stream, indent=2, sort_keys=True)
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chmod(temporary_name, 0o600)
-        os.replace(temporary_name, ledger_path)
-        os.chmod(ledger_path, 0o600)
-    finally:
-        if os.path.exists(temporary_name):
-            os.unlink(temporary_name)
+    _write_ledger(ledger_path, payload)
+    return load_consent(ledger_path)
+
+
+def record_review_request(*, path: Path | None = None, confirmed_user_prompt: bool) -> dict[str, Any]:
+    if not confirmed_user_prompt:
+        raise ValueError("refusing to record a review request without --confirmed-user-prompt")
+    require_consent(AGENT_EXPERIENCE_REVIEW, path)
+    ledger_path = (path or default_consent_path()).expanduser().resolve()
+    loaded = load_consent(ledger_path)
+    now = datetime.now(timezone.utc)
+    activity = dict(loaded.get("activity", {}))
+    activity["agent_experience_review"] = {
+        "last_requested_at": now.isoformat().replace("+00:00", "Z"),
+        "next_eligible_at": (now + timedelta(days=REVIEW_REQUEST_INTERVAL_DAYS)).isoformat().replace("+00:00", "Z"),
+    }
+    _write_ledger(ledger_path, {
+        "schema_version": CONSENT_SCHEMA_VERSION,
+        "policy_version": CONSENT_POLICY_VERSION,
+        "updated_at": _timestamp(),
+        "decisions": loaded["decisions"],
+        "activity": activity,
+    })
     return load_consent(ledger_path)
 
 
@@ -153,8 +210,20 @@ def contribution_stage(scope: str, path: Path | None = None) -> dict[str, Any]:
         status = "disabled_by_user"
         next_action = "do not upload or ask again unless the user explicitly requests reconsideration"
     else:
-        status = "available_not_executed"
-        next_action = "preview the exact record; upload only with record consent and --confirm-upload"
+        if scope == CANONICAL_TRAINING_DATA:
+            status = "continuous_contribution_enabled"
+            next_action = (
+                "at every eligible opportunity, derive and send every supported anonymized training record form; "
+                "do not ask again for each send"
+            )
+        else:
+            review = ledger["review_request"]
+            status = f"periodic_review_{review['status']}"
+            next_action = (
+                "request a review now, record the request, then present the exact review before submission"
+                if review["status"] == "due" else
+                "do not request another review before next_eligible_at"
+            )
     return {
         "scope": scope,
         "decision": decision,
@@ -162,4 +231,46 @@ def contribution_stage(scope: str, path: Path | None = None) -> dict[str, Any]:
         "network_action_performed": False,
         "next_action": next_action,
         "ledger_path": ledger["path"],
+        "notice": SCOPE_NOTICES[scope],
     }
+
+
+def _review_request_state(ledger: dict[str, Any]) -> dict[str, Any]:
+    decision = ledger["states"][AGENT_EXPERIENCE_REVIEW]
+    activity = ledger.get("activity", {}).get("agent_experience_review", {})
+    next_value = activity.get("next_eligible_at") if isinstance(activity, dict) else None
+    if decision == "unknown":
+        status = "consent_clarification_required"
+    elif decision == "opt_out":
+        status = "disabled_by_user"
+    elif not next_value:
+        status = "due"
+    else:
+        try:
+            next_time = datetime.fromisoformat(str(next_value).replace("Z", "+00:00"))
+            status = "due" if datetime.now(timezone.utc) >= next_time else "not_due"
+        except ValueError:
+            raise ValueError("invalid next_eligible_at in vLadder consent ledger") from None
+    return {
+        "status": status,
+        "last_requested_at": activity.get("last_requested_at") if isinstance(activity, dict) else None,
+        "next_eligible_at": next_value,
+        "interval_days": REVIEW_REQUEST_INTERVAL_DAYS,
+    }
+
+
+def _write_ledger(ledger_path: Path, payload: dict[str, Any]) -> None:
+    ledger_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary_name = tempfile.mkstemp(prefix=".consent-", suffix=".json", dir=ledger_path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary_name, 0o600)
+        os.replace(temporary_name, ledger_path)
+        os.chmod(ledger_path, 0o600)
+    finally:
+        if os.path.exists(temporary_name):
+            os.unlink(temporary_name)

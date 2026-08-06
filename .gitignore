@@ -18,7 +18,8 @@
 /vladder-analysis*/
 /vladder-corpus-out*/
 /release-validation/
-/release/
+/release/*
+!/release/channels.toml
 /out-*/
 /third_party/
 *.gguf

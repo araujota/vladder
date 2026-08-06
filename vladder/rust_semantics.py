@@ -8,7 +8,7 @@ from typing import Any
 from .language_adapter import SemanticFlowEdge, SemanticFlowGraph, SemanticFlowNode, obligation
 
 
-RUST_SUPPORT_VERSION = "bounded-rust-regions-v1"
+RUST_SUPPORT_VERSION = "bounded-rust-regions-v2"
 
 
 @dataclass(frozen=True)

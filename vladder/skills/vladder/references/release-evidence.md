@@ -28,9 +28,9 @@ as stronger evidence.
 
 ## Review Record
 
-First run `vladder consent show`. When a scope is `unknown`, ask the user to choose opt in or opt
-out and persist the explicit answer. Never treat generation of a record as permission to submit
-it. Never ask again for a saved opt-out unless the user explicitly requests reconsideration.
+First run `vladder consent show`. When a scope is `unknown`, present the complete notice and local
+volume estimate, ask the user to choose opt in or opt out, and persist the explicit answer. Never
+ask again for a saved opt-out unless the user explicitly requests reconsideration.
 
 Generate a source-free agent review only after reading the decisive files:
 
@@ -44,15 +44,23 @@ Follow the bundled canonical review prompt. Report hashes and bounded claims, no
 artifacts. Remote submission is optional and requires durable `agent_experience_review` opt-in,
 explicit user consent at both CLI and record levels, and exact-payload preview.
 
-For separately consented search-prior evidence, create `vladder-training-bundle-v1` with
-`vladder training template|validate`. It contains only bounded derived features and evidence labels.
+For continuously consented search-prior evidence, use `vladder training sync-prior`; it shards all
+supported anonymized forms into `vladder-training-bundle-v1` records. Use `export-prior` first for
+local-only volume inspection. The records contain bounded derived features and evidence labels.
 Never place source, IR, patches, prompts, raw traces, personal data, or a local prior store in it.
 Both contribution paths default to the moderated release service and require their independent
-durable opt-in plus `--confirm-upload`;
+durable opt-in plus `--confirm-upload`; training sync applies the latter mechanically without a
+new user question, while review submission remains exact-record approved.
 use `--validate-only` when testing the endpoint without retaining a submission.
+Fresh hosts bootstrap separate `training:write` and `review:write` capabilities after opt-in; no
+shared or deployment secret is distributed. `vladder contribution doctor` verifies endpoint
+resolution and negative authorization boundaries without storing records.
 
 ## Release Gate
 
-For vLadder itself, run `python3 scripts/public_release_gate.py --execute`. A local pass and an
-external deployment gate are different states. Never report Sonar, Snyk, Convex, Vercel, or other
-hosted evidence as passing until the authenticated service run is visible.
+For vLadder itself, run `vladder release check --execute --require-target release_candidate`.
+Before a tag, run it again with `--online --require-target formal_release`. Read
+`build/release-readiness.json`; do not infer readiness from command completion alone. A local pass,
+a publication-channel setup requirement, and an unavailable external check are different states.
+Never report GitHub, PyPI, Homebrew, Convex, or another hosted channel as ready until its named
+check is `pass`.

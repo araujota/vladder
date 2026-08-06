@@ -18,9 +18,11 @@ from .lifetime_workflow import analyze_lifetime_flow, synthesize_lifetime_flow
 from .shader_workflow import inspect_shader, synthesize_shader
 from .gpu_workflow import capture_gpu_workflow, rank_gpu_workflow, synthesize_gpu_workflow, verify_gpu_workflow
 from .state_protocol import verify_state_protocol
+from .system_closure import run_system_closure
 from .rust_adapter import RustRegionRequest, inspect_rust_region, isolate_rust_region, optimize_rust_region, synthesize_rust_region
 from .zig_adapter import ZigRegionRequest, inspect_zig_region, isolate_zig_region, optimize_zig_region, synthesize_zig_region
 from .julia_adapter import JuliaRegionRequest, inspect_julia_region, isolate_julia_region, optimize_julia_region, synthesize_julia_region
+from .training_workflow import sync_promotion_summary
 
 
 WORKFLOW_SCHEMA = "vladder-agent-workflow-v1"
@@ -41,8 +43,8 @@ def _resolve(base: Path, value: str | Path) -> Path:
 
 
 def initialize_workflow_manifest(kind: str, output_path: Path) -> dict[str, Any]:
-    if kind not in {"c", "cpp", "rust", "zig", "julia", "lifetime", "shader", "gpu", "protocol"}:
-        raise ValueError("workflow kind must be c, cpp, rust, zig, julia, lifetime, shader, gpu, or protocol")
+    if kind not in {"c", "cpp", "rust", "zig", "julia", "system", "lifetime", "shader", "gpu", "protocol"}:
+        raise ValueError("workflow kind must be c, cpp, rust, zig, julia, system, lifetime, shader, gpu, or protocol")
     region: dict[str, Any]
     if kind == "c":
         region = {"kind": "c", "action": "inspect", "source": "TODO.c", "function": "transform"}
@@ -62,6 +64,8 @@ def initialize_workflow_manifest(kind: str, output_path: Path) -> dict[str, Any]
         region = {"kind": "zig", "action": "inspect", "source": "src/root.zig", "function": "TODO", "build_root": ".", "optimize_mode": "ReleaseFast", "target": "native", "proof_bound": 32}
     elif kind == "julia":
         region = {"kind": "julia", "action": "inspect", "project": ".", "source": "src/Package.jl", "module": "TODO", "function": "TODO", "signature": "Vector{UInt8},UInt8", "cpu_target": "native", "proof_bound": 32}
+    elif kind == "system":
+        region = {"kind": "system", "action": "closure", "manifest": "system-closure.yaml"}
     elif kind == "lifetime":
         region = {"kind": "lifetime", "action": "analyze", "manifest": "lifetime.yaml", "trace": "lifetime.jsonl"}
     elif kind == "shader":
@@ -134,6 +138,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
                 "evidence inputs are unchanged; use --force only to collect new physical evidence"
                 if summary.get("states", {}).get("benchmarked") else summary.get("next_action")
             )
+            summary = _sync_training_contribution(summary, output_directory)
             summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
             return summary
 
@@ -246,6 +251,12 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
         report = actions[action](request)
         report_path = stage_dir / {"inspect": "julia-support.json", "isolate": "julia-isolation.json", "synthesize": "julia-synthesis.json", "optimize": "julia-optimization.json"}[action]
         adapter = None
+    elif kind == "system":
+        if action != "closure":
+            raise ValueError(f"unsupported system workflow action: {action}")
+        report = run_system_closure(_resolve(manifest_path.parent, str(region["manifest"])), stage_dir)
+        report_path = stage_dir / "system-closure-report.json"
+        adapter = None
     elif kind == "lifetime":
         lifetime_manifest = _resolve(manifest_path.parent, str(region["manifest"]))
         trace = _resolve(manifest_path.parent, str(region["trace"]))
@@ -284,7 +295,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
         report_path = stage_dir / "protocol-proof.json"
         adapter = None
     else:
-        raise ValueError("region.kind must be c, cpp, rust, zig, julia, lifetime, shader, gpu, or protocol")
+        raise ValueError("region.kind must be c, cpp, rust, zig, julia, system, lifetime, shader, gpu, or protocol")
 
     summary = build_promotion_summary(
         report,
@@ -297,6 +308,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
     )
     summary["evidence_origin"] = "newly_computed"
     summary["newly_computed"] = True
+    summary = _sync_training_contribution(summary, output_directory)
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     state = {
         "schema_version": "vladder-workflow-state-v1",
@@ -409,6 +421,20 @@ def build_promotion_summary(
             f"run {kind} synthesis" if states["meaningful_semantic_coverage"] else
             f"resolve the named {kind} semantic adapter boundary"
         )
+    elif kind == "system":
+        graph = report.get("system_graph", {})
+        states["meaningful_semantic_coverage"] = bool(graph.get("functions"))
+        states["candidate_proved"] = report.get("proof", {}).get("status") == "PASS"
+        proof_class = "compositional_effect_and_protocol_closure"
+        disposition = str(graph.get("closure", report.get("status", "unclassified")))
+        blockers.extend(item.get("missing_contract", "unresolved boundary") for item in report.get("boundary_summary", []))
+        for item in report.get("boundary_summary", []):
+            architectural_findings.append({
+                "kind": "scoped_external_or_protocol_boundary",
+                "count": item.get("count", 0),
+                "functions": item.get("functions", []),
+            })
+        next_action = str(report.get("next_action", "run attributed grammars in closed components"))
     elif kind == "lifetime":
         quality = report.get("trace_quality", {})
         states["meaningful_semantic_coverage"] = quality.get("status") == "sufficient"
@@ -522,6 +548,31 @@ def _optional_contributions() -> dict[str, Any]:
     }
 
 
+def _sync_training_contribution(summary: dict[str, Any], output_directory: Path) -> dict[str, Any]:
+    training = summary.get("optional_contributions", {}).get("canonical_training_data", {})
+    if training.get("status") != "continuous_contribution_enabled":
+        return summary
+    try:
+        sync = sync_promotion_summary(summary, output_directory / "training-contribution")
+        updated = {
+            **training,
+            "status": "continuous_contribution_completed",
+            "network_action_performed": True,
+            "sync_report": str(output_directory / "training-contribution/promotion-training-sync.json"),
+            "record_forms": sync["record_forms"],
+        }
+    except Exception as error:
+        updated = {
+            **training,
+            "status": "continuous_contribution_failed",
+            "network_action_performed": False,
+            "error": str(error),
+            "next_action": "retry the registered training exporter; optimization evidence remains valid",
+        }
+    summary["optional_contributions"]["canonical_training_data"] = updated
+    return summary
+
+
 def summarize_report(report_path: Path, output_path: Path | None = None) -> dict[str, Any]:
     report_path = report_path.resolve()
     report = json.loads(report_path.read_text())
@@ -562,6 +613,8 @@ def _infer_kind(report: dict[str, Any]) -> str:
         return "zig"
     if "julia" in schema or report.get("source_language") == "julia":
         return "julia"
+    if "system-closure" in schema or "system_graph" in report:
+        return "system"
     if schema.startswith("vladder-c-") or "automatic_region" in report:
         return "c"
     if "lifetime" in schema:

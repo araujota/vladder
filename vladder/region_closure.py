@@ -147,6 +147,17 @@ def _helper_summaries(effects: dict[str, Any]) -> list[dict[str, Any]]:
             "body_sha256": summary.get("function_body_sha256"),
             "cross_call_rewrite": "requires_inlined_ir_or_functional_summary",
         })
+    for symbol, summary in sorted(effects.get("declared_call_summaries", {}).items()):
+        summaries.append({
+            "symbol": symbol,
+            "mode": "compiler_attributed_call_preserving",
+            "local_effects": True,
+            "nounwind": bool(summary.get("nounwind")),
+            "memory_effect": str(summary.get("memory_effect", "unknown")),
+            "body_sha256": None,
+            "summary_sha256": summary.get("summary_sha256"),
+            "cross_call_rewrite": "requires_functional_summary; compiler attributes prove effects only",
+        })
     return summaries
 
 
@@ -232,14 +243,20 @@ def build_region_closure_graph(
     for index, helper in enumerate(helpers):
         add_node(f"helper.{index}", "HelperSummary", helper["mode"], ("region",), "helper-relation", helper)
         inlined = helper["mode"] == "inlined_into_selected_ir"
+        attributed = helper["mode"] == "compiler_attributed_call_preserving"
         item = obligation(
             f"region.helper.{index}.binding", "validation",
             (
                 "the helper is represented by the enclosing selected-function LLVM body"
-                if inlined else "call-preserving transformations retain the exact definition-visible helper relation"
+                if inlined else "call-preserving transformations retain the exact compiler-attributed declaration"
+                if attributed else "call-preserving transformations retain the exact definition-visible helper relation"
             ),
             scope="selected-build",
-            proof_method="enclosing-ir-hash-binding" if inlined else "definition-hash-and-call-graph-binding",
+            proof_method=(
+                "enclosing-ir-hash-binding" if inlined else
+                "compiler-declaration-attribute-binding" if attributed else
+                "definition-hash-and-call-graph-binding"
+            ),
             language=language, native_construct=helper["symbol"], facts={"body_sha256": helper.get("body_sha256")},
         )
         obligations.append(item)
@@ -405,11 +422,16 @@ def prove_region_closure(closure: dict[str, Any], output_directory: Path) -> dic
     for index, helper in enumerate(closure.get("helper_summaries", [])):
         bound = (
             helper.get("mode") == "inlined_into_selected_ir"
+            or helper.get("mode") == "compiler_attributed_call_preserving" and bool(helper.get("summary_sha256"))
             or helper.get("mode") == "exact_call_preserving" and bool(helper.get("body_sha256"))
         )
         obligations.append({
             "id": f"helper-binding-{index}", "status": "PASS" if bound else "REQUIRES_ADAPTER",
-            "method": "enclosing-ir-binding" if helper.get("mode") == "inlined_into_selected_ir" else "definition-hash", "artifact": None,
+            "method": (
+                "enclosing-ir-binding" if helper.get("mode") == "inlined_into_selected_ir" else
+                "compiler-declaration-attributes" if helper.get("mode") == "compiler_attributed_call_preserving" else
+                "definition-hash"
+            ), "artifact": None,
             "scope": "call-preserving only; transformations crossing the call require inlining or a functional proof",
         })
 

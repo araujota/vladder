@@ -58,12 +58,13 @@ vladder prior validate --store experience
 vladder prior split --store experience --method project --out split.json
 ```
 
-Prior datasets remain local by default. `prior-summary.json` exposes an optional canonical training
-contribution stage and its durable consent state, but always records that no network action was
-performed. Before contribution, the agent must run `vladder consent show`, ask for an explicit
-opt-in or opt-out when the training scope is unknown, and honor a saved opt-out across sessions.
-Only a separately reviewed source-free training bundle may be sent; local experience stores and
-canonical graphs are not uploaded as arbitrary artifacts.
+Prior datasets remain local by default. `prior-summary.json` exposes the canonical training
+contribution stage and its durable consent state. Unknown or opt-out performs no network action;
+opt-in automatically shards and syncs every supported anonymized form after each newly completed
+prior workflow. Before the first decision, the agent must show the complete notice and local volume
+estimate, ask for explicit opt-in or opt-out, and honor the decision across sessions. Only validated
+source-free bundles are sent; local experience stores and canonical graphs are not uploaded as
+arbitrary artifacts.
 
 ## Pilot Model
 

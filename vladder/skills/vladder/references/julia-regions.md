@@ -1,9 +1,15 @@
 # Julia Regions
 
-J2 closes one concrete, inferred, zero-allocation method specialization over primitive scalars and
-dense borrowed arrays. Capture pins Julia, project/manifest/preferences, module, method, tuple
+J3 closes one concrete, inferred, zero-allocation method specialization over primitive scalars and
+dense borrowed arrays. It recognizes exact predicate reductions, pointwise maps, guarded maps,
+stencils, scans, recurrences, and constant-stride indirect reads through the shared canonical
+model. Capture pins Julia, project/manifest/preferences, module, method, tuple
 signature, source, world counter, CPU target, inferred effects/allocation, lowered IR, typed IR,
 LLVM IR, and native code.
+
+Exact byte reductions have executable candidate lowering. Other closed specializations report
+`candidate_generation.actual: false` and `synthesize` returns `lowerer_required`; this is semantic
+capture rather than a production rewrite.
 
 Package capture uses the active project and `Base.require`, then binds `which`, `code_typed`,
 `code_llvm`, and `code_native` to the exact tuple signature without invoking an arbitrary target.

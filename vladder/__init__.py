@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc15"
+__version__ = "1.0.0rc16"
 
 from .api import (
     AgentWorkflowRequest,
@@ -43,6 +43,9 @@ from .cuda_runtime import probe_cuda_architecture, run_cuda_artifact
 from .cuda_synthesis import optimize_cuda_pointwise, synthesize_cuda_pointwise
 from .device_protocol import DeviceProtocolEvidence, verify_device_protocol
 from .device_topology import probe_device_topology, probe_drm_presentation, probe_vulkan_capabilities
+from .semantic_closure import CallRelation, EffectFootprint, FunctionSummary, compose_system_graph, prove_system_graph
+from .protocol_envelopes import ProtocolEnvelope, protocol_registry, validate_protocol_application
+from .system_closure import run_system_closure
 
 __all__ = [
     "BenchmarkPolicy",
@@ -68,6 +71,10 @@ __all__ = [
     "GPUExecutionPlan",
     "GPUKernelCapture",
     "DeviceProtocolEvidence",
+    "EffectFootprint",
+    "CallRelation",
+    "FunctionSummary",
+    "ProtocolEnvelope",
     "LoweringEngine",
     "LoweringMode",
     "LoweringPlan",
@@ -116,4 +123,9 @@ __all__ = [
     "probe_device_topology",
     "probe_drm_presentation",
     "probe_vulkan_capabilities",
+    "compose_system_graph",
+    "prove_system_graph",
+    "protocol_registry",
+    "validate_protocol_application",
+    "run_system_closure",
 ]

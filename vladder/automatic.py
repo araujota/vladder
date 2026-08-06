@@ -12,6 +12,9 @@ from .flow import FlowGraph, analyze_ir, build_flow_graph, emit_target_ir, write
 from .report import write_json
 from .region_closure import describe_c_boundary
 from .toolchain import discover_toolchain
+from .semantic_closure import EffectFootprint, FunctionSummary
+from .cpp_semantics import analyze_ir_effects
+from .closure_bindings import cpp_function_summary
 
 
 AUTOMATIC_SUPPORT_VERSION = "bounded-regions-v1"
@@ -69,6 +72,7 @@ class AutomaticSupport:
     adapters: tuple[AdapterRequirement, ...]
     proof_layers: tuple[str, ...]
     region_closure: dict[str, Any] | None = None
+    compositional_summary: dict[str, Any] | None = None
 
     @property
     def supported(self) -> bool:
@@ -135,6 +139,24 @@ def inspect_automatic_region(source: Path, function: str, out_dir: Path | None =
             },
             "claim_boundary": "typed C ABI capture only; an executable semantic grammar is still required",
         }
+        compositional_summary = None
+        if boundary.modeled and ir_text:
+            try:
+                effects = analyze_ir_effects(ir_text, function)
+                compositional_summary = cpp_function_summary(
+                    function,
+                    str(ir_info.get("compiler_version", "unknown")),
+                    effects,
+                    source_language="c",
+                    semantic_capture="abi_and_effects_only",
+                    residual_boundaries=({
+                        "kind": "grammar-adapter",
+                        "reason": "the ABI and effects are captured but no executable semantic grammar represents this body",
+                        "required_adapter": "select or implement a bounded semantic grammar",
+                    },),
+                ).to_dict()
+            except ValueError:
+                compositional_summary = None
         return finish(_unsupported(
             source, source_digest, function, language,
             "grammar-adapter" if boundary.modeled else "abi-adapter",
@@ -146,6 +168,7 @@ def inspect_automatic_region(source: Path, function: str, out_dir: Path | None =
             "select a bounded semantic grammar or supply a protocol adapter",
             function_digest,
             region_closure=closure,
+            compositional_summary=compositional_summary,
         ))
     try:
         loop = extract_canonical_loop(extracted)
@@ -186,6 +209,13 @@ def inspect_automatic_region(source: Path, function: str, out_dir: Path | None =
         loop,
         (),
         ("structural legality", "Z3 loop partition", "Z3 memory footprint", "LLVM refinement identity or Alive2", "differential execution", "applied-source identity"),
+        None,
+        FunctionSummary(
+            f"c::{function}", "c", str(ir_info.get("compiler_version", "unknown")),
+            function_digest, getattr(graph, "graph_hash", ""),
+            EffectFootprint(("argmem",), ("argmem",)), (), 0,
+            {"family": graph.family, "canonical": graph.canonical, "semantic_capture": "closed", "residual_boundaries": []},
+        ).to_dict(),
     )
     return finish(report)
 
@@ -203,6 +233,7 @@ def _unsupported(
     family: str | None = None,
     canonical: str | None = None,
     region_closure: dict[str, Any] | None = None,
+    compositional_summary: dict[str, Any] | None = None,
 ) -> AutomaticSupport:
     return AutomaticSupport(
         "adapter_required",
@@ -220,6 +251,7 @@ def _unsupported(
         (AdapterRequirement(kind, reason, boundary, workflow),),
         (),
         region_closure,
+        compositional_summary,
     )
 
 

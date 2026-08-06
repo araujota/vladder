@@ -26,6 +26,12 @@
       "stability": "stable",
       "producer": "language and protocol frontends"
     },
+    "system-closure": {
+      "artifact_schema_version": "system-closure-workflow-v1",
+      "file": "system-closure-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder system closure"
+    },
     "training-bundle": {
       "artifact_schema_version": "vladder-training-bundle-v1",
       "file": "training-bundle-v1.schema.json",

@@ -5,8 +5,39 @@
     "C11",
     "C17",
     "restricted C++20",
-    "bounded Rust 2021"
+    "bounded Rust 2021",
+    "bounded Zig 0.16",
+    "concrete Julia 1.12 specializations"
   ],
+  "canonical_source_extraction": {
+    "version": "canonical-bounded-regions-v1",
+    "languages": ["Rust", "Zig", "Julia"],
+    "families": ["ordered_reduction", "pointwise_map", "guarded_pointwise_map", "stencil", "scan", "recurrence", "indirect_memory"],
+    "compiler_evidence": ["Rust MIR and LLVM IR", "Zig compiler-analyzed module and LLVM IR", "Julia concrete typed SSA and LLVM IR"],
+    "capability_policy": "semantic capture, candidate generation, proof, benchmark, and rewrite are independent; unsupported physical lowerers return lowerer_required"
+  },
+  "compositional_semantic_closure": {
+    "version": "semantic-closure-v1",
+    "languages": ["C", "C++", "Rust", "Zig", "Julia"],
+    "descriptors": [
+      "EffectFootprint",
+      "CallRelation",
+      "FunctionSummary",
+      "SystemFlowGraph",
+      "ProtocolEnvelope"
+    ],
+    "protocol_envelopes": [
+      "borrowed-contiguous-view",
+      "bounded-no-growth-append",
+      "aggregate-result",
+      "tagged-multi-exit",
+      "trivial-cleanup",
+      "scoped-allocation",
+      "versioned-single-writer-publication"
+    ],
+    "proof_policy": "Z3 proves finite summary composition and protocol guards; Alive2 remains local; crossing calls requires inlining or a functional relation proof",
+    "search_policy": "effect and protocol summaries constrain legality and add zero implementation candidate dimensions"
+  },
   "contract_dimensions": [
     "integer overflow",
     "floating-point ordering and tolerance",

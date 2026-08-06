@@ -202,6 +202,44 @@ def _attribute_group(text: str, signature: str) -> str:
     return group.group(1) if group else ""
 
 
+def _declaration_summary(module_text: str, symbol: str) -> dict[str, Any] | None:
+    escaped = re.escape(symbol)
+    declaration = re.search(
+        rf'^declare\s+.*@(?:"{escaped}"|{escaped})\([^\n]*\).*$',
+        module_text,
+        re.MULTILINE,
+    )
+    if not declaration:
+        return None
+    signature = declaration.group(0)
+    attrs = _attribute_group(module_text, signature)
+    joined = signature + " " + attrs
+    memory = re.search(r"\bmemory\(([^)]*)\)", joined)
+    standard_nocallback = bool(re.search(
+        r"^(?:memcpy|memmove|memset|memcmp|bcmp|memchr|strlen|strnlen|"
+        r"__memcpy_chk|__memmove_chk|__memset_chk)$",
+        symbol,
+    ))
+    facts = {
+        "nounwind": bool(re.search(r"\bnounwind\b", joined)),
+        "nofree": bool(re.search(r"\bnofree\b", joined)),
+        "nosync": bool(re.search(r"\bnosync\b", joined)),
+        "nocallback": bool(re.search(r"\bnocallback\b", joined)) or standard_nocallback,
+        "willreturn": bool(re.search(r"\bwillreturn\b", joined)) or standard_nocallback,
+        "memory_effect": memory.group(1) if memory else "unknown",
+        "signature": signature,
+        "attributes": attrs,
+    }
+    facts["closed_call_preserving_effects"] = bool(
+        facts["nounwind"] and facts["nofree"] and facts["nosync"]
+        and facts["nocallback"] and facts["willreturn"] and memory
+    )
+    facts["summary_sha256"] = hashlib.sha256(
+        json.dumps(facts, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return facts
+
+
 def _call_targets(body: str, opcode: str) -> tuple[list[str], int]:
     targets: list[str] = []
     indirect = 0
@@ -241,6 +279,7 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
     memory_match = re.search(r"\bmemory\(([^)]*)\)", joined_attrs)
     unresolved = set(remaining) - set(allocation_calls) - set(deallocation_calls)
     internal_calls: dict[str, dict[str, Any]] = {}
+    declared_calls: dict[str, dict[str, Any]] = {}
     nested_external: set[str] = set()
     nested_allocations: set[str] = set()
     nested_deallocations: set[str] = set()
@@ -250,7 +289,11 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
         try:
             nested = analyze_ir_effects(module_text, target, seen)
         except ValueError:
-            nested_external.add(target)
+            declared = _declaration_summary(module_text, target)
+            if declared and declared["closed_call_preserving_effects"]:
+                declared_calls[target] = declared
+            else:
+                nested_external.add(target)
             continue
         internal_calls[target] = {
             "local_effects": nested["local_effects"],
@@ -292,6 +335,7 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
         "intrinsics": intrinsics,
         "remaining_direct_calls": remaining,
         "internal_call_summaries": internal_calls,
+        "declared_call_summaries": declared_calls,
         "external_calls": external_calls,
         "allocation_calls": allocation_calls,
         "deallocation_calls": deallocation_calls,

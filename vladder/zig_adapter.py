@@ -13,12 +13,20 @@ from typing import Any
 import yaml
 
 from .bounded_reduction import ReductionSchedule, count_equal_graph, prove_count_schedule, prove_schedule_llvm, standard_count_schedules
+from .canonical_regions import (
+    CanonicalBoundedRegion,
+    CanonicalRegionError,
+    build_canonical_graph,
+    classify_canonical_region,
+    corroborate_compiler_shape,
+)
 from .language_adapter import LANGUAGE_ADAPTER_PROTOCOL_VERSION, LanguageAdapterRegistry, LanguageCapability, LanguageRegionEvidence, file_sha256
 from .paired_benchmark import run_paired_benchmark
+from .closure_bindings import zig_function_summary
 from .rust_verification import run_alive2_refinement
 
 
-ZIG_SUPPORT_VERSION = "bounded-zig-regions-v2"
+ZIG_SUPPORT_VERSION = "bounded-zig-regions-v3"
 
 
 @dataclass(frozen=True)
@@ -109,6 +117,19 @@ def synthesize_zig_region(request: ZigRegionRequest) -> dict[str, Any]:
     output = request.output_directory.resolve()
     if evidence.status != "supported":
         report = {"schema_version": "vladder-zig-synthesis-v1", "status": "adapter_required", "support": evidence.to_dict(), "candidate_count": 0}
+        _write_json(output / "zig-synthesis.json", report)
+        return report
+    canonical = evidence.semantic_graph.contracts.get("canonical_region") if evidence.semantic_graph else None
+    operation = (canonical or {}).get("operation") or (evidence.semantic_graph.contracts.get("operation") if evidence.semantic_graph else None)
+    if operation != "count_equal_u8":
+        report = {
+            "schema_version": "vladder-zig-synthesis-v1",
+            "status": "lowerer_required",
+            "support": evidence.to_dict(),
+            "candidate_count": 0,
+            "required_lowerer": (canonical or {}).get("executable_grammar"),
+            "claim_boundary": "semantic capture is closed; executable native candidate lowering is an independent capability",
+        }
         _write_json(output / "zig-synthesis.json", report)
         return report
     zig = Path(shutil.which("zig") or "")
@@ -262,7 +283,14 @@ def _capture(request: ZigRegionRequest) -> tuple[LanguageRegionEvidence, str]:
     source = request.source.resolve()
     text = source.read_text()
     function = _extract_zig_function(text, request.function)
-    blockers = _zig_blockers(function, request.specialization)
+    signature = function[:function.find("{")]
+    classification_signature = _specialize_zig_signature(signature, request.specialization)
+    blockers = _zig_protocol_blockers(function)
+    canonical_region: CanonicalBoundedRegion | None = None
+    try:
+        canonical_region = classify_canonical_region("zig", function, classification_signature)
+    except CanonicalRegionError as error:
+        blockers.append(error.to_blocker())
     output = request.output_directory.resolve()
     capture = output / "capture"
     capture.mkdir(parents=True, exist_ok=True)
@@ -272,17 +300,16 @@ def _capture(request: ZigRegionRequest) -> tuple[LanguageRegionEvidence, str]:
     wrapper = capture / "capture-root.zig"
     std_module = _zig_std_module(Path(zig), source)
     owner = std_module or "target"
-    call = (
-        f"{owner}.{wrapper_name}({request.specialization}, ptr[0..n], needle)"
-        if request.specialization else f"{owner}.{wrapper_name}(ptr[0..n], needle)"
-    )
-    signature_closed = not any(item["kind"] == "type-boundary" for item in blockers)
+    signature_closed = canonical_region is not None
     if signature_closed:
-        wrapper.write_text(
-            ('const std = @import("std");\n' if std_module else 'const target = @import("target");\n')
-            +
-            f"export fn vladder_capture(ptr: [*]const u8, n: usize, needle: u8) usize {{\n    return {call};\n}}\n"
-        )
+        wrapper.write_text(_zig_capture_wrapper(
+            owner,
+            wrapper_name,
+            signature,
+            canonical_region,
+            import_line='const std = @import("std");' if std_module else 'const target = @import("target");',
+            specialization=request.specialization,
+        ))
         compiled = (
             _compile_zig(Path(zig), wrapper, capture / "build", request.optimize_mode)
             if std_module else
@@ -303,23 +330,63 @@ def _capture(request: ZigRegionRequest) -> tuple[LanguageRegionEvidence, str]:
     artifacts["source_snapshot"] = str(snapshot)
     artifacts["capture_root"] = str(wrapper) if wrapper.exists() else None
     graph = None
-    if not blockers:
-        graph = count_equal_graph(
-            name=request.function, language="zig", compiler_identity=f"zig {version}", semantic_ir="typed Zig source + compiler semantic analysis",
-            function_identity=f"{source}:{request.function}", source_provenance={"source": str(source), "source_sha256": file_sha256(source), "function": request.function},
-            contracts={"operation": "count_equal_u8", "safety_mode": request.optimize_mode, "ownership": "borrowed slice", "integer_overflow": "count <= slice.len"},
-            excluded_claims=("allocator/error-union/defer protocols", "atomics, volatile I/O, assembly, and external effects"),
-        )
+    corroboration = None
+    if canonical_region is not None and compiled["status"] == "pass":
+        llvm_text = Path(str(compiled["llvm_ir"])).read_text(errors="replace")
+        corroboration = corroborate_compiler_shape(canonical_region, (llvm_text,))
+        if corroboration["status"] != "pass":
+            blockers.append({
+                "kind": "compiler-shape-mismatch",
+                "reason": f"selected Zig LLVM lacks canonical signals: {corroboration['missing_signals']}",
+                "required_adapter": "capture the instantiated function or add a typed compiler-IR recognizer",
+            })
+    if canonical_region is not None and not blockers:
+        provenance = {"source": str(source), "source_sha256": file_sha256(source), "function": request.function}
+        if canonical_region.operation == "count_equal_u8":
+            graph = count_equal_graph(
+                name=request.function, language="zig", compiler_identity=f"zig {version}", semantic_ir="typed Zig source + compiler semantic analysis",
+                function_identity=f"{source}:{request.function}", source_provenance=provenance,
+                contracts={"operation": "count_equal_u8", "canonical_region": canonical_region.to_dict(), "compiler_corroboration": corroboration, "safety_mode": request.optimize_mode, "ownership": "borrowed slice", "integer_overflow": "count <= slice.len"},
+                excluded_claims=("allocator/error-union/defer protocols", "atomics, volatile I/O, assembly, and external effects"),
+            )
+        else:
+            graph = build_canonical_graph(
+                canonical_region,
+                name=request.function,
+                language="zig",
+                compiler_identity=f"zig {version}",
+                semantic_ir="Zig compiler semantic analysis + LLVM IR",
+                function_identity=f"{source}:{request.function}",
+                source_provenance=provenance,
+                language_contracts={"safety_mode": request.optimize_mode, "ownership": "borrowed slices", "target": request.target},
+                compiler_corroboration=corroboration or {},
+                excluded_claims=(
+                    "allocator, error-union, and defer protocols",
+                    "atomics, volatile I/O, assembly, and external effects",
+                    "candidate equivalence until a family lowerer and proof unit execute",
+                ),
+            )
     compiler_captured = compiled["status"] == "pass"
-    capabilities = _capabilities(compiler_captured, graph is not None, not blockers, artifacts)
+    executable = bool(canonical_region and canonical_region.operation == "count_equal_u8" and not blockers)
+    capabilities = _capabilities(compiler_captured, graph is not None, not blockers, executable, artifacts)
     status = "supported" if graph is not None and not blockers else "local_graph_only" if compiler_captured else "adapter_required"
+    compositional_summary = zig_function_summary(
+        request.function,
+        function,
+        f"zig {version}",
+        semantic_graph_hash=graph.graph_hash if graph else "",
+        blockers=tuple(blockers),
+    ).to_dict()
     evidence = LanguageRegionEvidence(
         LANGUAGE_ADAPTER_PROTOCOL_VERSION, ZigLanguageAdapter.name, "zig", ZIG_SUPPORT_VERSION,
         request.function, status, capabilities, graph,
-        {"zig_identity": version, "optimize_mode": request.optimize_mode, "target": request.target, "build_root": str(build_root), "configuration": config, "source_sha256": file_sha256(source), "specialization": request.specialization},
+        {"zig_identity": version, "optimize_mode": request.optimize_mode, "target": request.target, "build_root": str(build_root), "configuration": config, "source_sha256": file_sha256(source), "specialization": request.specialization, "canonical_region": canonical_region.to_dict() if canonical_region else None, "compiler_corroboration": corroboration, "compositional_summary": compositional_summary},
         tuple(blockers), artifacts,
-        "selected Zig function under captured safety mode; external ownership, error, and device protocols excluded",
+        "selected canonical Zig function under captured safety mode; executable lowering is reported independently",
     )
+    if canonical_region:
+        _write_json(output / "canonical-region.json", canonical_region.to_dict())
+    _write_json(output / "compositional-summary.json", compositional_summary)
     _write_json(output / "zig-support.json", evidence.to_dict())
     return evidence, function
 
@@ -339,18 +406,26 @@ def _extract_zig_function(text: str, requested: str) -> str:
     raise ValueError(f"unterminated Zig function: {requested}")
 
 
-def _zig_blockers(function: str, specialization: str | None = None) -> list[dict[str, str]]:
+def _specialize_zig_signature(signature: str, specialization: str | None) -> str:
+    """Project one declared comptime scalar specialization into the semantic ABI.
+
+    The original generic signature remains compiler provenance. This projection is used only to
+    select a shared bounded semantic operation after the generated wrapper checks the concrete
+    specialization with the Zig compiler.
+    """
+    if not specialization:
+        return signature
+    comptime = re.search(r"\bcomptime\s+([A-Za-z_]\w*)\s*:\s*type\s*,?", signature)
+    if not comptime:
+        return signature
+    type_name = comptime.group(1)
+    projected = signature[:comptime.start()] + signature[comptime.end():]
+    return re.sub(rf"\b{re.escape(type_name)}\b", specialization, projected)
+
+
+def _zig_protocol_blockers(function: str) -> list[dict[str, str]]:
     blockers = []
     def add(kind: str, reason: str, adapter: str) -> None: blockers.append({"kind": kind, "reason": reason, "required_adapter": adapter})
-    signature = function[:function.find("{")]
-    direct = bool(re.search(r"\[\]const\s+u8", signature) and re.search(r"\bneedle\s*:\s*u8", signature))
-    specialized = bool(
-        specialization
-        and re.search(r"comptime\s+\w+\s*:\s*type", signature)
-        and re.search(r"\[\]const\s+\w+", signature)
-    )
-    if not (direct or specialized) or not re.search(r"\)\s*usize", signature):
-        add("type-boundary", "Z1 requires ([]const u8, u8) usize", "model the concrete Zig type/ownership boundary")
     checks = [
         (r"\b(anytype|Allocator|alloc|dupe|create)\b", "allocation-ownership", "allocator and ownership protocol"),
         (r"\b(try|catch|error\{|!\[|!usize)\b", "error-union", "error-set and error-return protocol"),
@@ -361,9 +436,39 @@ def _zig_blockers(function: str, specialization: str | None = None) -> list[dict
     ]
     for pattern, kind, adapter in checks:
         if re.search(pattern, function): add(kind, f"selected function contains {kind}", adapter)
-    if "@intFromBool" not in function or "for (" not in function:
-        add("operation-shape", "Z1 recognizes exact byte equality reductions", "register a shared operation and Zig lowering")
     return blockers
+
+
+def _zig_capture_wrapper(
+    owner: str,
+    function: str,
+    signature: str,
+    region: CanonicalBoundedRegion,
+    *,
+    import_line: str,
+    specialization: str | None,
+) -> str:
+    prefix = f"{specialization}, " if specialization else ""
+    if region.operation == "count_equal_u8":
+        return (
+            f"{import_line}\n"
+            f"export fn vladder_capture(ptr: [*]const u8, n: usize, needle: u8) usize {{\n"
+            f"    return {owner}.{function}({prefix}ptr[0..n], needle);\n}}\n"
+        )
+    params = signature[signature.find("(") + 1:signature.rfind(")")]
+    arguments = []
+    for item in params.split(","):
+        if "[]const f32" in item:
+            arguments.append("src[0..n]")
+        elif "[]f32" in item:
+            arguments.append("dst[0..n]")
+        else:
+            raise ValueError(f"unsupported canonical Zig capture parameter: {item.strip()}")
+    return (
+        f"{import_line}\n"
+        "export fn vladder_capture(dst: [*]f32, src: [*]const f32, n: usize) void {\n"
+        f"    {owner}.{function}({prefix}{', '.join(arguments)});\n}}\n"
+    )
 
 
 def _generate_candidates() -> tuple[ZigCandidate, ...]:
@@ -512,14 +617,14 @@ def _compile_zig_executable_module(
     return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "executable": str(output)}
 
 
-def _capabilities(captured: bool, graph: bool, closed: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
+def _capabilities(captured: bool, graph: bool, closed: bool, executable: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
     return {
         "semantic_capture": LanguageCapability(captured, captured, "native Zig module and safety policy captured", artifacts.get("llvm_ir")),
         "information_flow": LanguageCapability(graph, graph, "shared semantic information-flow graph"),
-        "candidate_generation": LanguageCapability(closed, closed, "native Zig exact-reduction schedules"),
-        "local_proof": LanguageCapability(closed, closed, "Z3 schedule and fixed-bound LLVM refinement"),
-        "benchmark": LanguageCapability(closed, closed, "same-executable native Zig paired benchmark"),
-        "source_rewrite": LanguageCapability(closed, closed, "native Zig source regeneration; no automatic application"),
+        "candidate_generation": LanguageCapability(executable, executable, "native Zig exact-reduction schedules" if executable else "semantic graph closed; native family lowerer required"),
+        "local_proof": LanguageCapability(executable, executable, "Z3 schedule and fixed-bound LLVM refinement after lowering"),
+        "benchmark": LanguageCapability(executable, executable, "same-executable native Zig paired benchmark after lowering"),
+        "source_rewrite": LanguageCapability(executable, executable, "native Zig source regeneration after proof; no automatic application"),
         "protocol_equivalence": LanguageCapability(False, False, "allocator, error, defer, atomic, volatile, FFI, and external protocols excluded"),
     }
 

@@ -32,7 +32,14 @@ def discover_toolchain() -> Toolchain:
 
     base = os.path.basename(compiler)
     kind = "clang" if "clang" in base else "gcc"
-    llvm_mca = shutil.which("llvm-mca-20") or shutil.which("llvm-mca")
+    llvm_mca = next(
+        (
+            path
+            for name in ("llvm-mca-20", "llvm-mca", "llvm-mca-19", "llvm-mca-18", "llvm-mca-17")
+            if (path := shutil.which(name))
+        ),
+        None,
+    )
     return Toolchain(
         compiler=compiler,
         compiler_kind=kind,

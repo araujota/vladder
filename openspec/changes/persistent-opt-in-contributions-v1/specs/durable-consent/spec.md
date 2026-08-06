@@ -26,3 +26,21 @@ confirmation before transmitting a contribution.
 
 - **WHEN** validate-only is requested without durable opt-in
 - **THEN** transmission is rejected because validation still sends payload bytes.
+
+### Requirement: Informed Scope Semantics
+
+Before recording a decision, the agent SHALL present destination, included/excluded data,
+frequency, moderation, revocation behavior, and locally estimable contribution volume.
+
+#### Scenario: Training opt-in
+
+- **WHEN** canonical training contribution is opted in
+- **THEN** every eligible supported anonymized form is contributed at each opportunity without a
+  repeated consent question
+- **AND** unsupported forms are reported as export gaps.
+
+#### Scenario: Review opt-in
+
+- **WHEN** review requests are opted in
+- **THEN** the agent requests a review no more than once every 30 days
+- **AND** exact-review submission remains separately approved.

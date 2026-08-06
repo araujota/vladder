@@ -1,9 +1,14 @@
 # Zig Regions
 
-Z2 closes native, allocation-free functions over scalars and borrowed byte slices with an exact
-registered operation. Capture preserves the original module graph and records the exact Zig version, build files, optimization/safety
+Z3 captures native, allocation-free functions over scalars and borrowed byte or `f32` slices. It
+recognizes exact predicate reductions, pointwise maps, guarded maps, stencils, scans, recurrences,
+and constant-stride indirect reads through the shared canonical model. Capture preserves the
+original module graph and records the exact Zig version, build files, optimization/safety
 mode, source hash, LLVM IR, and assembly. Candidates are native Zig and are never applied
 automatically.
+
+Exact byte reductions have executable candidate lowering. Other closed families report
+`candidate_generation.actual: false` and `synthesize` returns `lowerer_required`.
 
 Allocator ownership, error unions, `defer`/`errdefer`, volatile or atomic access, inline assembly,
 FFI, external effects, and unresolved comptime dependencies require explicit adapters.

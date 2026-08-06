@@ -1,0 +1,31 @@
+schema_version = "vladder-release-channels-v1"
+
+[github]
+repository = "araujota/vladder"
+default_branch = "main"
+release_workflow = "release.yml"
+ci_workflow = "ci.yml"
+branch_protection_required = true
+
+[pypi]
+project = "vladder"
+environment = "pypi"
+workflow = "release.yml"
+trusted_publisher_configured = true
+
+[testpypi]
+project = "vladder"
+environment = "testpypi"
+workflow = "test-publish.yml"
+trusted_publisher_configured = true
+
+[homebrew]
+tap_repository = "araujota/homebrew-tap"
+formula = "vladder"
+environment = "homebrew"
+repository_variable = "HOMEBREW_TAP_REPOSITORY"
+write_secret = "HOMEBREW_TAP_TOKEN"
+tap_configured = false
+
+[services]
+contribution_health_url = "https://ceaseless-manatee-888.convex.site/api/health"

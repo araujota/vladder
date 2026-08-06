@@ -141,7 +141,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Validate vLadder release identity and artifacts")
     parser.add_argument("--root", type=Path, default=Path.cwd())
     parser.add_argument("--repository", help="GitHub repository as OWNER/REPOSITORY")
-    parser.add_argument("--tag", help="release tag, for example v1.0.0rc4")
+    parser.add_argument("--tag", help="release tag matching the project version, for example v<VERSION>")
     parser.add_argument("--dist-dir", type=Path)
     parser.add_argument("--require-git", action="store_true")
     parser.add_argument("--require-artifacts", action="store_true")

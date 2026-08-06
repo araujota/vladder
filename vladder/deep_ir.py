@@ -309,6 +309,11 @@ def build_deep_realization_graph(
 
 def inspect_source_realization(source: str, language: str, function: str) -> SourceRealization:
     normalized = re.sub(r"\s+", " ", source)
+    predicate_source = re.sub(
+        r"\bUINT(?:8|16|32|64)_C\(\s*(0[xX][0-9A-Fa-f]+)\s*\)",
+        r"\1",
+        normalized,
+    )
     evidence: list[str] = []
     blockers: list[str] = []
     if language not in {"c", "cpp", "rust", "zig", "julia"}:
@@ -320,10 +325,17 @@ def inspect_source_realization(source: str, language: str, function: str) -> Sou
     ))
     utf8_mask_predicate = bool(re.search(
         r"(?:&\s*(?:0[xX][cC]0(?:u8)?|0b1100_?0000))\s*\)?\s*!=\s*(?:0[xX]80(?:u8)?|0b1000_?0000)",
-        normalized,
+        predicate_source,
     ))
+    utf8_vector_predicate = (
+        "_mm256_and_si256" in source
+        and "_mm256_cmpeq_epi8" in source
+        and "_mm256_xor_si256" in source
+        and re.search(r"0[xX][cC]0\b", predicate_source) is not None
+        and re.search(r"0[xX]80\b", predicate_source) is not None
+    )
     utf8_named_predicate = bool(re.search(r"\b(?:is_leading_utf8_byte|vladder_utf8_leading)\b", source))
-    if utf8_shift_predicate or utf8_mask_predicate or utf8_named_predicate:
+    if utf8_shift_predicate or utf8_mask_predicate or utf8_vector_predicate or utf8_named_predicate:
         predicate = "utf8-leading-byte"
         evidence.append("UTF-8 leading-byte predicate" if not utf8_shift_predicate else "normalized shift-and-compare UTF-8 leading-byte predicate")
     elif any(token in source for token in ("== needle", "==needle", "== needles", "simd_eq", "cmpeq_epi8", "bytewise_equal", "vladder_word_equal", "vladder_mask_popcount", "vladder_lane_byte_accumulate")):

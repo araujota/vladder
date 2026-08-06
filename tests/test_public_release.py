@@ -12,13 +12,17 @@ from vladder.consent import (
     CANONICAL_TRAINING_DATA,
     ConsentRequiredError,
     load_consent,
+    record_review_request,
     set_consent,
 )
 from vladder.review_workflow import create_review_template, submit_review, validate_review
-from vladder.contribution_transport import DEFAULT_REVIEW_ENDPOINT, DEFAULT_TRAINING_ENDPOINT
+from vladder.contribution_transport import (
+    DEFAULT_REVIEW_ENDPOINT, DEFAULT_TRAINING_ENDPOINT, load_or_register_capability,
+)
 from vladder.training_workflow import (
-    create_training_bundle_from_prior, create_training_template, submit_training_bundle,
-    validate_training_bundle,
+    create_training_bundle_from_prior, create_training_bundle_from_promotion_summary,
+    create_training_template, export_all_training_bundles_from_prior, submit_training_bundle,
+    sync_all_training_bundles_from_prior, sync_promotion_summary, validate_training_bundle,
 )
 from vladder.prior_synthetic import generate_synthetic_prior_corpus
 from vladder.paired_benchmark import run_paired_benchmark
@@ -53,7 +57,17 @@ class PublicReleaseContractTests(unittest.TestCase):
     def test_schema_registry_lists_stable_public_artifacts(self) -> None:
         report = list_artifact_schemas()
         self.assertEqual(report["schema_version"], "vladder-schema-registry-v1")
-        self.assertEqual(set(report["artifacts"]), {"agent-review", "benchmark-result", "promotion-summary", "semantic-flow", "training-bundle"})
+        self.assertEqual(
+            set(report["artifacts"]),
+            {
+                "agent-review",
+                "benchmark-result",
+                "promotion-summary",
+                "semantic-flow",
+                "system-closure",
+                "training-bundle",
+            },
+        )
         self.assertTrue(all(item["stability"] == "stable" for item in report["artifacts"].values()))
 
     def test_promotion_summary_validation_accepts_contract_and_rejects_missing_state(self) -> None:
@@ -107,6 +121,7 @@ class PublicReleaseContractTests(unittest.TestCase):
             initial = load_consent(consent_path)
             self.assertEqual(initial["states"][CANONICAL_TRAINING_DATA], "unknown")
             self.assertEqual(initial["states"][AGENT_EXPERIENCE_REVIEW], "unknown")
+            self.assertIn("every eligible", initial["scope_notices"][CANONICAL_TRAINING_DATA]["frequency"])
             set_consent(CANONICAL_TRAINING_DATA, "opt_out", path=consent_path, confirmed_user_choice=True)
             reloaded = load_consent(consent_path)
             self.assertEqual(reloaded["states"][CANONICAL_TRAINING_DATA], "opt_out")
@@ -116,7 +131,18 @@ class PublicReleaseContractTests(unittest.TestCase):
                 from vladder.consent import require_consent
                 require_consent(CANONICAL_TRAINING_DATA, consent_path)
 
-    def test_public_review_submission_uses_release_endpoint_without_a_secret(self) -> None:
+    def test_review_opt_in_uses_persistent_periodic_request_cadence(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            consent_path = Path(directory) / "consent.json"
+            ledger = set_consent(
+                AGENT_EXPERIENCE_REVIEW, "opt_in", path=consent_path, confirmed_user_choice=True,
+            )
+            self.assertEqual(ledger["review_request"]["status"], "due")
+            ledger = record_review_request(path=consent_path, confirmed_user_prompt=True)
+            self.assertEqual(ledger["review_request"]["status"], "not_due")
+            self.assertEqual(load_consent(consent_path)["review_request"]["interval_days"], 30)
+
+    def test_review_submission_uses_installation_scoped_capability(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             summary = root / "promotion-summary.json"
@@ -127,19 +153,21 @@ class PublicReleaseContractTests(unittest.TestCase):
             review["privacy"]["submission_consent"] = True
             review_path.write_text(json.dumps(review))
             set_consent(AGENT_EXPERIENCE_REVIEW, "opt_in", path=consent_path, confirmed_user_choice=True)
-            with patch("urllib.request.urlopen") as urlopen:
-                response = urlopen.return_value.__enter__.return_value
-                response.status = 202
-                response.read.return_value = b'{"status":"accepted_for_moderation"}'
-                result = submit_review(
-                    review_path, endpoint=None, token=None, confirm_upload=True, consent_path=consent_path,
-                )
-                request = urlopen.call_args.args[0]
+            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_review"):
+                with patch("urllib.request.urlopen") as urlopen:
+                    response = urlopen.return_value.__enter__.return_value
+                    response.status = 202
+                    response.read.return_value = b'{"status":"accepted_for_moderation"}'
+                    result = submit_review(
+                        review_path, endpoint=None, token=None, confirm_upload=True, consent_path=consent_path,
+                    )
+                    request = urlopen.call_args.args[0]
         self.assertEqual(result["status"], "submitted")
         self.assertEqual(request.full_url, DEFAULT_REVIEW_ENDPOINT)
-        self.assertIsNone(request.get_header("Authorization"))
+        self.assertEqual(request.get_header("Authorization"), "Bearer vc1_review")
+        self.assertEqual(result["authorization"], "installation_scoped_capability")
 
-    def test_training_bundle_is_source_free_and_publicly_submittable(self) -> None:
+    def test_training_bundle_is_source_free_and_capability_submittable(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             bundle_path = Path(directory) / "training.json"
             consent_path = Path(directory) / "consent.json"
@@ -156,18 +184,19 @@ class PublicReleaseContractTests(unittest.TestCase):
                 )
             bundle["privacy"]["submission_consent"] = True
             bundle_path.write_text(json.dumps(bundle))
-            with patch("urllib.request.urlopen") as urlopen:
-                response = urlopen.return_value.__enter__.return_value
-                response.status = 200
-                response.read.return_value = b'{"status":"valid","stored":false}'
-                result = submit_training_bundle(
-                    bundle_path, endpoint=None, token=None, confirm_upload=True, validate_only=True,
-                    consent_path=consent_path,
-                )
-                request = urlopen.call_args.args[0]
+            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+                with patch("urllib.request.urlopen") as urlopen:
+                    response = urlopen.return_value.__enter__.return_value
+                    response.status = 200
+                    response.read.return_value = b'{"status":"valid","stored":false}'
+                    result = submit_training_bundle(
+                        bundle_path, endpoint=None, token=None, confirm_upload=True, validate_only=True,
+                        consent_path=consent_path,
+                    )
+                    request = urlopen.call_args.args[0]
             self.assertEqual(result["status"], "validated_remotely")
             self.assertEqual(request.full_url, DEFAULT_TRAINING_ENDPOINT + "?validate_only=true")
-            self.assertIsNone(request.get_header("Authorization"))
+            self.assertEqual(request.get_header("Authorization"), "Bearer vc1_training")
             bundle["privacy"]["source_included"] = True
             bundle_path.write_text(json.dumps(bundle))
             self.assertEqual(validate_training_bundle(bundle_path)["status"], "fail")
@@ -188,6 +217,53 @@ class PublicReleaseContractTests(unittest.TestCase):
             serialized = bundle_path.read_text()
             self.assertNotIn("semantic_graph", serialized)
             self.assertNotIn("provenance", serialized)
+            with self.assertRaisesRegex(ConsentRequiredError, "must ask the user"):
+                create_training_bundle_from_prior(
+                    root / "corpus/experience", root / "blocked.json",
+                    project_id="opaque-fixture", producer_agent="codex", producer_model="fixture",
+                    maximum_examples=2, apply_durable_consent=True, consent_path=root / "consent.json",
+                )
+            set_consent(
+                CANONICAL_TRAINING_DATA, "opt_in", path=root / "consent.json", confirmed_user_choice=True,
+            )
+            consented = create_training_bundle_from_prior(
+                root / "corpus/experience", root / "consented.json",
+                project_id="opaque-fixture", producer_agent="codex", producer_model="fixture",
+                maximum_examples=2, apply_durable_consent=True, consent_path=root / "consent.json",
+            )
+            self.assertTrue(consented["privacy"]["submission_consent"])
+            exported = export_all_training_bundles_from_prior(
+                root / "corpus/experience", root / "export",
+                project_id="private-project-name", producer_agent="codex", producer_model="fixture",
+                examples_per_bundle=2,
+            )
+            self.assertTrue(exported["all_supported_candidates_exported"])
+            self.assertEqual(
+                sum(len(json.loads(Path(path).read_text())["examples"]) for path in exported["bundles"]),
+                exported["candidate_count"],
+            )
+            first_export = json.loads(Path(exported["bundles"][0]).read_text())
+            self.assertNotEqual(first_export["dataset"]["project_id"], "private-project-name")
+            with patch("urllib.request.urlopen") as urlopen:
+                with self.assertRaisesRegex(ConsentRequiredError, "must ask the user"):
+                    sync_all_training_bundles_from_prior(
+                        root / "corpus/experience", root / "blocked-sync",
+                        project_id="private-project-name", producer_agent="codex", producer_model="fixture",
+                        consent_path=root / "unknown-consent.json",
+                    )
+                urlopen.assert_not_called()
+            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+                with patch("urllib.request.urlopen") as urlopen:
+                    response = urlopen.return_value.__enter__.return_value
+                    response.status = 200
+                    response.read.return_value = b'{"status":"valid","stored":false}'
+                    synced = sync_all_training_bundles_from_prior(
+                        root / "corpus/experience", root / "sync",
+                        project_id="private-project-name", producer_agent="codex", producer_model="fixture",
+                        examples_per_bundle=2, validate_only=True, consent_path=root / "consent.json",
+                    )
+                    self.assertEqual(urlopen.call_count, synced["export"]["bundle_count"])
+                    self.assertTrue(synced["continuous_opt_in_applied"])
 
     def test_review_schema_rejects_source_or_raw_artifact_inclusion(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -200,6 +276,57 @@ class PublicReleaseContractTests(unittest.TestCase):
             review_path.write_text(json.dumps(review))
             report = validate_review(review_path)
         self.assertEqual(report["status"], "fail")
+
+    def test_generic_promotion_summary_contribution_is_anonymized_and_consent_gated(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            consent_path = root / "consent.json"
+            summary = self._summary()
+            summary["workflow_key"] = "a" * 64
+            summary["blockers"] = ["private/project/path.cpp requires adapter"]
+            with self.assertRaisesRegex(ConsentRequiredError, "must ask the user"):
+                create_training_bundle_from_promotion_summary(
+                    summary, root / "blocked.json", consent_path=consent_path,
+                )
+            set_consent(
+                CANONICAL_TRAINING_DATA, "opt_in", path=consent_path, confirmed_user_choice=True,
+            )
+            bundle = create_training_bundle_from_promotion_summary(
+                summary, root / "bundle.json", consent_path=consent_path,
+            )
+            self.assertEqual(validate_training_bundle(root / "bundle.json")["status"], "pass")
+            self.assertNotIn("private/project/path.cpp", json.dumps(bundle))
+            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+                with patch("urllib.request.urlopen") as urlopen:
+                    response = urlopen.return_value.__enter__.return_value
+                    response.status = 202
+                    response.read.return_value = b'{"status":"accepted_for_moderation"}'
+                    report = sync_promotion_summary(summary, root / "sync", consent_path=consent_path)
+                    self.assertEqual(report["status"], "pass")
+                    self.assertEqual(urlopen.call_count, 1)
+
+    def test_contributor_capability_is_scope_keyed_cached_and_owner_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            credential_path = Path(directory) / "credentials.json"
+            with patch("vladder.contribution_transport._register_capability") as register:
+                register.return_value = {
+                    "credential_id": "credential:test", "scope": "training:write", "token": "vc1_training",
+                }
+                first = load_or_register_capability(
+                    DEFAULT_TRAINING_ENDPOINT, "training:write", timeout_seconds=1,
+                    credential_path=credential_path,
+                )
+                second = load_or_register_capability(
+                    DEFAULT_TRAINING_ENDPOINT, "training:write", timeout_seconds=1,
+                    credential_path=credential_path,
+                )
+            self.assertEqual(first, "vc1_training")
+            self.assertEqual(second, first)
+            self.assertEqual(register.call_count, 1)
+            self.assertEqual(credential_path.stat().st_mode & 0o777, 0o600)
+            serialized = credential_path.read_text()
+            self.assertIn("training:write", serialized)
+            self.assertNotIn("review:write", serialized)
 
     def test_actual_paired_benchmark_output_matches_stable_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

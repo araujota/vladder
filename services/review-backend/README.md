@@ -2,8 +2,9 @@
 
 This optional Convex service accepts `vladder-agent-review-v1` records and strict source-free
 `vladder-training-bundle-v1` derived-feature bundles. New records are private until explicitly
-approved. Public submission requires no shared secret, is rate-limited through a salted daily
-fingerprint, and rejects payloads over 128 KiB. IDs are idempotent and content-addressed.
+approved. A public, rate-limited registration action issues random scope-specific append
+capabilities; only token hashes are retained. Submission is rate-limited through a salted daily
+fingerprint and rejects payloads over 128 KiB. IDs are idempotent and content-addressed.
 
 ```bash
 npm install
@@ -16,8 +17,23 @@ moderation. `VLADDER_REVIEW_TOKEN` is an optional trusted-ingestion credential. 
 are never stored. `POST ...?validate_only=true` validates without retaining a submission.
 The local vLadder CLI remains fully functional when this service is absent.
 
+The client enforces a durable informed-consent policy before this service is contacted. Canonical
+training opt-in continuously submits every registered source-free anonymized record form;
+agent-review opt-in only enables a request once per 30-day cadence and exact-review approval remains
+required. The service independently enforces the record-level consent literal, schema bounds,
+private moderation, and separate review/training rate limits. Training uses bounded shards so a
+complete canonical opportunity is not truncated merely because it contains many candidates. The
+service never receives the local consent ledger.
+
+Contributor capabilities are not Convex deployment credentials. They are checked only inside the
+two HTTP append actions, cannot call internal mutations, cannot list pending data, and cannot reach
+moderation. Convex clients have no direct table access, so this registered-function boundary is the
+service's row-level access-control mechanism. `trainingSubmissions` has no public query;
+`reviews.listApproved` returns only moderated records.
+
 The release candidate is deployed in Convex team `araujota97`, project `vladder-review`. Local
 deployment URLs and credentials remain in ignored environment files and are not release artifacts.
 
 Production HTTP base: `https://ceaseless-manatee-888.convex.site`. The Python client derives the
-review and training routes from this base; it does not package any deployment secret.
+registration, review, and training routes from this base; it does not package any deployment or
+contributor secret.

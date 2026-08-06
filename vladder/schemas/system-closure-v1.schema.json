@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/system-closure-v1.schema.json",
+  "title": "vLadder Compositional System Closure Report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "status",
+    "system_graph",
+    "proof",
+    "protocol_registry",
+    "boundary_matrix",
+    "boundary_summary",
+    "candidate_generation_performed",
+    "source_changes_performed",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {"const": "system-closure-workflow-v1"},
+    "status": {"enum": ["pass", "proof_failed", "protocol_guard_required"]},
+    "system_graph": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "name",
+        "functions",
+        "edges",
+        "components",
+        "boundaries",
+        "computational_candidate_count",
+        "protocol_summary_candidate_count",
+        "graph_hash"
+      ],
+      "properties": {
+        "schema_version": {"const": "semantic-closure-v1"},
+        "functions": {"type": "array", "minItems": 1},
+        "edges": {"type": "array"},
+        "components": {"type": "array"},
+        "boundaries": {"type": "array"},
+        "computational_candidate_count": {"type": "integer", "minimum": 0},
+        "protocol_summary_candidate_count": {"const": 0},
+        "graph_hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+      },
+      "additionalProperties": true
+    },
+    "proof": {"type": "object", "required": ["status", "obligations"]},
+    "protocol_registry": {"type": "object", "required": ["registry_hash", "candidate_dimensions_added"]},
+    "boundary_matrix": {"type": "array"},
+    "boundary_summary": {"type": "array"},
+    "candidate_generation_performed": {"const": false},
+    "source_changes_performed": {"const": false},
+    "claim_boundary": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": true
+}

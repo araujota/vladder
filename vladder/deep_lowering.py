@@ -414,9 +414,10 @@ def _zig_predicate(contract: DeepKernelContract, value: str) -> str:
 
 def _zig_scalar(contract: DeepKernelContract, function: str) -> str:
     predicate = _zig_predicate(contract, "data[i]")
+    needle_use = "" if contract.predicate == "equal-u8" else "\n    _ = needle;"
     return f"""
 export fn {function}(data_ptr: [*]const u8, n: usize, needle: u8) callconv(.c) usize {{
-    const data = data_ptr[0..n];
+    const data = data_ptr[0..n];{needle_use}
     var count: usize = 0;
     var i: usize = 0;
     while (i < data.len) : (i += 1) {{
@@ -509,11 +510,16 @@ def _zig_simd(contract: DeepKernelContract, function: str, *, guarded: bool, byt
         count += @popCount(mask);
     }}
 """
+    needle_setup = (
+        "const needles: @Vector(32, u8) = @splat(needle);"
+        if contract.predicate == "equal-u8"
+        else "_ = needle;"
+    )
     helper_source = f"""
 inline fn {helper}(data: []const u8, needle: u8) usize {{
     var count: usize = 0;
     var i: usize = 0;
-    const needles: @Vector(32, u8) = @splat(needle);
+    {needle_setup}
 {loop.rstrip()}
     while (i < data.len) : (i += 1) count += @intFromBool({tail});
     return count;

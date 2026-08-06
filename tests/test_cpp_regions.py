@@ -64,6 +64,22 @@ attributes #0 = { nounwind nofree nosync }
         self.assertFalse(effects["local_effects"])
         self.assertIn("helper", effects["external_calls"])
 
+    def test_compiler_attributed_declaration_closes_call_preserving_effects(self):
+        module = """
+define i32 @target(ptr %p, i64 %n) #0 {
+entry:
+  %v = call i32 @memcmp(ptr %p, ptr %p, i64 %n)
+  ret i32 %v
+}
+declare i32 @memcmp(ptr, ptr, i64) #1
+attributes #0 = { nounwind nofree nosync memory(argmem: read) }
+attributes #1 = { nounwind nofree nosync nocallback willreturn memory(argmem: read) }
+"""
+        effects = analyze_ir_effects(module, "target")
+        self.assertTrue(effects["local_effects"])
+        self.assertNotIn("memcmp", effects["external_calls"])
+        self.assertTrue(effects["declared_call_summaries"]["memcmp"]["closed_call_preserving_effects"])
+
     def test_supported_matrix_emits_proved_adapter_and_regenerated_source(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

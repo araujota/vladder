@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as contributors from "../contributors.js";
 import type * as http from "../http.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as reviewValidators from "../reviewValidators.js";
@@ -22,6 +23,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  contributors: typeof contributors;
   http: typeof http;
   rateLimits: typeof rateLimits;
   reviewValidators: typeof reviewValidators;

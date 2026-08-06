@@ -13,11 +13,19 @@ from typing import Any
 import yaml
 
 from .bounded_reduction import ReductionSchedule, count_equal_graph, prove_count_schedule, prove_schedule_llvm, standard_count_schedules
+from .canonical_regions import (
+    CanonicalBoundedRegion,
+    CanonicalRegionError,
+    build_canonical_graph,
+    classify_canonical_region,
+    corroborate_compiler_shape,
+)
 from .language_adapter import LANGUAGE_ADAPTER_PROTOCOL_VERSION, LanguageAdapterRegistry, LanguageCapability, LanguageRegionEvidence, file_sha256
 from .paired_benchmark import run_paired_benchmark
+from .closure_bindings import julia_function_summary
 
 
-JULIA_SUPPORT_VERSION = "bounded-julia-regions-v2"
+JULIA_SUPPORT_VERSION = "bounded-julia-regions-v3"
 
 
 @dataclass(frozen=True)
@@ -108,6 +116,17 @@ def synthesize_julia_region(request: JuliaRegionRequest) -> dict[str, Any]:
     output = request.output_directory.resolve()
     if evidence.status != "supported":
         report = {"schema_version": "vladder-julia-synthesis-v1", "status": "adapter_required", "support": evidence.to_dict(), "candidate_count": 0}
+        _write_json(output / "julia-synthesis.json", report)
+        return report
+    canonical = evidence.semantic_graph.contracts.get("canonical_region") if evidence.semantic_graph else None
+    operation = (canonical or {}).get("operation") or (evidence.semantic_graph.contracts.get("operation") if evidence.semantic_graph else None)
+    if operation != "count_equal_u8":
+        report = {
+            "schema_version": "vladder-julia-synthesis-v1", "status": "lowerer_required",
+            "support": evidence.to_dict(), "candidate_count": 0,
+            "required_lowerer": (canonical or {}).get("executable_grammar"),
+            "claim_boundary": "semantic capture is closed; executable native candidate lowering is an independent capability",
+        }
         _write_json(output / "julia-synthesis.json", report)
         return report
     candidates = _generate_candidates()
@@ -246,11 +265,17 @@ def _capture(request: JuliaRegionRequest) -> tuple[LanguageRegionEvidence, str]:
                 extraction_error = None
             except (ValueError, OSError):
                 pass
-    blockers = _source_blockers(function, request.signature) if function else [{
+    canonical_region: CanonicalBoundedRegion | None = None
+    blockers = _source_protocol_blockers(function) if function else [{
         "kind": "source-region-unresolved",
         "reason": extraction_error or "method source could not be mapped from reflection",
         "required_adapter": "provide a method source mapping while retaining typed compiler capture",
     }]
+    if function:
+        try:
+            canonical_region = classify_canonical_region("julia", function, request.signature)
+        except CanonicalRegionError as error:
+            blockers.append(error.to_blocker())
     if reflection["status"] != "pass":
         blockers.append({"kind": "compiler-semantic-failure", "reason": reflection.get("stderr", "")[-1000:], "required_adapter": "resolve module/method/signature capture"})
     else:
@@ -259,9 +284,10 @@ def _capture(request: JuliaRegionRequest) -> tuple[LanguageRegionEvidence, str]:
         allocation = int(allocation_text) if str(allocation_text).lstrip("-").isdigit() else None
         if " dynamic " in typed or "::Any" in typed:
             blockers.append({"kind": "dynamic-dispatch", "reason": "typed IR is not fully concrete", "required_adapter": "specialize the method and remove dynamic dispatch"})
-        if not blockers and reflection["metadata"].get("return_type") != "Int64":
+        expected_return = "Int64" if canonical_region and canonical_region.operation == "count_equal_u8" else "Nothing"
+        if canonical_region and reflection["metadata"].get("return_type") != expected_return:
             blockers.append({"kind": "type-instability", "reason": f"inferred return type is {reflection['metadata'].get('return_type')}", "required_adapter": "isolate a concretely inferred specialization"})
-        if not blockers and allocation != 0:
+        if canonical_region and allocation != 0:
             blockers.append({"kind": "gc-allocation", "reason": f"sampled steady-state allocation is {allocation} bytes", "required_adapter": "isolate an allocation-free kernel or model GC-visible ownership"})
     version = _command([julia, "--version"])
     project = request.project.resolve()
@@ -271,24 +297,75 @@ def _capture(request: JuliaRegionRequest) -> tuple[LanguageRegionEvidence, str]:
         if path.exists(): config.append({"path": str(path), "sha256": file_sha256(path)})
     artifacts = reflection.get("artifacts", {})
     graph = None
-    if not blockers:
-        graph = count_equal_graph(
-            name=request.function, language="julia", compiler_identity=version, semantic_ir="Julia lowered + inferred typed IR",
-            function_identity=f"{request.module}.{request.function}::{request.signature}",
-            source_provenance={"source": str(source), "source_sha256": file_sha256(source), "module": request.module, "function": request.function, "signature": request.signature},
-            contracts={"operation": "count_equal_u8", "specialization": request.signature, "world": reflection["metadata"].get("world"), "bounds": "@inbounds valid Vector storage", "allocation": "zero steady-state bytes"},
-            excluded_claims=("other generic-function methods or future world states", "GC ownership, tasks, global mutation, ccall, and external effects"),
-        )
+    corroboration = None
+    if canonical_region is not None and reflection["status"] == "pass":
+        typed = Path(reflection["artifacts"]["typed_ir"]).read_text(errors="replace")
+        llvm = Path(reflection["artifacts"]["llvm_ir"]).read_text(errors="replace")
+        corroboration = corroborate_compiler_shape(canonical_region, (typed, llvm))
+        if corroboration["status"] != "pass":
+            blockers.append({
+                "kind": "compiler-shape-mismatch",
+                "reason": f"selected Julia typed/LLVM IR lacks canonical signals: {corroboration['missing_signals']}",
+                "required_adapter": "select the concrete method specialization or add a typed SSA recognizer",
+            })
+    if canonical_region is not None and not blockers:
+        provenance = {"source": str(source), "source_sha256": file_sha256(source), "module": request.module, "function": request.function, "signature": request.signature}
+        if canonical_region.operation == "count_equal_u8":
+            graph = count_equal_graph(
+                name=request.function, language="julia", compiler_identity=version, semantic_ir="Julia lowered + inferred typed IR",
+                function_identity=f"{request.module}.{request.function}::{request.signature}",
+                source_provenance=provenance,
+                contracts={"operation": "count_equal_u8", "canonical_region": canonical_region.to_dict(), "compiler_corroboration": corroboration, "specialization": request.signature, "world": reflection["metadata"].get("world"), "bounds": "@inbounds valid Vector storage", "allocation": "zero steady-state bytes"},
+                excluded_claims=("other generic-function methods or future world states", "GC ownership, tasks, global mutation, ccall, and external effects"),
+            )
+        else:
+            graph = build_canonical_graph(
+                canonical_region,
+                name=request.function,
+                language="julia",
+                compiler_identity=version,
+                semantic_ir="Julia lowered IR + inferred typed SSA + LLVM IR",
+                function_identity=f"{request.module}.{request.function}::{request.signature}",
+                source_provenance=provenance,
+                language_contracts={
+                    "specialization": request.signature,
+                    "world": reflection["metadata"].get("world"),
+                    "effects": reflection["metadata"].get("effects"),
+                    "allocation": "zero steady-state bytes",
+                },
+                compiler_corroboration=corroboration or {},
+                excluded_claims=(
+                    "other generic-function methods or future world states",
+                    "GC ownership, tasks, globals, ccall, and external effects",
+                    "candidate equivalence until a family lowerer and proof unit execute",
+                ),
+            )
     compiler_captured = reflection["status"] == "pass"
-    capabilities = _capabilities(compiler_captured, graph is not None, not blockers, artifacts)
+    executable = bool(canonical_region and canonical_region.operation == "count_equal_u8" and not blockers)
+    capabilities = _capabilities(compiler_captured, graph is not None, not blockers, executable, artifacts)
     status = "supported" if graph is not None and not blockers else "local_graph_only" if compiler_captured else "adapter_required"
+    typed_summary = Path(artifacts["typed_ir"]).read_text(errors="replace") if artifacts.get("typed_ir") else ""
+    llvm_summary = Path(artifacts["llvm_ir"]).read_text(errors="replace") if artifacts.get("llvm_ir") else ""
+    allocation_text = reflection.get("metadata", {}).get("allocated_bytes", "not_measured")
+    allocated_bytes = int(allocation_text) if str(allocation_text).lstrip("-").isdigit() else None
+    compositional_summary = julia_function_summary(
+        f"{request.module}.{request.function}", request.signature, version,
+        typed_summary, llvm_summary,
+        world=str(reflection.get("metadata", {}).get("world", "unknown")),
+        allocated_bytes=allocated_bytes,
+        semantic_graph_hash=graph.graph_hash if graph else "",
+        blockers=tuple(blockers),
+    ).to_dict()
     evidence = LanguageRegionEvidence(
         LANGUAGE_ADAPTER_PROTOCOL_VERSION, JuliaLanguageAdapter.name, "julia", JULIA_SUPPORT_VERSION,
         f"{request.module}.{request.function}::{request.signature}", status, capabilities, graph,
-        {"julia_identity": version, "project": str(project), "configuration": config, "source_sha256": file_sha256(source), "cpu_target": request.cpu_target, **reflection.get("metadata", {})},
+        {"julia_identity": version, "project": str(project), "configuration": config, "source_sha256": file_sha256(source), "cpu_target": request.cpu_target, "canonical_region": canonical_region.to_dict() if canonical_region else None, "compiler_corroboration": corroboration, "compositional_summary": compositional_summary, **reflection.get("metadata", {})},
         tuple(blockers), artifacts,
-        "one concrete inferred Julia method specialization in the captured world and project",
+        "one concrete canonical Julia specialization in the captured world; executable lowering is reported independently",
     )
+    if canonical_region:
+        _write_json(output / "canonical-region.json", canonical_region.to_dict())
+    _write_json(output / "compositional-summary.json", compositional_summary)
     _write_json(output / "julia-support.json", evidence.to_dict())
     return evidence, function
 
@@ -296,12 +373,22 @@ def _capture(request: JuliaRegionRequest) -> tuple[LanguageRegionEvidence, str]:
 def _run_reflection(request: JuliaRegionRequest, output: Path) -> dict[str, Any]:
     script = output / "capture.jl"
     paths = {name: output / name for name in ("lowered.txt", "typed.txt", "llvm.ll", "native.s")}
-    exact_count_signature = request.signature.replace(" ", "") in {"Vector{UInt8},UInt8", "Array{UInt8,1},UInt8"}
+    normalized_signature = request.signature.replace(" ", "")
+    exact_count_signature = normalized_signature in {"Vector{UInt8},UInt8", "Array{UInt8,1},UInt8"}
+    float_transform_signature = normalized_signature in {
+        "Vector{Float32},Vector{Float32}",
+        "Array{Float32,1},Array{Float32,1}",
+    }
     allocation_probe = '''sample = fill(UInt8(1), 1024)
 fun(sample, UInt8(1))
 measure_allocated(f, value) = @allocated f(value, UInt8(1))
 allocated = measure_allocated(fun, sample)
-''' if exact_count_signature else 'allocated = "not_measured"\n'
+''' if exact_count_signature else '''dst = fill(Float32(0), 1024)
+src = fill(Float32(1), 1024)
+fun(dst, src)
+measure_allocated(f, out, input) = @allocated f(out, input)
+allocated = measure_allocated(fun, dst, src)
+''' if float_transform_signature else 'allocated = "not_measured"\n'
     script.write_text(f'''using InteractiveUtils
 module_parts = split({json.dumps(request.module)}, ".")
 mod = Base.require(Main, Symbol(first(module_parts)))
@@ -424,12 +511,9 @@ def _extract_julia_function(text: str, requested: str, line_hint: int | None = N
     raise ValueError(f"unterminated Julia function: {requested}")
 
 
-def _source_blockers(function: str, signature: str) -> list[dict[str, str]]:
+def _source_protocol_blockers(function: str) -> list[dict[str, str]]:
     blockers = []
     def add(kind: str, reason: str, adapter: str) -> None: blockers.append({"kind": kind, "reason": reason, "required_adapter": adapter})
-    normalized = signature.replace(" ", "")
-    if normalized not in {"Vector{UInt8},UInt8", "Array{UInt8,1},UInt8"}:
-        add("specialization-boundary", "J1 requires Vector{UInt8},UInt8", "register the concrete array/layout specialization")
     checks = [
         (r"\b(copy|similar|zeros|ones|push!|append!)\s*\(", "gc-allocation", "GC allocation/ownership protocol"),
         (r"\b(ccall|@ccall|llvmcall)\b", "external-effect", "native/external call contract"),
@@ -440,10 +524,8 @@ def _source_blockers(function: str, signature: str) -> list[dict[str, str]]:
     ]
     for pattern, kind, adapter in checks:
         if re.search(pattern, function): add(kind, f"selected method contains {kind}", adapter)
-    if "for " not in function or "== needle" not in function:
-        add("operation-shape", "J1 recognizes exact byte equality reductions", "register a shared operation and Julia lowering")
     if "@inbounds" not in function:
-        add("bounds-policy", "J1 candidates require an explicit @inbounds contract", "preserve and prove the method's bounds-failure behavior")
+        add("bounds-policy", "canonical Julia regions require an explicit @inbounds contract", "preserve and prove the method's bounds-failure behavior")
     return blockers
 
 
@@ -530,14 +612,14 @@ println(Char(123), Char(34), "metric_ns", Char(34), ":", elapsed/(N*INNER), ",",
 '''
 
 
-def _capabilities(captured: bool, graph: bool, closed: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
+def _capabilities(captured: bool, graph: bool, closed: bool, executable: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
     return {
         "semantic_capture": LanguageCapability(captured, captured, "one concrete Julia method specialization captured without arbitrary invocation", artifacts.get("typed_ir")),
         "information_flow": LanguageCapability(graph, graph, "shared semantic information-flow graph"),
-        "candidate_generation": LanguageCapability(closed, closed, "native Julia exact-reduction schedules"),
-        "local_proof": LanguageCapability(closed, closed, "source-derived Z3 schedule plus fixed-specialization LLVM refinement"),
-        "benchmark": LanguageCapability(closed, closed, "independent warmed Julia processes with one generated harness"),
-        "source_rewrite": LanguageCapability(closed, closed, "native Julia method regeneration; no automatic application"),
+        "candidate_generation": LanguageCapability(executable, executable, "native Julia exact-reduction schedules" if executable else "semantic graph closed; native family lowerer required"),
+        "local_proof": LanguageCapability(executable, executable, "source-derived Z3 schedule plus fixed-specialization LLVM refinement after lowering"),
+        "benchmark": LanguageCapability(executable, executable, "independent warmed Julia processes after lowering"),
+        "source_rewrite": LanguageCapability(executable, executable, "native Julia method regeneration after proof; no automatic application"),
         "protocol_equivalence": LanguageCapability(False, False, "other methods/worlds, GC ownership, tasks, globals, ccall, and external protocols excluded"),
     }
 

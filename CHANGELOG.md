@@ -1,5 +1,53 @@
 # Changelog
 
+## 1.0.0rc16 - 2026-08-05
+
+### Added
+
+- Add language-neutral `EffectFootprint`, `CallRelation`, `FunctionSummary`, and deterministic
+  `SystemFlowGraph` composition across selected C, C++, Rust, Zig, and Julia functions.
+- Add SCC-aware bounded effect fixpoint, Z3 summary-join proofs, and a formal invariant that
+  protocol summaries add zero implementation-candidate dimensions.
+- Add finite protocol envelopes for borrowed views, no-growth append, aggregate results, tagged
+  exits, trivial cleanup, scoped allocation, and versioned publication with fail-closed guards.
+- Add `vladder system closure`, stable system-closure schema, canonical agent-workflow route,
+  grouped boundary dispositions, and direct ingestion of native frontend inspection artifacts.
+- Preserve compiler-attributed declaration-only C/C++ calls as exact call-preserving summaries
+  when LLVM supplies bounded memory, return, callback, synchronization, and unwind facts.
+
+### Validation
+
+- Compose five native frontend artifacts into one proved system graph with no protocol-added search
+  dimensions.
+- Re-audit nine NeuralFusion C++ regions without source writes: two functions close completely and
+  seven remain explicitly partial around allocation, exception, helper, and external protocols.
+
+## Unreleased
+
+- Add a target-aware release-readiness engine and `vladder release check` command spanning source
+  identity, full functionality, proof and quality checks, public-service builds, distribution
+  audits, isolated wheel/sdist installs, and online GitHub/PyPI/Homebrew/service configuration.
+- Close the Homebrew Python resource graph, add macOS formula installation/testing before
+  publication, and fail closed on absent PyPI Trusted Publishers, protected environments, tap
+  credentials, branch protection, or green main CI.
+- Fix Python 3.10 Rust-profile parsing, versioned llvm-mca discovery, and CI provisioning for
+  shader validators and installer smoke tests.
+
+- Add `canonical-bounded-regions-v1`, a compiler-corroborated shared extraction model for exact
+  reductions, pointwise and guarded maps, stencils, scans, recurrences, and constant-stride
+  indirect reads across Rust MIR/LLVM, Zig LLVM, and concrete Julia typed SSA/LLVM.
+- Keep ownership, panic, safety mode, world age, GC, specialization, and ABI facts as typed
+  language bindings on the universal graph; no language-specific information-flow ontology is
+  introduced.
+- Separate semantic capture from executable lowering so newly supported families return
+  `lowerer_required` instead of entering the exact byte-reduction generator.
+- Add scope-specific, installation-local contribution capabilities with hashed server storage,
+  automatic first-use bootstrap, owner-only persistence, and revocation recovery.
+- Add `vladder contribution doctor` to verify both append paths, cross-scope denial, moderation
+  denial, and private-training-read absence without retaining a contribution.
+- Replace anonymous append access with explicit function-level least privilege; no shared or
+  Convex deployment credential is shipped in release artifacts.
+
 ## 1.0.0rc15 - 2026-08-05
 
 - Add Prior v0 immutable experience records, leakage-safe root/project/language/hardware/temporal
@@ -30,9 +78,9 @@
   endpoints. Local optimization does not depend on either service.
 - Add an atomic owner-only consent ledger with independent canonical-training and agent-review
   decisions. Unknown and opted-out scopes fail before network access, opt-out suppresses repeated
-  agent prompts across sessions and upgrades, and workflow summaries expose contribution only as
-  an optional non-executing terminal stage. Exact-record consent and `--confirm-upload` remain
-  required after durable opt-in.
+  agent prompts across sessions and upgrades. Informed training opt-in continuously exports every
+  supported anonymized data form; review opt-in uses a persistent 30-day request cadence and still
+  requires exact-review approval. Canonical prior export is sharded and source-free.
 
 ## 1.0.0rc14 - 2026-08-05
 

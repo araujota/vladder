@@ -7,10 +7,11 @@ import { trainingBundleValidator } from "./trainingValidators";
 
 type AgentReview = Infer<typeof agentReviewValidator>;
 type TrainingBundle = Infer<typeof trainingBundleValidator>;
-type SubmissionKind = "review" | "training";
+type SubmissionKind = "review" | "training" | "credential";
+type CapabilityScope = "review:write" | "training:write";
 
 const MAX_PAYLOAD_BYTES = 128 * 1024;
-const PUBLIC_DAILY_LIMITS: Record<SubmissionKind, number> = { review: 20, training: 10 };
+const PUBLIC_DAILY_LIMITS: Record<SubmissionKind, number> = { review: 20, training: 200, credential: 10 };
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 const http = httpRouter();
@@ -30,13 +31,32 @@ async function sha256(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-function trustedSubmission(request: Request): { trusted: boolean; invalidCredential: boolean } {
+function trustedSubmission(request: Request): boolean {
   const authorization = request.headers.get("authorization");
-  if (authorization === null) {
-    return { trusted: false, invalidCredential: false };
-  }
   const expected = process.env.VLADDER_REVIEW_TOKEN;
-  return { trusted: Boolean(expected) && authorization === `Bearer ${expected}`, invalidCredential: !expected || authorization !== `Bearer ${expected}` };
+  return Boolean(expected) && authorization === `Bearer ${expected}`;
+}
+
+function randomCapability(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return `vc1_${Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+
+async function authorizeSubmission(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0], request: Request, requiredScope: CapabilityScope,
+): Promise<{ allowed: boolean; trusted: boolean; reason: string }> {
+  if (trustedSubmission(request)) return { allowed: true, trusted: true, reason: "trusted_ingestion" };
+  const authorization = request.headers.get("authorization");
+  if (!authorization?.startsWith("Bearer vc1_")) {
+    return { allowed: false, trusted: false, reason: "contributor_credential_required" };
+  }
+  const token = authorization.slice("Bearer ".length);
+  const result = await ctx.runMutation(internal.contributors.authorize, {
+    tokenHash: await sha256(token),
+    requiredScope,
+  });
+  return { allowed: result.allowed, trusted: false, reason: result.reason };
 }
 
 async function consumePublicLimit(ctx: Parameters<Parameters<typeof httpAction>[0]>[0], request: Request, kind: SubmissionKind) {
@@ -116,17 +136,61 @@ http.route({
     service: "vladder-contributions-v1",
     review_schema: "vladder-agent-review-v1",
     training_schema: "vladder-training-bundle-v1",
-    public_submission: true,
+    public_submission: false,
+    capability_submission: true,
+    public_capability_registration: true,
     moderation: "pending_by_default",
   })),
+});
+
+http.route({
+  path: "/api/contributors/register",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const input = await readBoundedJson(request);
+    if (input instanceof Response) return input;
+    const body = input.value;
+    if (typeof body !== "object" || body === null) return jsonResponse({ error: "invalid registration" }, 400);
+    const scope = (body as { scope?: unknown }).scope;
+    const clientVersion = (body as { client_version?: unknown }).client_version;
+    if (scope !== "review:write" && scope !== "training:write") {
+      return jsonResponse({ error: "scope must be review:write or training:write" }, 400);
+    }
+    if (typeof clientVersion !== "string" || clientVersion.length < 1 || clientVersion.length > 80) {
+      return jsonResponse({ error: "client_version must contain 1 to 80 characters" }, 400);
+    }
+    try {
+      const limit = await consumePublicLimit(ctx, request, "credential");
+      if (!limit.allowed) return jsonResponse({ error: "daily capability registration limit exceeded" }, 429);
+      const token = randomCapability();
+      const credentialId = `credential:${crypto.randomUUID()}`;
+      await ctx.runMutation(internal.contributors.issue, {
+        credentialId,
+        tokenHash: await sha256(token),
+        scope,
+        clientVersion,
+      });
+      return jsonResponse({
+        schema_version: "vladder-contributor-capability-v1",
+        credential_id: credentialId,
+        scope,
+        token,
+      }, 201);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "registration failed";
+      return jsonResponse({ error: message.slice(0, 1000) }, message.includes("not configured") ? 503 : 400);
+    }
+  }),
 });
 
 http.route({
   path: "/api/reviews",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const credential = trustedSubmission(request);
-    if (credential.invalidCredential) return jsonResponse({ error: "invalid submission credential" }, 401);
+    const credential = await authorizeSubmission(ctx, request, "review:write");
+    if (!credential.allowed) {
+      return jsonResponse({ error: credential.reason }, credential.reason === "scope_denied" ? 403 : 401);
+    }
     const input = await readBoundedJson(request);
     if (input instanceof Response) return input;
     const review = input.value as AgentReview;
@@ -154,8 +218,10 @@ http.route({
   path: "/api/training",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    const credential = trustedSubmission(request);
-    if (credential.invalidCredential) return jsonResponse({ error: "invalid submission credential" }, 401);
+    const credential = await authorizeSubmission(ctx, request, "training:write");
+    if (!credential.allowed) {
+      return jsonResponse({ error: credential.reason }, credential.reason === "scope_denied" ? 403 : 401);
+    }
     const input = await readBoundedJson(request);
     if (input instanceof Response) return input;
     const bundle = input.value as TrainingBundle;
@@ -210,6 +276,23 @@ http.route({
     }
     await ctx.runMutation(internal.training.setApproval, { submissionId: body.submissionId, approved: body.approved });
     return jsonResponse({ status: "updated" });
+  }),
+});
+
+http.route({
+  path: "/api/contributors/revoke",
+  method: "PATCH",
+  handler: httpAction(async (ctx, request) => {
+    const expected = process.env.VLADDER_REVIEW_ADMIN_TOKEN;
+    if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+      return jsonResponse({ error: "unauthorized" }, 401);
+    }
+    const body = await request.json();
+    if (typeof body !== "object" || body === null || typeof body.credentialId !== "string") {
+      return jsonResponse({ error: "credentialId is required" }, 400);
+    }
+    const revoked = await ctx.runMutation(internal.contributors.revoke, { credentialId: body.credentialId });
+    return jsonResponse({ status: revoked ? "revoked" : "not_found" }, revoked ? 200 : 404);
   }),
 });
 

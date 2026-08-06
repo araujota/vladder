@@ -77,6 +77,18 @@ class DeepGrammarTests(unittest.TestCase):
         self.assertEqual(realization.predicate, "utf8-leading-byte")
         self.assertEqual(realization.realization, "scalar")
 
+    def test_generated_utf8_sources_reclassify_in_every_native_language(self) -> None:
+        contract = DeepKernelContract("exact-byte-predicate-reduction", "utf8-leading-byte")
+        grammar = load_deep_grammar()
+        derivation = next(item for item in search_deep_grammar(contract, grammar).derivations if item.target == "scalar")
+        for language in ("c", "cpp", "rust", "zig", "julia"):
+            with self.subTest(language=language):
+                candidate = emit_deep_candidate(contract, derivation, language, "deep_candidate", grammar)
+                realization = inspect_source_realization(candidate.source, language, candidate.function)
+                self.assertTrue(realization.representable)
+                self.assertEqual(realization.predicate, "utf8-leading-byte")
+                self.assertEqual(realization.realization, "scalar")
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.contract = DeepKernelContract("exact-byte-predicate-reduction", "equal-u8")

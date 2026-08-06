@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import hashlib
 import json
 import os
@@ -21,7 +21,15 @@ from .language_adapter import (
     canonical_hash,
     file_sha256,
 )
+from .canonical_regions import (
+    CanonicalBoundedRegion,
+    CanonicalRegionError,
+    build_canonical_graph,
+    classify_canonical_region,
+    corroborate_compiler_shape,
+)
 from .paired_benchmark import run_paired_benchmark
+from .closure_bindings import rust_function_summary
 from .rust_semantics import (
     RUST_SUPPORT_VERSION,
     MirFunction,
@@ -77,6 +85,7 @@ class RustCaptureContext:
     mir: MirFunction
     all_mir: tuple[MirFunction, ...]
     model: RustKernelModel | None
+    canonical_region: CanonicalBoundedRegion | None
     build_identity: dict[str, Any]
     artifacts: dict[str, str]
     evidence: LanguageRegionEvidence
@@ -131,12 +140,13 @@ def isolate_rust_region(request: RustRegionRequest) -> dict[str, Any]:
     output = request.output_directory.resolve()
     report = {
         "schema_version": "vladder-rust-isolation-v1",
-        "status": "pass" if context.model is not None and not context.effects.blockers else "adapter_required",
+        "status": "pass" if context.evidence.status == "supported" else "adapter_required",
         "support": context.evidence.to_dict(),
         "selected_mir": context.mir.to_dict(),
         "kernel_model": context.model.to_dict() if context.model else None,
+        "canonical_region": context.canonical_region.to_dict() if context.canonical_region else None,
         "proof_readiness": {
-            "mir_semantic_model": context.model is not None,
+            "mir_semantic_model": context.canonical_region is not None,
             "llvm_artifact": "llvm_ir" in context.artifacts,
             "source_regeneration": context.model is not None and not context.effects.blockers,
         },
@@ -152,9 +162,14 @@ def synthesize_rust_region(request: RustRegionRequest) -> dict[str, Any]:
     if context.model is None or context.effects.blockers:
         report = {
             "schema_version": "vladder-rust-synthesis-v1",
-            "status": "adapter_required",
+            "status": "lowerer_required" if context.evidence.status == "supported" else "adapter_required",
             "support": context.evidence.to_dict(),
             "candidate_count": 0,
+            "required_lowerer": (
+                context.canonical_region.executable_grammar
+                if context.canonical_region is not None else None
+            ),
+            "claim_boundary": "semantic capture is closed; executable native candidate lowering is an independent capability",
             "source_changes_performed": False,
         }
         _write_json(output / "rust-synthesis.json", report)
@@ -528,14 +543,59 @@ def _capture_rust_region(request: RustRegionRequest) -> RustCaptureContext:
         proof_bound=request.proof_bound,
     )
     blockers = list(effects.blockers)
-    if model is None:
-        blockers.append({
-            "kind": "semantic-region-shape",
-            "reason": "the source/MIR pair is outside the registered Rust R1 information-flow grammar",
-            "required_adapter": "add an attributed common-graph operation grammar or isolate a supported local region",
-        })
+    canonical_region: CanonicalBoundedRegion | None = None
+    try:
+        canonical_region = classify_canonical_region("rust", function.source, function.signature)
+    except CanonicalRegionError as error:
+        blockers.append(error.to_blocker())
     rustc_identity = canonical_hash({"version": rustc_verbose, "path": str(rustc)})
-    graph = build_semantic_flow_graph(function, model, selected_mir, rustc_identity) if model else None
+    graph = None
+    corroboration = None
+    if canonical_region is not None:
+        llvm_text = Path(artifacts["llvm_ir"]).read_text(errors="replace")
+        corroboration = corroborate_compiler_shape(canonical_region, (selected_mir.body, llvm_text))
+        if corroboration["status"] != "pass":
+            blockers.append({
+                "kind": "compiler-shape-mismatch",
+                "reason": f"selected MIR/LLVM lacks canonical signals: {corroboration['missing_signals']}",
+                "required_adapter": "capture the correct monomorphized instance or add a typed compiler-IR recognizer",
+            })
+        elif model is not None:
+            graph = build_semantic_flow_graph(function, model, selected_mir, rustc_identity)
+            graph = replace(
+                graph,
+                contracts={
+                    **graph.contracts,
+                    "canonical_region": canonical_region.to_dict(),
+                    "compiler_corroboration": corroboration,
+                },
+                graph_hash="",
+            )
+        else:
+            graph = build_canonical_graph(
+                canonical_region,
+                name=request.function,
+                language="rust",
+                compiler_identity=rustc_identity,
+                semantic_ir="rustc MIR + LLVM IR",
+                function_identity=f"{source}:{request.function}",
+                source_provenance={
+                    "source": str(source), "source_sha256": file_sha256(source),
+                    "function": request.function, "mir_sha256": selected_mir.sha256,
+                },
+                language_contracts={
+                    "ownership": [parameter.ownership for parameter in function.parameters],
+                    "panic_strategy": profile_settings["panic"],
+                    "overflow_checks": overflow_checks,
+                    "monomorphic": effects.monomorphic,
+                },
+                compiler_corroboration=corroboration,
+                excluded_claims=(
+                    "unsafe and custom Drop behavior",
+                    "async, atomics, FFI, allocation, and external effects",
+                    "candidate equivalence until a family lowerer and proof unit execute",
+                ),
+            )
     build_identity = {
         "manifest_path": str(manifest),
         "manifest_sha256": file_sha256(manifest),
@@ -569,8 +629,19 @@ def _capture_rust_region(request: RustRegionRequest) -> RustCaptureContext:
         "source_sha256": file_sha256(source),
         "function_sha256": function.function_sha256,
         "artifact_hashes": {name: file_sha256(Path(path)) for name, path in artifacts.items() if name != "source"},
+        "canonical_region": canonical_region.to_dict() if canonical_region else None,
+        "compiler_corroboration": corroboration,
     }
-    capabilities = _rust_capabilities(bool(graph), not blockers, artifacts)
+    compositional_summary = rust_function_summary(
+        function,
+        effects,
+        rustc_identity,
+        semantic_graph_hash=graph.graph_hash if graph else "",
+        blockers=tuple(blockers),
+    ).to_dict()
+    build_identity["compositional_summary"] = compositional_summary
+    executable = model is not None and not blockers
+    capabilities = _rust_capabilities(bool(graph), not blockers, executable, artifacts)
     status = "supported" if graph is not None and not blockers else "local_graph_only" if graph is not None else "adapter_required"
     evidence = LanguageRegionEvidence(
         LANGUAGE_ADAPTER_PROTOCOL_VERSION,
@@ -589,22 +660,25 @@ def _capture_rust_region(request: RustRegionRequest) -> RustCaptureContext:
     _write_json(output / "rust-support.json", evidence.to_dict())
     _write_json(output / "rust-effects.json", effects.to_dict())
     _write_json(output / "rust-build.json", build_identity)
+    _write_json(output / "compositional-summary.json", compositional_summary)
     _write_json(output / "selected-mir.json", selected_mir.to_dict())
+    if canonical_region:
+        _write_json(output / "canonical-region.json", canonical_region.to_dict())
     if graph:
         _write_json(output / "rust-flow.json", graph.to_dict())
-    return RustCaptureContext(request, function, effects, selected_mir, all_mir, model, build_identity, artifacts, evidence)
+    return RustCaptureContext(request, function, effects, selected_mir, all_mir, model, canonical_region, build_identity, artifacts, evidence)
 
 
-def _rust_capabilities(graph: bool, closed: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
+def _rust_capabilities(graph: bool, closed: bool, executable: bool, artifacts: dict[str, str]) -> dict[str, LanguageCapability]:
     return {
         "semantic_capture": LanguageCapability(True, True, "source, Cargo, MIR, LLVM IR, and assembly captured", artifacts.get("mir")),
-        "closure": LanguageCapability(True, closed, "R1 effect and operation closure" if closed else "one or more semantic adapters remain"),
-        "candidate_generation": LanguageCapability(graph and closed, False, "available through rust synthesize when closed"),
-        "semantic_proof": LanguageCapability(graph and closed, False, "bounded MIR-derived Z3 proof per candidate"),
-        "backend_refinement": LanguageCapability(graph and closed, False, "fixed-bound LLVM refinement through Alive2"),
-        "differential_execution": LanguageCapability(graph and closed, False, "generated adversarial Rust harness"),
-        "physical_benchmark": LanguageCapability(graph and closed, False, "same-executable paired process benchmark"),
-        "source_rewrite": LanguageCapability(graph and closed, False, "native Rust candidate source and patch; never auto-applied"),
+        "closure": LanguageCapability(True, closed, "canonical bounded effect and operation closure" if closed else "one or more semantic adapters remain"),
+        "candidate_generation": LanguageCapability(executable, False, "exact reduction lowerer available" if executable else "semantic graph closed; native family lowerer required"),
+        "semantic_proof": LanguageCapability(executable, False, "bounded MIR-derived Z3 proof per lowered candidate"),
+        "backend_refinement": LanguageCapability(executable, False, "fixed-bound LLVM refinement through Alive2"),
+        "differential_execution": LanguageCapability(executable, False, "generated adversarial Rust harness after lowering"),
+        "physical_benchmark": LanguageCapability(executable, False, "same-executable paired process benchmark after lowering"),
+        "source_rewrite": LanguageCapability(executable, False, "native Rust candidate source and patch after proof; never auto-applied"),
         "protocol_equivalence": LanguageCapability(False, False, "unsafe, Drop, async, concurrency, FFI, and external protocols are excluded"),
     }
 
@@ -660,7 +734,10 @@ def _select_emitted(directory: Path, crate_stem: str, suffix: str) -> Path:
 
 
 def _profile_settings(manifest: Path, workspace_root: Path, profile: str) -> dict[str, Any]:
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:  # pragma: no cover - Python 3.10
+        import tomli as tomllib
 
     values: dict[str, Any] = {}
     roots = [workspace_root / "Cargo.toml", manifest]

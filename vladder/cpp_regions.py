@@ -21,6 +21,7 @@ from .cpp_semantics import (
     source_semantics,
 )
 from .cpp_closure import aggregate_closure_capabilities, classify_cpp_closure, materialize_cpp_closure
+from .closure_bindings import cpp_function_summary
 from .region_closure import build_region_closure_graph, prove_region_closure
 from .extractor import ExtractedFunction, extract_function
 from .report import write_json
@@ -782,6 +783,17 @@ def inspect_cpp_region(
             compiler_identity=str(production_ir["compiler_version"]),
             function_name=str(node.get("name") or function),
         )
+        compositional_summary = cpp_function_summary(
+            str(node.get("mangledName") or node.get("name") or function),
+            str(production_ir["compiler_version"]),
+            effects,
+            semantic_graph_hash=str(region_closure["graph_hash"]),
+            semantic_capture="closed" if region_closure["status"] == "closed_local_region" else "partial",
+            residual_boundaries=tuple(
+                {"kind": name, "reason": f"remaining production protocol: {name}", "required_adapter": "finite protocol contract or call-preserving boundary"}
+                for name in region_closure.get("remaining_protocols", [])
+            ),
+        ).to_dict()
         report.update({
             "typed_abi": abi,
             "compiled_effects": effects,
@@ -791,22 +803,26 @@ def inspect_cpp_region(
             "region_closure_proof": region_closure_proof,
             "subregions": subregions,
             "information_flow": information_flow,
+            "compositional_summary": compositional_summary,
         })
         effects_path = out_dir / "compiled-effects.json"
         abi_path = out_dir / "typed-abi.json"
         subregions_path = out_dir / "subregions.json"
         information_flow_path = out_dir / "cpp-information-flow.json"
         region_closure_path = out_dir / "region-closure.json"
+        compositional_summary_path = out_dir / "compositional-summary.json"
         write_json(effects_path, effects)
         write_json(abi_path, abi)
         write_json(subregions_path, {"schema_version": "vladder-cpp-subregions-v1", "regions": subregions})
         write_json(information_flow_path, information_flow)
         write_json(region_closure_path, region_closure)
+        write_json(compositional_summary_path, compositional_summary)
         report["artifacts"].update({
             "compiled_effects": str(effects_path), "typed_abi": str(abi_path), "subregions": str(subregions_path),
             "information_flow": str(information_flow_path),
             "region_closure": str(region_closure_path),
             "region_closure_proof": str(out_dir / "region-closure-proof" / "region-closure-proof.json"),
+            "compositional_summary": str(compositional_summary_path),
         })
 
         kernel_source: str | None = None

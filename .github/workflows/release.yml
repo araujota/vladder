@@ -7,8 +7,51 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  readiness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: |
+            apps/release-site/package-lock.json
+            services/review-backend/package-lock.json
+      - name: Install native tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils clang glslang-tools llvm spirv-tools z3
+      - name: Install Zig and Julia adapter toolchains
+        run: |
+          scripts/bootstrap_language_toolchains.sh --prefix "${RUNNER_TEMP}/vladder-language-tools"
+          echo "${RUNNER_TEMP}/vladder-language-tools/bin" >> "${GITHUB_PATH}"
+      - run: python -m pip install --upgrade pip '.[dev]'
+      - run: npm ci --prefix apps/release-site
+      - run: npm ci --prefix services/review-backend
+      - run: npm install --global @fission-ai/openspec@1.7.0
+      - name: Formal release-readiness gate
+        run: >-
+          python scripts/release_readiness.py --execute --online
+          --require-target formal_release --out build/release-readiness.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: release-readiness
+          path: build/release-readiness.json
+          if-no-files-found: error
+
   build:
+    needs: readiness
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.identity.outputs.version }}
@@ -23,7 +66,7 @@ jobs:
       - name: Install native test tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y binutils clang llvm z3
+          sudo apt-get install -y binutils clang glslang-tools llvm spirv-tools z3
       - name: Install Zig and Julia adapter toolchains
         run: |
           scripts/bootstrap_language_toolchains.sh --prefix "${RUNNER_TEMP}/vladder-language-tools"
@@ -74,8 +117,38 @@ jobs:
           path: release/
           if-no-files-found: error
 
-  github-release:
+  homebrew-verify:
     needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-distributions
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-extras
+          path: release
+      - name: Audit formula structure
+        run: brew audit --strict --formula release/vladder.rb
+      - name: Install formula from the exact local release source
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          source_path="$(pwd)/dist/vladder-${VERSION}.tar.gz"
+          python3 - "${source_path}" release/vladder.rb release/vladder.rb <<'PY'
+          from pathlib import Path
+          import sys
+          source, original, output = sys.argv[1:]
+          text = Path(original).read_text()
+          lines = text.splitlines()
+          lines[next(i for i, line in enumerate(lines) if line.strip().startswith('url '))] = f'  url "file://{source}"'
+          Path(output).write_text("\n".join(lines) + "\n")
+          PY
+          brew install --build-from-source --formula ./release/vladder.rb
+          brew test vladder
+  github-release:
+    needs: [build, homebrew-verify]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -100,9 +173,11 @@ jobs:
             --verify-tag --generate-notes --title "vLadder ${VERSION}" "${flags[@]}"
 
   pypi:
-    needs: build
+    needs: [build, github-release, homebrew-verify]
     runs-on: ubuntu-24.04
-    environment: pypi
+    environment:
+      name: pypi
+      url: https://pypi.org/p/vladder
     permissions:
       id-token: write
     steps:
@@ -110,12 +185,13 @@ jobs:
         with:
           name: python-distributions
           path: dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Publish distributions to PyPI with OIDC
+        uses: pypa/gh-action-pypi-publish@release/v1
 
   homebrew:
     if: ${{ vars.HOMEBREW_TAP_REPOSITORY != '' }}
-    needs: [build, github-release]
-    runs-on: ubuntu-24.04
+    needs: [build, github-release, homebrew-verify]
+    runs-on: macos-15
     environment: homebrew
     steps:
       - uses: actions/download-artifact@v4
@@ -128,6 +204,7 @@ jobs:
           TAP_REPOSITORY: ${{ vars.HOMEBREW_TAP_REPOSITORY }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
+          brew audit --strict --online --formula release/vladder.rb
           gh repo clone "${TAP_REPOSITORY}" tap
           mkdir -p tap/Formula
           cp release/vladder.rb tap/Formula/vladder.rb

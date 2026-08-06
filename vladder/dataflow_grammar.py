@@ -95,6 +95,18 @@ class BoundedDataflowGrammar:
         for family in sorted(self.sources):
             family_rules = [item for item in self.rules if item.family == family]
             terminals = self.family_terminals(family)
+            lowering_classes = {
+                "cpp": {terminal: "native_physical" for terminal in terminals},
+            }
+            for language in ("c", "zig", "julia"):
+                lowering_classes[language] = {
+                    terminal: (
+                        "native_semantic"
+                        if self.terminals[terminal].get("isa") == "scalar"
+                        else "semantic_scalar_fallback"
+                    )
+                    for terminal in terminals
+                }
             families.append({
                 "family": family,
                 "source": self.sources[family],
@@ -106,6 +118,11 @@ class BoundedDataflowGrammar:
                     language: "vladder.dataflow_multilang:emit_dataflow_native"
                     for language in ("c", "cpp", "zig", "julia")
                 },
+                "native_lowering_classes": lowering_classes,
+                "physical_distinction_policy": (
+                    "native_physical still requires source/assembly deduplication; "
+                    "native_semantic and semantic_scalar_fallback are not distinct physical claims"
+                ),
                 "proof_generator": "vladder.dataflow_proof:prove_dataflow_candidate",
                 "differential_runner": "vladder.dataflow_lowering:run_dataflow_differential",
             })
