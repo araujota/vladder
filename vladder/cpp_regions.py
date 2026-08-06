@@ -28,7 +28,7 @@ from .report import write_json
 from .toolchain import compiler_version, discover_toolchain, run
 
 
-CPP_SUPPORT_VERSION = "bounded-cpp-regions-v6"
+CPP_SUPPORT_VERSION = "bounded-cpp-regions-v8"
 
 
 @dataclass(frozen=True)
@@ -567,6 +567,12 @@ def _effect_adapters(
         adapters.append(CppAdapterRequirement(
             "exception-adapter", "compiled target can unwind or contains explicit exception behavior",
             "a no-unwind local region or modeled exception contract", "exception and destructor protocol adapter",
+        ))
+    if effects.get("global_stores"):
+        adapters.append(CppAdapterRequirement(
+            "state-projection-adapter", "the selected call graph writes global or static state",
+            "an explicit authoritative-state projection and publication contract",
+            "state transition and invalidation adapter",
         ))
     if source["explicit_allocation"] or effects["allocation_calls"] or effects["deallocation_calls"]:
         adapters.append(CppAdapterRequirement(

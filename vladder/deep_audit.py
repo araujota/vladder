@@ -14,6 +14,7 @@ from .deep_grammar import load_deep_grammar, search_deep_grammar
 from .deep_ir import DeepKernelContract, build_deep_realization_graph, inspect_source_realization
 from .deep_lowering import emit_deep_candidate
 from .deep_proof import prove_deep_candidate
+from .structured_dataflow import classify_structured_dataflow
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -303,6 +304,7 @@ def audit_neuralfusion_evidence_readonly(
     }
     for path in files:
         payload = json.loads(path.read_text())
+        structured = classify_structured_dataflow(path)
         nodes = payload.get("nodes", []) if isinstance(payload, dict) else []
         mapped = [mappings.get(str(node.get("kind")), "Control") for node in nodes if isinstance(node, dict)]
         instruction_counts: dict[str, int] = {}
@@ -320,7 +322,15 @@ def audit_neuralfusion_evidence_readonly(
             "instruction_counts": instruction_counts,
             "semantic_boundary_representable": bool(nodes),
             "deep_byte_predicate_archetype_detected": False,
-            "deep_local_optimization_status": "requires_local_archetype_extraction" if nodes else "representation_failure",
+            "structured_archetypes": structured["archetypes"],
+            "structured_archetype_count": structured["archetype_count"],
+            "structured_lowering_route": structured["lowering_route"],
+            "candidate_generation_eligibility": structured["candidate_generation_eligibility"],
+            "deep_local_optimization_status": (
+                "executable_local" if structured["candidate_generation_eligibility"] == "executable_local"
+                else "structured_plan_identified" if structured["archetype_count"] else
+                "representation_failure"
+            ),
             "external_or_unwind_boundary": bool(invariants.get("remaining_external_calls") or invariants.get("unwind")),
             "claim": "read-only representability audit; no candidate generation, proof, benchmark, or source change",
         })
@@ -335,10 +345,12 @@ def audit_neuralfusion_evidence_readonly(
         "evidence_root": str(evidence_root.resolve()),
         "artifact_count": len(files),
         "semantic_boundaries_representable": sum(item["semantic_boundary_representable"] for item in regions),
-        "deep_archetypes_detected": sum(item["deep_byte_predicate_archetype_detected"] for item in regions),
+        "deep_archetypes_detected": sum(bool(item["structured_archetype_count"]) for item in regions),
+        "structured_archetype_instances": sum(item["structured_archetype_count"] for item in regions),
+        "executable_local_regions": sum(item["candidate_generation_eligibility"] == "executable_local" for item in regions),
         "regions": regions,
         "limitations": [
-            "existing C++ evidence is boundary-level and does not contain byte-predicate reduction semantics",
+            "structured archetype recognition does not imply an executable whole-wrapper lowerer",
             "this audit intentionally does not rerun extraction, synthesis, project builds, or physical workflows",
             "absence of a deep-v2 archetype does not block lifetime, protocol, or other shared grammar analyses",
         ],

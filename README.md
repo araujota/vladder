@@ -30,8 +30,8 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc16`, the C++ closure matrix is
-`bounded-cpp-regions-v6`; it retains the
+The package version is `1.0.0rc18`, the C++ closure matrix is
+`bounded-cpp-regions-v8`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
 `bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
 `canonical-bounded-regions-v1`, which compiler-corroborates exact predicate reductions,
@@ -58,7 +58,7 @@ typed obligations, effects, protocol transitions, and claim boundaries. The C fr
 the same authoritative v2 graph to every admitted legacy `FlowGraph`; legacy classification
 fields remain compatibility views.
 
-The v6 `RegionClosureGraph` additionally represents noncanonical first-order C ABIs, ordered
+The v8 C++ `RegionClosureGraph` additionally represents noncanonical first-order C ABIs, ordered
 aggregate-result projections, ordinary multi-exit CFGs, definition-visible helper summaries, and
 guarded no-growth trivial container writes. These close local representation boundaries; they do
 not make reallocation, nontrivial destruction, exceptions, indirect calls, or external ownership
@@ -66,13 +66,41 @@ generic. A modeled C ABI with no executable family is reported as `grammar-adapt
 misreported as an ABI failure.
 
 Results expose independent capture, isolation, candidate-generation, local-proof, benchmark,
-source-rewrite, and protocol-equivalence capabilities. v6 can materialize whole local functions
+source-rewrite, and protocol-equivalence capabilities. v8 can materialize whole local functions
 and eligible nested loops as proof units, and can emit bounded source schedule candidates for the
 latter. It still requires a workload adapter before ranking a noncanonical C++ candidate. Alive2
 can prove local LLVM rewrites; it does not prove RAII, allocation, object invariants, exception,
 concurrency, Vulkan/OpenUSD, callback, or other owning protocols. These categorical protocol
 limits do not block independently closed subregions or the attribution, lifetime, placement, and
 contract-bounded parts of vLadder.
+
+rc17 closes the grammar-limitation incident classes that can be represented from available source,
+IR, and public contracts without claiming arbitrary C++ or proprietary runtime equivalence:
+
+- typed SPIR-V capture for logical operations, unsigned division/remainder, dot and matrix
+  operations, image accesses, and cooperative matrices, with explicit validity and numeric
+  obligations;
+- SCC-safe C++ effect composition, parametric library/runtime summaries, exceptional cleanup
+  traces, named member projections, and atomic/volatile ordering descriptors;
+- a domain-neutral finite-resource protocol DSL for publication, queues, partial socket outcomes,
+  and device ownership while preserving opaque external calls;
+- structured dataflow recognition for sparse updates, parse/materialize flows, retained caches,
+  stable partition/scatter, state coalescing, and realization lifetime, with an explicit route to
+  local lowering, protocol proof, or agent realization;
+- bounded content-addressed artifact names with full identities retained in manifests.
+
+Capture is not proof. A parsed shader may still require numeric, divisor-validity, descriptor,
+output-oracle, and device-timestamp evidence. A recognized owning C++ archetype remains
+adapter-required unless a bounded executable region or finite protocol closes its observables.
+
+rc18 extends semantic closure across translation units. `vladder build index` binds production
+compilation commands, sources, object definitions, and object references. `vladder build closure`
+materializes persistent LLVM summaries only for a bounded caller/callee slice, upgrades uniquely
+resolved project helpers from opaque calls to definition edges, derives an ownership closure graph,
+and emits Z3 obligations for definition identity, provenance, effect composition, ownership
+disposition, and zero added search dimensions. Multiple weak/COMDAT bodies, arbitrary callbacks,
+and external authorities remain explicit boundaries. See
+[Cross-TU Semantic Closure](docs/cross-tu-semantic-closure.md).
 
 rc6 adds a manifest-driven agent workflow and closes several application-promotion gaps:
 
@@ -328,10 +356,10 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc16` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc18` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc16'
+python3 -m pip install --pre 'vladder==1.0.0rc18'
 vladder doctor
 ```
 
@@ -644,7 +672,7 @@ proves predicted local units but still performs no optimization, benchmark, or s
 Inspect `closure.disposition`, each independent `closure.capabilities` entry, categorical
 `protocol_scopes`, `compiled-effects.json`, `typed-abi.json`, `subregions.json`,
 `cpp-information-flow.json`, `region-closure.json`, `region-closure-proof.json`, and
-`proof-envelope.json`. `bounded-cpp-regions-v6` can emit whole
+`proof-envelope.json`. `bounded-cpp-regions-v8` can emit whole
 local-function proof units and source-preserving lambda capsules for eligible loops inside owning
 C++ methods. Ordinary early-return loops use a whole-function CFG boundary so return semantics are
 not changed by lambda extraction. Guarded no-growth trivial vector regions and call-preserving

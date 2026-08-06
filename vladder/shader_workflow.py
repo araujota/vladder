@@ -13,6 +13,7 @@ from typing import Any
 import yaml
 
 from .statistics_v3 import empirical_quantile
+from .spirv_semantics import write_spirv_semantic_evidence
 
 
 SPIRV_RECIPES: dict[str, list[str]] = {
@@ -29,6 +30,9 @@ SPIRV_RECIPES: dict[str, list[str]] = {
         "--simplify-instructions",
         "--compact-ids",
     ],
+    "strength-reduction": ["--strength-reduction", "--simplify-instructions", "--cfg-cleanup"],
+    "vector-cleanup": ["--vector-dce", "--redundancy-elimination", "--simplify-instructions"],
+    "performance": ["-O"],
     "size": ["-Os"],
 }
 
@@ -74,6 +78,7 @@ def inspect_shader(source: Path, output_directory: Path, *, target_env: str = "v
     disassembly = output_directory / "baseline.spvasm"
     _run([_tool("spirv-dis"), str(module), "-o", str(disassembly)])
     text = disassembly.read_text(errors="replace")
+    semantics = write_spirv_semantic_evidence(text, output_directory / "semantic-evidence")
     entries = re.findall(r'OpEntryPoint\s+GLCompute\s+%\w+\s+"([^"]+)"', text)
     local_sizes = [list(map(int, match)) for match in re.findall(r"OpExecutionMode\s+%\w+\s+LocalSize\s+(\d+)\s+(\d+)\s+(\d+)", text)]
     report = {
@@ -92,6 +97,13 @@ def inspect_shader(source: Path, output_directory: Path, *, target_env: str = "v
         "compile_command": compile_command,
         "validation": {"status": "pass", "stdout": validation.stdout, "stderr": validation.stderr},
         "proof_classification": "structurally_valid_spirv",
+        "semantic_capture": {
+            "status": "complete" if semantics["proof"]["status"] == "PASS" else "invalid",
+            "operation_families": semantics["report"]["operation_families"],
+            "eligibility": semantics["report"]["eligibility"],
+            "unresolved_obligation_count": semantics["report"]["unresolved_obligation_count"],
+            "artifacts": semantics["artifacts"],
+        },
         "semantic_equivalence": "NOT_ESTABLISHED",
         "next_action": "synthesize bounded SPIR-V candidates, then provide an application output and device-timestamp runner",
     }

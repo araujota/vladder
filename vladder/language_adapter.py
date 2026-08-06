@@ -48,6 +48,7 @@ SEMANTIC_NODE_KINDS = frozenset({
     "Control",
     "Call",
     "Panic",
+    "Cleanup",
     "Materialize",
     "Transfer",
     "LifetimeBoundary",

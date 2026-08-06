@@ -47,6 +47,13 @@ resource declarations, unsupported operations, and source/module/disassembly has
 SPIR-V local sizes are fixed. Literal GLSL workgroup sizes may be regenerated. PTX `.maxntid`
 permits bounded launch-only geometry changes; `.reqntid` does not.
 
+Typed SPIR-V capture additionally records scalar/vector logical operations, unsigned quotient and
+remainder validity domains, dot and matrix numeric policy, image descriptor/sampler state, and
+cooperative-matrix capability/shape obligations. `unsupported_operations: []` means the opcode
+vocabulary closed; it does not discharge those contracts. Bind `preserve_spirv_validity_domain`,
+`numeric_policy`, `image_descriptor_contract`, and `cooperative_matrix_contract` as applicable,
+then provide an exact output runner. `gpu verify` remains `INCOMPLETE` for unbound obligations.
+
 ## Architecture-Aware Search
 
 `vladder gpu probe` queries the CUDA driver for device UUID, architecture, warp and SM limits,

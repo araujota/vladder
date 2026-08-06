@@ -60,7 +60,7 @@ class LoweringEngineTests(unittest.TestCase):
         coverage = validate_lowering_registry(self.registry)
         declared = sum(len(family["rules"]) for family in self.registry.families)
         self.assertEqual(coverage["status"], "pass")
-        self.assertEqual(coverage["family_count"], 15)
+        self.assertEqual(coverage["family_count"], 18)
         self.assertEqual(coverage["rule_count"], declared)
         self.assertEqual(coverage["plan_coverage"], declared)
 
@@ -78,7 +78,7 @@ class LoweringEngineTests(unittest.TestCase):
                 self.assertEqual(first.plan.rule, rule)
                 self.assertEqual(len(first.plan.operations), 4)
                 seen.add((str(family["id"]), str(rule)))
-        self.assertEqual(len(seen), 89)
+        self.assertEqual(len(seen), 104)
 
     def test_missing_contract_facts_reject_before_lowering(self) -> None:
         result = self.engine.lower(
@@ -146,7 +146,7 @@ class LoweringEngineTests(unittest.TestCase):
         with redirect_stdout(output):
             status = main(["lower", "validate"])
         self.assertEqual(status, 0)
-        self.assertEqual(json.loads(output.getvalue())["plan_coverage"], 89)
+        self.assertEqual(json.loads(output.getvalue())["plan_coverage"], 104)
 
         output = io.StringIO()
         with redirect_stdout(output):

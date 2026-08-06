@@ -62,10 +62,14 @@ class PublicReleaseContractTests(unittest.TestCase):
             {
                 "agent-review",
                 "benchmark-result",
+                "cross-tu-closure",
                 "promotion-summary",
+                "resource-protocol",
                 "semantic-flow",
+                "spirv-semantics",
                 "system-closure",
                 "training-bundle",
+                "whole-build-index",
             },
         )
         self.assertTrue(all(item["stability"] == "stable" for item in report["artifacts"].values()))

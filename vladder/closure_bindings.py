@@ -154,6 +154,7 @@ def cpp_function_summary(
     calls = []
     internal = effects.get("internal_call_summaries", {})
     declared = effects.get("declared_call_summaries", {})
+    protocols = effects.get("protocol_call_summaries", {})
     external = set(effects.get("external_calls", []))
     for index, target in enumerate(effects.get("remaining_direct_calls", [])):
         if target in declared and target not in external:
@@ -186,6 +187,30 @@ def cpp_function_summary(
                     "native_construct": target,
                     "body_sha256": summary.get("function_body_sha256"),
                     "next_action": "inline the helper or prove a functional relation before crossing the call",
+                },
+            ))
+        elif target in protocols and target not in external:
+            summary = protocols[target]
+            calls.append(CallRelation(
+                f"{identity}.call.{index}", identity, (), "protocol", target,
+                EffectFootprint(
+                    tuple(summary.get("reads", ())),
+                    tuple(summary.get("writes", ())),
+                    tuple(summary.get("flags", ())),
+                    False,
+                ),
+                authority=str(summary.get("authority", "language/library-contract")),
+                crossing=str(summary.get("crossing", "call-preserving-only")),
+                protocol=str(summary.get("id", "language-library-protocol")),
+                provenance={
+                    "language": "cpp",
+                    "native_construct": target,
+                    "protocol": summary.get("id"),
+                    "semantic_class": summary.get("semantic_class"),
+                    "summary_sha256": summary.get("summary_sha256"),
+                    "normal_postcondition": summary.get("normal_postcondition"),
+                    "exceptional_postcondition": summary.get("exceptional_postcondition"),
+                    "next_action": "retain the protocol call or prove a functional relation before crossing it",
                 },
             ))
         else:

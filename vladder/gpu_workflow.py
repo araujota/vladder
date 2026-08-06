@@ -54,6 +54,13 @@ def gpu_support_matrix() -> dict[str, Any]:
             "ptx": "operational",
             "cuda": "operational" if tools["nvcc"] else "nvcc_required_use_ptx_capture",
         },
+        "typed_spirv_semantics": {
+            "logical": "operational",
+            "unsigned_division_remainder": "operational_with_validity_domain",
+            "dot_matrix": "operational_with_numeric_policy",
+            "image": "operational_with_descriptor_contract",
+            "cooperative_matrix": "operational_with_capability_shape_and_numeric_contract",
+        },
         "executable_grammars": {
             "cuda-pointwise-schedule-v1": "operational" if tools["nvcc"] else "nvcc_required",
             "glsl-workgroup-source-rewrite": "operational" if tools["glslangValidator"] else "glslang_required",
@@ -206,19 +213,38 @@ def verify_gpu_workflow(manifest_path: Path, output_directory: Path) -> dict[str
     protocols = _protocols_from_manifest(raw, manifest_path, output_directory / "protocols")
     kernel_complete = not capture.unsupported_operations
     protocols_pass = all(item.status == "PASS" for item in protocols)
-    exact_contract = bool(raw.get("contract", {}).get("exact_observables", False))
+    contract = raw.get("contract", {})
+    exact_contract = bool(contract.get("exact_observables", False))
+    semantic_obligations = list(
+        capture.graph.contracts.get("dialect_facts", {}).get("semantic_obligations", ())
+    )
+    bindings = {
+        "validity-domain": bool(contract.get("preserve_spirv_validity_domain", False)),
+        "numeric-policy": bool(contract.get("numeric_policy")),
+        "external-descriptor-contract": bool(contract.get("image_descriptor_contract", False)),
+        "capability": bool(contract.get("cooperative_matrix_contract", False)),
+    }
+    unresolved_semantics = [
+        item for item in semantic_obligations
+        if item.get("status") == "FAIL"
+        or (item.get("status") == "CONTRACT_REQUIRED" and not bindings.get(str(item.get("kind")), False))
+    ]
+    semantic_contract_complete = not unresolved_semantics
     report = {
         "schema_version": GPU_WORKFLOW_SCHEMA_VERSION,
         "action": "verify",
-        "status": "PASS" if kernel_complete and protocols_pass and exact_contract else "INCOMPLETE",
+        "status": "PASS" if kernel_complete and protocols_pass and exact_contract and semantic_contract_complete else "INCOMPLETE",
         "kernel_capture_complete": kernel_complete,
         "unsupported_operations": list(capture.unsupported_operations),
         "protocols": [item.to_dict() for item in protocols],
         "architecture_hash": architecture.manifest_hash,
         "exact_observable_contract": exact_contract,
-        "proof_classification": "bounded_kernel_capture_and_device_protocol_proof" if kernel_complete and protocols_pass else "partial_heterogeneous_evidence",
+        "semantic_contract_complete": semantic_contract_complete,
+        "semantic_contract_bindings": bindings,
+        "unresolved_semantic_obligations": unresolved_semantics,
+        "proof_classification": "bounded_kernel_capture_and_device_protocol_proof" if kernel_complete and protocols_pass and semantic_contract_complete else "partial_heterogeneous_evidence",
         "excluded_claims": ["final machine scheduling", "driver correctness", "physical performance", "undeclared device loss and external actors"],
-        "next_action": "run exact output differential and clean physical ranking" if kernel_complete and protocols_pass and exact_contract else "resolve incomplete capture, protocol, or observable contract",
+        "next_action": "run exact output differential and clean physical ranking" if kernel_complete and protocols_pass and exact_contract and semantic_contract_complete else "resolve incomplete capture, protocol, numeric/validity, descriptor, or observable contract",
     }
     _write_report(output_directory, report)
     return report

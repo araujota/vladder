@@ -7,6 +7,12 @@ import json
 import re
 from typing import Any, Iterable
 
+from .cpp_protocols import (
+    classify_cpp_call,
+    exceptional_cfg_summary,
+    memory_order_summary,
+    object_state_projection,
+)
 from .language_adapter import (
     ProtocolTransition,
     SemanticEffect,
@@ -280,12 +286,32 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
     unresolved = set(remaining) - set(allocation_calls) - set(deallocation_calls)
     internal_calls: dict[str, dict[str, Any]] = {}
     declared_calls: dict[str, dict[str, Any]] = {}
+    protocol_calls: dict[str, dict[str, Any]] = {}
+    recursive_calls: list[str] = []
     nested_external: set[str] = set()
     nested_allocations: set[str] = set()
     nested_deallocations: set[str] = set()
     nested_unwind = False
     nested_sync = False
+    nested_volatile = False
+    nested_global_stores = 0
     for target in sorted(unresolved):
+        if target in seen:
+            recursive_calls.append(target)
+            recursive_body, recursive_signature = _extract_function(module_text, target)
+            recursive_attrs = _attribute_group(module_text, recursive_signature)
+            recursive_memory = re.search(
+                r"\bmemory\(([^)]*)\)", recursive_signature + " " + recursive_attrs
+            )
+            internal_calls[target] = {
+                "local_effects": True,
+                "recursive_edge": True,
+                "nounwind": bool(re.search(r"\bnounwind\b", recursive_signature + " " + recursive_attrs)),
+                "memory_effect": recursive_memory.group(1) if recursive_memory else "unknown",
+                "function_body_sha256": hashlib.sha256(recursive_body.encode()).hexdigest(),
+                "instruction_counts": {},
+            }
+            continue
         try:
             nested = analyze_ir_effects(module_text, target, seen)
         except ValueError:
@@ -293,7 +319,19 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
             if declared and declared["closed_call_preserving_effects"]:
                 declared_calls[target] = declared
             else:
-                nested_external.add(target)
+                protocol = classify_cpp_call(target)
+                if protocol is not None:
+                    protocol_calls[target] = protocol.to_dict()
+                    nested_allocations.update(
+                        [target] if "allocate" in protocol.flags else []
+                    )
+                    nested_deallocations.update(
+                        [target] if "deallocate" in protocol.flags else []
+                    )
+                    nested_unwind = nested_unwind or "unwind" in protocol.flags
+                    nested_sync = nested_sync or "synchronize" in protocol.flags
+                else:
+                    nested_external.add(target)
             continue
         internal_calls[target] = {
             "local_effects": nested["local_effects"],
@@ -301,23 +339,28 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
             "memory_effect": nested["memory_effect"],
             "function_body_sha256": nested["function_body_sha256"],
             "instruction_counts": nested["instruction_counts"],
+            "external_calls": nested["external_calls"],
+            "allocation_calls": nested["allocation_calls"],
+            "deallocation_calls": nested["deallocation_calls"],
+            "unwind_operations": nested["unwind_operations"],
+            "synchronization_operations": nested["synchronization_operations"],
+            "volatile_operations": nested["volatile_operations"],
+            "global_stores": nested["global_stores"],
         }
-        if not nested["local_effects"]:
-            # A definition-visible helper is not automatically harmless. Preserve a
-            # conservative boundary marker when its transitive effects exceed the
-            # local proof envelope, even if its own callees were all resolved.
-            nested_external.add(target)
         nested_external.update(nested["external_calls"])
         nested_allocations.update(nested["allocation_calls"])
         nested_deallocations.update(nested["deallocation_calls"])
         nested_unwind = nested_unwind or nested["unwind_operations"] or not nested["nounwind"]
         nested_sync = nested_sync or nested["synchronization_operations"]
+        nested_volatile = nested_volatile or nested["volatile_operations"]
+        nested_global_stores += int(nested["global_stores"])
     allocation_calls = sorted(set(allocation_calls) | nested_allocations)
     deallocation_calls = sorted(set(deallocation_calls) | nested_deallocations)
     external_calls = sorted(nested_external)
-    global_stores = len(re.findall(r"\bstore\b[^\n]*,\s+ptr\s+@[-A-Za-z$._0-9]+", body))
+    global_stores = len(re.findall(r"\bstore\b[^\n]*,\s+ptr\s+@[-A-Za-z$._0-9]+", body)) + nested_global_stores
     unwind = unwind or nested_unwind
     synchronization = synchronization or nested_sync
+    volatile = volatile or nested_volatile
     local = (
         nounwind and not unwind and not allocation_calls and not deallocation_calls and not synchronization
         and not volatile and not external_calls and indirect_calls + indirect_invokes == 0 and global_stores == 0
@@ -336,6 +379,8 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
         "remaining_direct_calls": remaining,
         "internal_call_summaries": internal_calls,
         "declared_call_summaries": declared_calls,
+        "protocol_call_summaries": protocol_calls,
+        "recursive_calls": sorted(recursive_calls),
         "external_calls": external_calls,
         "allocation_calls": allocation_calls,
         "deallocation_calls": deallocation_calls,
@@ -345,6 +390,9 @@ def analyze_ir_effects(module_text: str, symbol: str, _seen: frozenset[str] = fr
         "volatile_operations": volatile,
         "global_stores": global_stores,
         "function_body_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
+        "exceptional_cfg": exceptional_cfg_summary(body),
+        "memory_order": memory_order_summary(body),
+        "object_state_projection": object_state_projection(body, signature),
         "aggregate_operations": {
             "extractvalue": len(re.findall(r"\bextractvalue\b", body)),
             "insertvalue": len(re.findall(r"\binsertvalue\b", body)),
@@ -370,9 +418,14 @@ def source_semantics(node: dict[str, Any], function_source: str) -> dict[str, An
     kinds = {str(item.get("kind")) for item in nodes}
     calls: list[str] = []
     constructors: list[str] = []
+    member_fields: list[dict[str, str]] = []
     for item in nodes:
         if item.get("kind") in {"CXXConstructExpr", "CXXTemporaryObjectExpr"}:
             constructors.append(normalize_type(str(item.get("type", {}).get("qualType", "unknown"))))
+        if item.get("kind") == "MemberExpr":
+            value_type = normalize_type(str(item.get("type", {}).get("qualType", "unknown")))
+            if value_type != "<bound member function type>" and item.get("name"):
+                member_fields.append({"name": str(item["name"]), "type": value_type})
         if item.get("kind") in {"CallExpr", "CXXMemberCallExpr", "CXXOperatorCallExpr"}:
             names: list[str] = []
             for child in walk_ast(item):
@@ -394,6 +447,10 @@ def source_semantics(node: dict[str, Any], function_source: str) -> dict[str, An
         "explicit_throw": explicit_throw,
         "explicit_allocation": explicit_allocation,
         "object_state": "CXXThisExpr" in kinds,
+        "member_fields": [
+            {"name": name, "type": value_type}
+            for name, value_type in sorted({(item["name"], item["type"]) for item in member_fields})
+        ],
         "memory_order_syntax": memory_order,
         "runtime_control": runtime_control,
         "return_count": sum(kind == "ReturnStmt" for kind in (item.get("kind") for item in nodes)),

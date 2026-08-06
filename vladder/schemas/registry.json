@@ -2,6 +2,12 @@
   "schema_version": "vladder-schema-registry-v1",
   "compatibility_policy": "Within a schema major version, producers may add optional fields but may not remove required fields, change required field types, or change enum meaning. Incompatible changes require a new schema ID and file.",
   "artifacts": {
+    "cross-tu-closure": {
+      "artifact_schema_version": "vladder-cross-tu-closure-v1",
+      "file": "cross-tu-closure-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder build closure"
+    },
     "agent-review": {
       "artifact_schema_version": "vladder-agent-review-v1",
       "file": "agent-review-v1.schema.json",
@@ -20,6 +26,12 @@
       "stability": "stable",
       "producer": "vladder workflow run"
     },
+    "resource-protocol": {
+      "artifact_schema_version": "vladder-finite-resource-protocol-v1",
+      "file": "resource-protocol-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder protocol verify"
+    },
     "semantic-flow": {
       "artifact_schema_version": "semantic-flow-v2",
       "file": "semantic-flow-v2.schema.json",
@@ -32,11 +44,23 @@
       "stability": "stable",
       "producer": "vladder system closure"
     },
+    "spirv-semantics": {
+      "artifact_schema_version": "vladder-spirv-semantics-v2",
+      "file": "spirv-semantics-v2.schema.json",
+      "stability": "stable",
+      "producer": "vladder shader inspect or gpu capture"
+    },
     "training-bundle": {
       "artifact_schema_version": "vladder-training-bundle-v1",
       "file": "training-bundle-v1.schema.json",
       "stability": "stable",
       "producer": "vladder training template"
+    },
+    "whole-build-index": {
+      "artifact_schema_version": "vladder-whole-build-index-v1",
+      "file": "whole-build-index-v1.schema.json",
+      "stability": "stable",
+      "producer": "vladder build index"
     }
   }
 }

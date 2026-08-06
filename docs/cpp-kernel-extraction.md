@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`bounded-cpp-regions-v6` expands C++ coverage without claiming arbitrary C++ equivalence. It
+`bounded-cpp-regions-v8` expands C++ coverage without claiming arbitrary C++ equivalence. It
 distinguishes three jobs that were previously conflated:
 
 1. capture the production translation unit, concrete definition, ABI, and compiled effects;
@@ -12,6 +12,11 @@ distinguishes three jobs that were previously conflated:
 
 The frontend therefore may accept a function for automatic decomposition while correctly refusing
 to optimize or rewrite it.
+
+Direct project calls outside the selected translation unit use the separate
+`vladder build closure` workflow. It combines compilation commands, object definition/reference
+identity, and demand-driven LLVM summaries. It does not infer linker identity from AST lookup
+alone and does not import the whole build into candidate search.
 
 ## Research Basis
 

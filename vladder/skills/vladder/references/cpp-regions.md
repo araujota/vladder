@@ -16,6 +16,11 @@ vladder cpp audit --manifest cpp-regions.yaml --materialize-isolation --out-dir 
 vladder cpp adapter --report vladder-cpp-inspect/cpp-support.json --out-dir vladder-cpp-adapter
 ```
 
+If an otherwise relevant call is defined in another project translation unit, do not immediately
+write an adapter. Use `vladder build closure` as described in
+[cross-tu-closure.md](cross-tu-closure.md). It can turn uniquely resolved build helpers into
+hash-bound compositional edges while keeping implementation search local.
+
 Add `--symbol _Z...` for overloads and concrete template specializations. Add
 `--command-index N` when one source has multiple build configurations. Never choose either by
 guessing; inspect `candidate_symbols` and the compilation database. Materialized audit may compile
@@ -30,12 +35,17 @@ and prove local units, but it performs no optimization, ranking, or source chang
 - aggregate references and compiler-lowered aggregate results;
 - callable boundaries as explicit external contracts.
 
-`bounded-cpp-regions-v6` adds one shared `RegionClosureGraph` over these source bindings:
+`bounded-cpp-regions-v8` adds one shared `RegionClosureGraph` over these source bindings:
 
 - aggregate results become ordered register or `sret` live-out projections;
 - ordinary local returns become tagged CFG exits and are scheduled at whole-function scope;
 - definition-visible local helpers become exact call-preserving or inlined relations;
 - guarded no-growth appends of trivial values become borrowed output projections.
+- recursive definition-visible helpers retain transitive effects without becoming opaque external
+  I/O, while known container, C-library, exception-runtime, synchronization, and math calls receive
+  parametric call-preserving summaries;
+- exceptional CFG cleanup traces, named member projections, and atomic/volatile ordering facts are
+  represented even when the whole wrapper remains protocol-bound.
 
 Read `region-closure.json` and `region-closure-proof/region-closure-proof.json`. Z3 closure of an
 exit selector, aggregate projection, or capacity inequality does not prove a transformed function;

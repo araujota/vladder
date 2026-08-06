@@ -19,7 +19,7 @@ If the command is unavailable or reports another version, tell the user that the
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc16'
+python3 -m pip install --pre 'vladder==1.0.0rc18'
 vladder doctor --strict
 ```
 
@@ -27,9 +27,9 @@ Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or t
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc16`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc18`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v6`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
+`bounded-cpp-regions-v8`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
 `heterogeneous-execution-v1`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
@@ -50,12 +50,20 @@ When a hot path crosses functions, read [system-closure.md](references/system-cl
 native inspection reports with `vladder system closure` before generating candidates. Protocol
 envelopes constrain legality and add zero candidate dimensions; arbitrary callbacks and undeclared
 third-party APIs remain local boundaries while closed components continue.
+For cross-TU C++ helpers, read [cross-tu-closure.md](references/cross-tu-closure.md) and run
+`vladder build closure`; it adds bounded build summaries, ownership, and Z3, not search dimensions.
 Read [canonical-regions.md](references/canonical-regions.md) for the shared Rust/Zig/Julia
 seven-family extraction model and the semantic-capture versus executable-lowering decision.
 For C/C++, inspect `region-closure.json` before requesting an adapter. It distinguishes a missing
 grammar from an unmodeled ABI and records aggregate projections, tagged exits, local helper
 relations, and no-growth ownership projections. Treat `closed_at_compiled_abi` as representation
 closure, not proof of a future candidate or an owning wrapper.
+
+Read [incident-closure.md](references/incident-closure.md) for recursive helpers, RAII cleanup,
+member/global state, atomic publication, structured owning dataflow, image sampling, or cooperative
+matrices. Do not promote typed SPIR-V capture with unresolved numeric, validity, descriptor, or
+capability obligations. Do not describe a recognized structured archetype as generated code unless
+its route is `executable_local`.
 
 The optional learned search prior is subordinate to this workflow. Read
 [learned-prior.md](references/learned-prior.md) before using `vladder prior`. It ranks structured,
@@ -424,6 +432,9 @@ behavior.
 For application regions, use `vladder benchmark paired` and require exact observable hashes.
 Before reporting composed effects, use `vladder benchmark compose`; parent/child or otherwise
 overlapping regions cannot be compounded without an explicit interaction measurement.
+
+For public resources, run `vladder protocol template --kind queue` and `protocol verify`; never add
+external implementation internals to local candidate search.
 
 For GPU compute and device-resident flow, read [gpu-workflow.md](references/gpu-workflow.md) and
 start with `vladder gpu support`, `vladder gpu probe`, and `vladder gpu topology`. Use

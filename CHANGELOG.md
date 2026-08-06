@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.0.0rc18 - 2026-08-06
+
+### Added
+
+- Add deterministic `WholeBuildIndex` over production compilation commands and object
+  definitions/references.
+- Add persistent, demand-driven `CrossTUSummaryDatabase`, bounded
+  `BidirectionalProgramSlice`, `OwnershipClosureGraph`, and `SummaryCompositionProof` APIs.
+- Add `vladder build index|closure`, public artifact schemas, Z3 provenance/effect/ownership
+  obligations, and an agent-facing cross-TU closure recipe.
+
+### Validation
+
+- Verify multi-translation-unit downstream helpers, upstream callers, explicit external
+  boundaries, proof composition, and source read-only behavior in automated fixtures.
+- Index all 841 NeuralFusion compilation units read-only and close a formerly opaque OpenUSD to
+  Scene-IR validation edge through two independently compiled translation units.
+
+## 1.0.0rc17 - 2026-08-06
+
+### Added
+
+- Add typed SPIR-V semantics for logical, unsigned quotient/remainder, dot, matrix, image, and
+  cooperative-matrix operations with validity and numerical contract gates.
+- Add transitive C++ effect composition, parametric library protocols, exceptional cleanup traces,
+  member-state projection, and atomic/volatile ordering descriptors.
+- Add a finite resource protocol DSL and publication, queue, socket, and device templates.
+- Add structured stateful-dataflow recognition and explicit executable/protocol/agent lowerer
+  routing, plus bounded content-addressed artifact identities.
+
+### Validation
+
+- Capture all 74 NeuralFusion shaders without unsupported opcodes and without repository writes;
+  retain 263 numeric, validity, descriptor, or capability obligations as explicit contract gates.
+- Re-audit all 69 NeuralFusion C++ implementations and structured evidence without source writes.
+- Recognize structured non-byte dataflow in 68 of 69 implementation artifacts without labeling
+  adapter-required owning wrappers as executable candidates.
+
 ## 1.0.0rc16 - 2026-08-05
 
 ### Added

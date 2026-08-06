@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc16"
+__version__ = "1.0.0rc18"
 
 from .api import (
     AgentWorkflowRequest,
@@ -45,7 +45,18 @@ from .device_protocol import DeviceProtocolEvidence, verify_device_protocol
 from .device_topology import probe_device_topology, probe_drm_presentation, probe_vulkan_capabilities
 from .semantic_closure import CallRelation, EffectFootprint, FunctionSummary, compose_system_graph, prove_system_graph
 from .protocol_envelopes import ProtocolEnvelope, protocol_registry, validate_protocol_application
+from .resource_protocol import protocol_template, verify_resource_protocol
+from .spirv_semantics import analyze_spirv_semantics, parse_spirv_instructions
+from .structured_dataflow import classify_structured_dataflow
 from .system_closure import run_system_closure
+from .whole_build import (
+    BidirectionalProgramSlice,
+    CrossTUSummaryDatabase,
+    OwnershipClosureGraph,
+    SummaryCompositionProof,
+    WholeBuildIndex,
+    run_cross_tu_closure,
+)
 
 __all__ = [
     "BenchmarkPolicy",
@@ -74,6 +85,11 @@ __all__ = [
     "EffectFootprint",
     "CallRelation",
     "FunctionSummary",
+    "WholeBuildIndex",
+    "CrossTUSummaryDatabase",
+    "BidirectionalProgramSlice",
+    "OwnershipClosureGraph",
+    "SummaryCompositionProof",
     "ProtocolEnvelope",
     "LoweringEngine",
     "LoweringMode",
@@ -128,4 +144,10 @@ __all__ = [
     "protocol_registry",
     "validate_protocol_application",
     "run_system_closure",
+    "run_cross_tu_closure",
+    "protocol_template",
+    "verify_resource_protocol",
+    "analyze_spirv_semantics",
+    "parse_spirv_instructions",
+    "classify_structured_dataflow",
 ]

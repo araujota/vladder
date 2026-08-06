@@ -158,6 +158,21 @@ def _helper_summaries(effects: dict[str, Any]) -> list[dict[str, Any]]:
             "summary_sha256": summary.get("summary_sha256"),
             "cross_call_rewrite": "requires_functional_summary; compiler attributes prove effects only",
         })
+    for symbol, summary in sorted(effects.get("protocol_call_summaries", {}).items()):
+        summaries.append({
+            "symbol": symbol,
+            "mode": "language_protocol_call_preserving",
+            "local_effects": True,
+            "nounwind": "unwind" not in summary.get("flags", ()),
+            "memory_effect": "protocol-described",
+            "body_sha256": None,
+            "summary_sha256": summary.get("summary_sha256"),
+            "semantic_class": summary.get("semantic_class"),
+            "protocol": summary.get("id"),
+            "normal_postcondition": summary.get("normal_postcondition"),
+            "exceptional_postcondition": summary.get("exceptional_postcondition"),
+            "cross_call_rewrite": "requires_functional_summary; protocol proves call-preserving effects only",
+        })
     return summaries
 
 
@@ -240,21 +255,96 @@ def build_region_closure_graph(
         "function_body_sha256": effects.get("function_body_sha256"),
     })
 
+    exceptional_cfg = effects.get("exceptional_cfg", {})
+    if exceptional_cfg.get("invokes") or exceptional_cfg.get("cleanup_blocks"):
+        add_node(
+            "exception.outcome", "ExitMerge", "normal-exception-terminate-outcome",
+            ("region",), "outcome+committed-state+cleanup-trace", exceptional_cfg,
+        )
+        for index, cleanup in enumerate(exceptional_cfg.get("cleanup_blocks", [])):
+            add_node(
+                f"cleanup.{index}", "Cleanup", "ordered-raii-cleanup",
+                ("exception.outcome",), "cleanup-trace", cleanup,
+            )
+        obligations.append(obligation(
+            "region.exceptional.trace", "cleanup",
+            "normal, exceptional, terminate, committed-state, and cleanup-order observables are preserved",
+            scope="selected-build-exception-cfg",
+            proof_method="llvm-exception-cfg-binding-and-bounded-trace-verification",
+            language=language,
+            native_construct="invoke/landingpad/cleanup/resume/terminate",
+        ))
+
+    object_projection = (
+        effects.get("object_state_projection", {}) if source.get("object_state") else {}
+    )
+    if object_projection.get("projections"):
+        object_projection = {
+            **object_projection,
+            "source_member_fields": list(source.get("member_fields", ())),
+            "field_binding": "Clang member identity plus selected-build LLVM GEP projection",
+        }
+        add_node(
+            "object.old", "StateRead", "this-object-field-projection", tuple(input_ids),
+            "old-object-state", object_projection,
+        )
+        add_node(
+            "object.new", "StateWrite", "this-object-old-new-relation", ("object.old", "region"),
+            "new-object-state", object_projection,
+        )
+        obligations.append(obligation(
+            "region.object.projection", "state",
+            "listed object fields or offsets carry the declared old/new relation and unlisted storage is preserved",
+            scope="selected-build-object-layout",
+            proof_method="clang-layout-and-llvm-gep-binding",
+            language=language,
+            native_construct="this/getelementptr/load/store",
+        ))
+
+    memory_order = effects.get("memory_order", {})
+    if memory_order.get("atomic_operations"):
+        add_node(
+            "memory.order", "Control", "atomic-happens-before-projection",
+            ("region",), "atomic-trace", memory_order,
+        )
+        obligations.append(obligation(
+            "region.atomic.trace", "concurrency",
+            "atomic modification order, synchronization scope, and acquire/release happens-before edges are preserved",
+            scope="selected-build-c++-memory-model",
+            proof_method="finite-resource-protocol-plus-C++-memory-order-contract",
+            language=language, native_construct="atomicrmw/cmpxchg/fence/atomic load-store",
+        ))
+    if memory_order.get("volatile_operations"):
+        add_node(
+            "volatile.order", "Control", "volatile-observation-trace",
+            ("region",), "volatile-trace", memory_order,
+        )
+        obligations.append(obligation(
+            "region.volatile.trace", "external-effect",
+            "volatile accesses remain observable in source-required order and cardinality",
+            scope="selected-build-abstract-machine",
+            proof_method="call-preserving-trace-differential",
+            language=language, native_construct="volatile load/store",
+        ))
+
     for index, helper in enumerate(helpers):
         add_node(f"helper.{index}", "HelperSummary", helper["mode"], ("region",), "helper-relation", helper)
         inlined = helper["mode"] == "inlined_into_selected_ir"
         attributed = helper["mode"] == "compiler_attributed_call_preserving"
+        protocol = helper["mode"] == "language_protocol_call_preserving"
         item = obligation(
             f"region.helper.{index}.binding", "validation",
             (
                 "the helper is represented by the enclosing selected-function LLVM body"
                 if inlined else "call-preserving transformations retain the exact compiler-attributed declaration"
-                if attributed else "call-preserving transformations retain the exact definition-visible helper relation"
+                if attributed else "call-preserving transformations retain the exact language/library protocol relation"
+                if protocol else "call-preserving transformations retain the exact definition-visible helper relation"
             ),
             scope="selected-build",
             proof_method=(
                 "enclosing-ir-hash-binding" if inlined else
                 "compiler-declaration-attribute-binding" if attributed else
+                "language-protocol-summary-hash-binding" if protocol else
                 "definition-hash-and-call-graph-binding"
             ),
             language=language, native_construct=helper["symbol"], facts={"body_sha256": helper.get("body_sha256")},
@@ -321,6 +411,7 @@ def build_region_closure_graph(
         effects.get("external_calls") or effects.get("indirect_calls") or effects.get("unwind_operations")
         or effects.get("synchronization_operations") or effects.get("volatile_operations")
     )
+    global_state_boundary = bool(effects.get("global_stores"))
     ownership_boundary = bool(effects.get("allocation_calls") or effects.get("deallocation_calls"))
     classes = {
         "abi": "closed" if abi.get("modeled") else "requires_adapter",
@@ -332,6 +423,8 @@ def build_region_closure_graph(
             else "not_applicable"
         ),
         "ownership": "closed_no_growth_projection" if no_growth_regions else "requires_adapter" if ownership_boundary else "not_applicable",
+        "exceptional_cfg": "represented_call_preserving" if exceptional_cfg.get("invokes") else "not_applicable",
+        "object_state": "closed_at_offset_projection" if object_projection.get("projections") else "not_applicable",
     }
     graph = SemanticFlowGraph(
         function, language, compiler_identity, "bounded-region-closure-v1", function_identity,
@@ -346,14 +439,14 @@ def build_region_closure_graph(
     executable_modes = sorted({str(item.get("closure_mode")) for item in subregions if item.get("extractable_candidate")})
     result = {
         "schema_version": REGION_CLOSURE_SCHEMA,
-        "status": "closed_local_region" if abi.get("modeled") and not external_boundary and not ownership_boundary else "partial_closure",
+        "status": "closed_local_region" if abi.get("modeled") and not external_boundary and not ownership_boundary and not global_state_boundary else "partial_closure",
         "classes": classes,
         "aggregate_fields": aggregate_fields,
         "helper_summaries": helpers,
         "multi_exit_regions": [item.get("id") for item in multi_exit_regions] or (["whole-function"] if has_multiple_returns else []),
         "no_growth_regions": [item.get("id") for item in no_growth_regions],
         "executable_modes": executable_modes,
-        "ir_transform_ready": bool(abi.get("modeled")) and not external_boundary and not ownership_boundary,
+        "ir_transform_ready": bool(abi.get("modeled")) and not external_boundary and not ownership_boundary and not global_state_boundary,
         "source_transform_ready": bool(executable_modes),
         "remaining_protocols": [
             name for present, name in (
@@ -361,6 +454,7 @@ def build_region_closure_graph(
                 (ownership_boundary, "owning_allocation_or_retirement"),
                 (bool(effects.get("external_calls") or effects.get("indirect_calls")), "external_or_indirect_call"),
                 (bool(effects.get("synchronization_operations") or effects.get("volatile_operations")), "concurrency_or_volatile"),
+                (global_state_boundary, "global_or_static_state_transition"),
             ) if present
         ],
         "semantic_graph": graph.to_dict(),

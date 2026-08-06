@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/spirv-semantics-v2.schema.json",
+  "title": "vLadder typed SPIR-V semantic evidence",
+  "type": "object",
+  "required": ["schema_version", "instruction_count", "operation_families", "operations", "obligations", "eligibility", "proof_boundary"],
+  "properties": {
+    "schema_version": {"const": "vladder-spirv-semantics-v2"},
+    "instruction_count": {"type": "integer", "minimum": 0},
+    "operation_families": {"type": "object"},
+    "operations": {"type": "array"},
+    "obligations": {"type": "array"},
+    "eligibility": {"type": "object"},
+    "proof_boundary": {"type": "string"}
+  },
+  "additionalProperties": true
+}

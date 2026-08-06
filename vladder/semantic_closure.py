@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
+from .artifact_identity import bounded_artifact_path
+
 from .language_adapter import canonical_hash
 
 
@@ -397,10 +399,11 @@ def prove_system_graph(graph: dict[str, Any], output_directory: Path) -> dict[st
         width = len(bits)
         solver.add(z3.BitVecVal(actual, width) != z3.BitVecVal(expected, width))
         result = solver.check()
-        artifact = output_directory / f"{identifier.replace('/', '_').replace(':', '_')}.smt2"
+        artifact = bounded_artifact_path(output_directory, "summary-join", identifier, ".smt2")
         artifact.write_text(solver.to_smt2())
         obligations.append({
             "id": f"summary-join:{identifier}",
+            "full_identity": identifier,
             "status": "PASS" if result == z3.unsat else "FAIL",
             "method": "Z3 finite effect-lattice equality",
             "artifact": str(artifact),

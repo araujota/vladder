@@ -373,3 +373,39 @@ class BoundedVariableOutputDataflowLowerer(DeclarativeFamilyLowerer):
         "aos-multi-reduction": "project fields from trivial records and fuse compound predicates and multiple reductions into one traversal",
         "quantized-block-4x4": "derive deterministic endpoints, palette indices, and a packed fixed-tile realization under an explicit quality class",
     }
+
+
+class TypedSpirvCoreLowerer(DeclarativeFamilyLowerer):
+    family_id = "typed-spirv-core"
+    region_kind = "typed-device-kernel"
+    rules = {
+        "logical-canonicalization": "preserve scalar/vector boolean shape while selecting an equivalent predicate realization",
+        "quotient-remainder-strength-reduction": "replace unsigned division or remainder only under a proved nonzero invariant divisor domain",
+        "dot-matrix-fusion": "fuse compatible vector or matrix consumers under an explicit contraction and IEEE policy",
+        "image-access-reuse": "reuse an image access only under an identical descriptor, coordinate, LOD, format, and bounds contract",
+        "cooperative-matrix-realization": "select a capability-, shape-, layout-, scope-, and numeric-policy-compatible realization",
+    }
+
+
+class FiniteResourceProtocolLowerer(DeclarativeFamilyLowerer):
+    family_id = "finite-resource-protocol"
+    region_kind = "finite-resource-state-machine"
+    rules = {
+        "publication": "bind private, published, and retired generations to atomic publication and safe retirement",
+        "queue": "bind reserve, publish, consume, and retire transitions with explicit happens-before edges",
+        "socket": "bind ownership, partial completion, retry, errno, and terminal outcomes while preserving the syscall boundary",
+        "device": "bind host ownership, submission, visibility, completion, and retirement while preserving driver calls",
+    }
+
+
+class StructuredStatefulDataflowLowerer(DeclarativeFamilyLowerer):
+    family_id = "structured-stateful-dataflow"
+    region_kind = "structured-owning-dataflow"
+    rules = {
+        "structured-traversal-fusion": "project structured fields and fuse compatible traversals without inventing ownership semantics",
+        "sparse-indexed-update": "bind gather, validation, state update, and exact bounded output observables",
+        "parse-validate-materialize": "bind parse, validation, tagged failure, and final materialization stages",
+        "retained-cache-patch": "bind lookup, conditional patch, version publication, and retirement",
+        "stable-partition-prefix-scatter": "bind predicate, stable partition or scan, scatter, and exact extent",
+        "state-transition-coalescing": "bind bounded old/new state and latest-value coalescing to a finite protocol",
+    }

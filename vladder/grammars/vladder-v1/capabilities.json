@@ -314,6 +314,53 @@
         "aos-multi-reduction": "vladder.dataflow_lowering:emit_dataflow_cpp",
         "quantized-block-4x4": "vladder.dataflow_lowering:emit_dataflow_cpp"
       }
+    },
+    {
+      "id": "typed-spirv-core",
+      "title": "Typed SPIR-V kernel semantics and contract-gated realization",
+      "status": "experimental",
+      "concerns": ["boolean vectors", "unsigned quotient and remainder", "dot and matrix algebra", "image descriptors", "cooperative matrices"],
+      "rules": ["logical-canonicalization", "quotient-remainder-strength-reduction", "dot-matrix-fusion", "image-access-reuse", "cooperative-matrix-realization"],
+      "contract_facts": ["SPIR-V validity domain", "numeric contraction policy", "descriptor and sampler state", "cooperative capability and shape", "device output oracle"],
+      "proof_strategies": ["typed SPIR-V semantic descriptors", "Z3 validity obligations", "spirv-val", "exact device-output differential", "same-device timestamp ranking"],
+      "cost_signals": ["device timestamps", "memory transactions", "instruction count", "occupancy", "barrier count"],
+      "lowerer": "vladder.lowerers:TypedSpirvCoreLowerer",
+      "source_routes": {
+        "logical-canonicalization": "vladder.shader_workflow:synthesize_shader",
+        "quotient-remainder-strength-reduction": "vladder.shader_workflow:synthesize_shader",
+        "dot-matrix-fusion": "vladder.shader_workflow:synthesize_shader",
+        "image-access-reuse": "vladder.shader_workflow:synthesize_shader",
+        "cooperative-matrix-realization": "vladder.shader_workflow:synthesize_shader"
+      }
+    },
+    {
+      "id": "finite-resource-protocol",
+      "title": "Finite external resource and publication protocols",
+      "status": "operational",
+      "concerns": ["resource ownership", "publication", "rollback", "retirement", "happens-before", "external call preservation"],
+      "rules": ["publication", "queue", "socket", "device"],
+      "contract_facts": ["finite states", "typed transitions", "atomic publication", "failure outcomes", "safe retirement", "external implementation boundary"],
+      "proof_strategies": ["finite-state reachability", "Z3 structural obligations", "stateful differential traces", "application protocol runner"],
+      "cost_signals": ["synchronization count", "queue delay", "resource residency", "retry count", "retirement latency"],
+      "lowerer": "vladder.lowerers:FiniteResourceProtocolLowerer",
+      "source_routes": {
+        "publication": "vladder.resource_protocol:verify_resource_protocol",
+        "queue": "vladder.resource_protocol:verify_resource_protocol",
+        "socket": "vladder.resource_protocol:verify_resource_protocol",
+        "device": "vladder.resource_protocol:verify_resource_protocol"
+      }
+    },
+    {
+      "id": "structured-stateful-dataflow",
+      "title": "Structured owning and stateful dataflow recognition",
+      "status": "modeled",
+      "concerns": ["structured traversals", "sparse updates", "parse and materialize", "retained caches", "stable scatter", "state coalescing"],
+      "rules": ["structured-traversal-fusion", "sparse-indexed-update", "parse-validate-materialize", "retained-cache-patch", "stable-partition-prefix-scatter", "state-transition-coalescing"],
+      "contract_facts": ["field projections", "exact failure observables", "capacity", "old/new state", "publication", "ownership and cleanup"],
+      "proof_strategies": ["archetype evidence", "bounded local extraction", "finite-resource protocol", "stateful differential testing", "agent realization contract"],
+      "cost_signals": ["traversal count", "temporary bytes", "allocation count", "selected density", "publication cost", "critical-path share"],
+      "lowerer": "vladder.lowerers:StructuredStatefulDataflowLowerer",
+      "source_routes": {}
     }
   ]
 }

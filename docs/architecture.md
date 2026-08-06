@@ -1,5 +1,14 @@
 # vLadder Architecture
 
+## Grammar Incident Closure Plane (rc17)
+
+Typed SPIR-V operations, C++ exceptional/member/memory-order semantics, finite external-resource
+protocols, and structured owning-dataflow archetypes all lower into the existing
+`SemanticFlowGraph v2`; rc17 does not create language- or API-specific semantic ontologies.
+Protocol states constrain legal transformations and are verified separately from local expression
+search. Structured recognition routes to executable local lowering, finite protocol proof, or an
+explicit agent realization contract. Proprietary runtime internals remain physical boundaries.
+
 ## Agent Evidence Plane (rc6)
 
 `AgentWorkflow` is the default control plane above the existing optimization hierarchy. One
@@ -194,7 +203,7 @@ state ownership, layouts, quantization blocks, resource pressure, or token/seque
 
 ## Bounded C++ Closure Frontend
 
-`bounded-cpp-regions-v6` treats semantic capture, local closure, proof, candidate generation,
+`bounded-cpp-regions-v8` treats semantic capture, local closure, proof, candidate generation,
 benchmarking, source realization, and protocol equivalence as separate facts.
 It selects a concrete definition with Clang and the production compilation database, preserves
 source-level ownership and exception hazards, and recursively summarizes definition-visible LLVM
@@ -220,6 +229,17 @@ candidate source without applying it. The capability vector distinguishes predic
 evidence. Categorical protocol scopes name exception/destructor, ownership, concurrency, and
 external API claims that local IR cannot generically close, while preserving local optimization,
 hardware attribution, lifetime/placement search, and explicit domain-adapter workflows.
+
+## Cross-Translation-Unit Closure
+
+`WholeBuildIndex` joins compilation-database identity with object definitions and references.
+`CrossTUSummaryDatabase` emits and caches LLVM summaries only for demanded functions.
+`BidirectionalProgramSlice` expands bounded caller and callee neighborhoods,
+`OwnershipClosureGraph` projects resource relations, and `SummaryCompositionProof` checks
+definition identity, provenance, effects, ownership disposition, and zero added candidate
+dimensions. This closes ordinary out-of-line project helpers while retaining ambiguous ODR bodies,
+callbacks, third-party implementations, syscalls, and driver/runtime behavior as explicit
+boundaries.
 
 ## Search
 

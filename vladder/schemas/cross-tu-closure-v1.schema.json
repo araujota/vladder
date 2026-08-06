@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/cross-tu-closure-v1.schema.json",
+  "title": "vLadder Cross Translation Unit Closure v1",
+  "type": "object",
+  "required": ["schema_version", "status", "index", "slice", "ownership", "proof", "candidate_dimensions_added", "source_changes_performed"],
+  "properties": {
+    "schema_version": {"const": "vladder-cross-tu-closure-v1"},
+    "status": {"enum": ["pass", "proof_failed"]},
+    "index": {"type": "object"},
+    "slice": {"type": "object"},
+    "ownership": {"type": "object"},
+    "proof": {"type": "object"},
+    "candidate_dimensions_added": {"const": 0},
+    "source_changes_performed": {"const": false}
+  },
+  "additionalProperties": true
+}

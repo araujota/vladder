@@ -91,7 +91,9 @@ from .prior_workflow import (
     split_prior_dataset, train_prior, validate_prior_dataset,
 )
 from .state_protocol import verify_state_protocol
+from .resource_protocol import protocol_template
 from .system_closure import run_system_closure
+from .whole_build import WholeBuildIndex, run_cross_tu_closure
 from .rust_adapter import (
     RustRegionRequest,
     audit_rust_regions,
@@ -1214,6 +1216,13 @@ def benchmark_command(args: argparse.Namespace) -> int:
 
 
 def protocol_command(args: argparse.Namespace) -> int:
+    if args.protocol_command == "template":
+        report = protocol_template(args.kind)
+        destination = Path(args.out).resolve()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(yaml.safe_dump(report, sort_keys=False))
+        print(json.dumps({"status": "PASS", "template": args.kind, "artifact": str(destination)}, indent=2, sort_keys=True))
+        return 0
     report = verify_state_protocol(Path(args.manifest), Path(args.out_dir))
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report["status"] == "PASS" else 2
@@ -1519,6 +1528,36 @@ def system_closure_command(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 2
 
 
+def whole_build_command(args: argparse.Namespace) -> int:
+    if args.build_command == "index":
+        index = WholeBuildIndex.from_compilation_database(Path(args.compile_commands))
+        path = index.write(Path(args.out).resolve())
+        counts = index.to_dict()["counts"]
+        print(
+            "vLadder whole-build: "
+            f"translation_units={counts['translation_units']} symbols={counts['defined_symbols']} "
+            f"ambiguous={counts['ambiguous_definitions']}"
+        )
+        print(f"vLadder whole-build: wrote {path}")
+        return 0
+    report = run_cross_tu_closure(
+        Path(args.compile_commands),
+        args.seed,
+        Path(args.out_dir),
+        max_upstream=args.max_upstream,
+        max_downstream=args.max_downstream,
+        max_nodes=args.max_nodes,
+    )
+    graph = report["slice"]
+    print(
+        "vLadder cross-tu-closure: "
+        f"status={report['status']} functions={len(graph['functions'])} "
+        f"edges={len(graph['edges'])} boundaries={len(graph['boundaries'])}"
+    )
+    print(f"vLadder cross-tu-closure: wrote {Path(args.out_dir).resolve() / 'cross-tu-closure-report.json'}")
+    return 0 if report["status"] == "pass" else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="vladder",
@@ -1551,6 +1590,20 @@ def build_parser() -> argparse.ArgumentParser:
     system_closure.add_argument("--manifest", required=True)
     system_closure.add_argument("--out-dir", default="vladder-system-closure")
     system_closure.set_defaults(func=system_closure_command)
+    build = sub.add_parser("build", help="index and close semantic flow across a compiled multi-TU build")
+    build_sub = build.add_subparsers(dest="build_command", required=True)
+    build_index = build_sub.add_parser("index", help="create a deterministic whole-build definition/reference index")
+    build_index.add_argument("--compile-commands", required=True)
+    build_index.add_argument("--out", default="vladder-whole-build-index.json")
+    build_index.set_defaults(func=whole_build_command)
+    build_closure = build_sub.add_parser("closure", help="materialize and prove one bounded bidirectional cross-TU slice")
+    build_closure.add_argument("--compile-commands", required=True)
+    build_closure.add_argument("--seed", action="append", required=True, help="mangled seed symbol; repeatable")
+    build_closure.add_argument("--max-upstream", type=int, default=1)
+    build_closure.add_argument("--max-downstream", type=int, default=3)
+    build_closure.add_argument("--max-nodes", type=int, default=128)
+    build_closure.add_argument("--out-dir", default="vladder-cross-tu-closure")
+    build_closure.set_defaults(func=whole_build_command)
     doctor = sub.add_parser("doctor", help="validate compilers, solvers, validators, and performance tools")
     doctor.add_argument("--strict", action="store_true", help="require Alive2 and perf in addition to the core toolchain")
     doctor.add_argument("--out", help="also write the JSON report to this path")
@@ -1839,10 +1892,14 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_compose.set_defaults(func=benchmark_command)
     protocol = sub.add_parser("protocol", help="verify bounded retained-state protocol projections")
     protocol_sub = protocol.add_subparsers(dest="protocol_command", required=True)
-    protocol_verify = protocol_sub.add_parser("verify", help="prove versioned-cache or transactional-publication obligations")
+    protocol_verify = protocol_sub.add_parser("verify", help="prove cache, publication, or finite-resource protocol obligations")
     protocol_verify.add_argument("--manifest", required=True)
     protocol_verify.add_argument("--out-dir", default="vladder-protocol-proof")
     protocol_verify.set_defaults(func=protocol_command)
+    protocol_template_parser = protocol_sub.add_parser("template", help="emit a domain-neutral finite resource protocol template")
+    protocol_template_parser.add_argument("--kind", required=True, choices=("publication", "queue", "socket", "device"))
+    protocol_template_parser.add_argument("--out", default="vladder-resource-protocol.yaml")
+    protocol_template_parser.set_defaults(func=protocol_command)
     shader = sub.add_parser("shader", help="inspect and synthesize portable compute shader evidence")
     shader_sub = shader.add_subparsers(dest="shader_command", required=True)
     shader_support = shader_sub.add_parser("support", help="show portable GPU toolchain and proof boundaries")

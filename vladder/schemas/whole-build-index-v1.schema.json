@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/whole-build-index-v1.schema.json",
+  "title": "vLadder Whole Build Index v1",
+  "type": "object",
+  "required": ["schema_version", "compile_commands", "translation_units", "definitions", "references", "counts", "index_sha256"],
+  "properties": {
+    "schema_version": {"const": "vladder-whole-build-index-v1"},
+    "compile_commands": {"type": "string"},
+    "translation_units": {"type": "array", "items": {"type": "object"}},
+    "definitions": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "references": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "counts": {"type": "object"},
+    "index_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "additionalProperties": true
+}

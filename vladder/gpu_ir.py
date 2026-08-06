@@ -23,6 +23,11 @@ from .language_adapter import (
     file_sha256,
     obligation,
 )
+from .spirv_semantics import (
+    analyze_spirv_semantics,
+    parse_spirv_instructions,
+    write_spirv_semantic_evidence,
+)
 
 
 GPU_KERNEL_GRAPH_VERSION = "gpu-kernel-graph-v1"
@@ -355,6 +360,8 @@ def _capture_spirv(
         "module": str(module),
         "disassembly": str(assembly),
     }
+    semantic_evidence = write_spirv_semantic_evidence(text, output_directory)
+    artifacts.update(semantic_evidence["artifacts"])
     if compile_command:
         artifacts["compile_command"] = json.dumps(compile_command)
     return replace(capture, artifacts=artifacts)
@@ -413,7 +420,11 @@ _SPIRV_KIND: tuple[tuple[str, str], ...] = (
     ("OpSNegate", "Map"), ("OpFNegate", "Map"), ("OpIEqual", "Compare"),
     ("OpINotEqual", "Compare"), ("OpFOrd", "Compare"), ("OpFUnord", "Compare"),
     ("OpSLess", "Compare"), ("OpULess", "Compare"), ("OpSGreater", "Compare"),
-    ("OpUGreater", "Compare"), ("OpExtInst", "Call"), ("OpFunctionCall", "Call"),
+    ("OpUGreater", "Compare"), ("OpLogical", "Compare"),
+    ("OpCopyLogical", "Select"), ("OpUDiv", "Map"), ("OpUMod", "Map"),
+    ("OpDot", "Reduction"), ("OpMatrixTimes", "Map"), ("OpVectorTimesMatrix", "Map"),
+    ("OpOuterProduct", "Map"), ("OpCooperativeMatrix", "CooperativeMatrix"),
+    ("OpExtInst", "Call"), ("OpFunctionCall", "Call"),
     ("OpImage", "Load"),
 )
 
@@ -441,7 +452,10 @@ def _graph_from_spirv(
 ) -> GPUKernelCapture:
     local_match = re.search(r"OpExecutionMode\s+%\w+\s+LocalSize\s+(\d+)\s+(\d+)\s+(\d+)", text)
     local_size = tuple(map(int, local_match.groups())) if local_match else (1, 1, 1)
-    opcodes = re.findall(r"\b(Op[A-Za-z0-9_]+)\b", text)
+    # Parse instruction positions. Debug names and string literals beginning with
+    # "Op" are data, not opcodes.
+    opcodes = [instruction.opcode for instruction in parse_spirv_instructions(text)]
+    semantic_report = analyze_spirv_semantics(text)
     counts: dict[str, int] = {}
     unsupported: list[str] = []
     mapped = 0
@@ -472,7 +486,10 @@ def _graph_from_spirv(
         barriers=counts.get("Barrier", 0),
         atomics=counts.get("Atomic", 0),
         branches=counts.get("Control", 0),
-        arithmetic=counts.get("Map", 0) + counts.get("Bitwise", 0) + counts.get("Compare", 0),
+        arithmetic=(
+            counts.get("Map", 0) + counts.get("Bitwise", 0) + counts.get("Compare", 0)
+            + counts.get("Reduction", 0) + counts.get("CooperativeMatrix", 0)
+        ),
     )
     graph = _kernel_semantic_graph(
         dialect="spirv",
@@ -483,7 +500,20 @@ def _graph_from_spirv(
         resources=resources,
         operation_counts=counts,
         unsupported=tuple(unsupported),
-        dialect_facts={"storage_variables": storage_variables, "workgroup_variables": workgroup_variables},
+        dialect_facts={
+            "storage_variables": storage_variables,
+            "workgroup_variables": workgroup_variables,
+            "typed_semantics": "vladder-spirv-semantics-v2",
+            "operation_families": {
+                family: counts.get(family, 0)
+                for family in ("Reduction", "CooperativeMatrix", "Compare", "Map")
+                if counts.get(family, 0)
+            },
+            "typed_operation_families": semantic_report["operation_families"],
+            "typed_operation_count": len(semantic_report["operations"]),
+            "semantic_obligations": semantic_report["obligations"],
+            "semantic_proof_boundary": semantic_report["proof_boundary"],
+        },
     )
     return GPUKernelCapture(
         "spirv", source, entry_point, compiler_identity, module_hash, graph, resources,

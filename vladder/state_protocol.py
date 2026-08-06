@@ -7,8 +7,10 @@ from typing import Any
 import yaml
 from z3 import And, Bool, BoolVal, Int, Not, Or, Solver, sat
 
+from .resource_protocol import verify_resource_protocol
 
-PROTOCOLS = ("versioned_cache", "transactional_publication")
+
+PROTOCOLS = ("versioned_cache", "transactional_publication", "finite_resource")
 
 
 def verify_state_protocol(manifest_path: Path, output_directory: Path) -> dict[str, Any]:
@@ -21,6 +23,8 @@ def verify_state_protocol(manifest_path: Path, output_directory: Path) -> dict[s
     protocol = str(raw.get("protocol", ""))
     if protocol not in PROTOCOLS:
         raise ValueError(f"unsupported protocol {protocol!r}; expected one of {PROTOCOLS}")
+    if protocol == "finite_resource":
+        return verify_resource_protocol(manifest_path, output_directory)
     if protocol == "versioned_cache":
         result, smt2 = _verify_versioned_cache(raw)
     else:

@@ -62,7 +62,8 @@ attributes #0 = { nounwind nofree nosync }
 """
         effects = analyze_ir_effects(module, "target")
         self.assertFalse(effects["local_effects"])
-        self.assertIn("helper", effects["external_calls"])
+        self.assertNotIn("helper", effects["external_calls"])
+        self.assertEqual(effects["global_stores"], 1)
 
     def test_compiler_attributed_declaration_closes_call_preserving_effects(self):
         module = """

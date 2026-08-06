@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/resource-protocol-v1.schema.json",
+  "title": "vLadder finite resource protocol proof",
+  "type": "object",
+  "required": ["schema_version", "status", "resources", "transitions", "obligations", "protocol_hash", "claim_boundary"],
+  "properties": {
+    "schema_version": {"const": "vladder-finite-resource-protocol-v1"},
+    "status": {"enum": ["PASS", "FAIL"]},
+    "resources": {"type": "object", "minProperties": 1},
+    "transitions": {"type": "array"},
+    "obligations": {"type": "array"},
+    "protocol_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "claim_boundary": {"type": "string"}
+  },
+  "additionalProperties": true
+}
