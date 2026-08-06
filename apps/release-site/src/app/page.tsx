@@ -1,4 +1,4 @@
-import { ArrowDownToLine, BookOpen, Check, Code2, LockKeyhole, MessageSquareText, Route, ShieldCheck } from "lucide-react";
+import { ArrowDownToLine, BookOpen, Check, Code2, Cpu, LockKeyhole, MessageSquareText, Route, Workflow } from "lucide-react";
 import { CopyCommand } from "../components/copy-command";
 
 const github = "https://github.com/araujota/vladder";
@@ -33,12 +33,20 @@ const support = [
 ];
 
 const workflow = [
-  ["01", "Find the cost", "Profile the real workload and select a load-bearing region"],
-  ["02", "Capture meaning", "Record inputs, outputs, side effects, state, and valid lifetimes"],
-  ["03", "Search alternatives", "Explore bounded equivalent computations, layouts, and lifetimes"],
-  ["04", "Prove parity", "Use Z3, Alive2, differential tests, and protocol checks as applicable"],
-  ["05", "Measure together", "Run baseline and candidate in the same executable and environment"],
-  ["06", "Promote or reject", "Emit a source patch only when correctness and performance both hold"],
+  ["01", "Profile", "Find a function or data path that matters in the real workload"],
+  ["02", "Extract", "Translate its observable behavior into a language-neutral information-flow graph"],
+  ["03", "Search", "Generate bounded alternatives for computation, movement, layout, and lifetime"],
+  ["04", "Regenerate", "Turn legal candidate graphs back into readable, reviewable source code"],
+  ["05", "Verify", "Check semantic parity, then benchmark original and candidate on the target hardware"],
+  ["06", "Decide", "Keep the patch only when both correctness and representative performance hold"],
+];
+
+const plainFlow = [
+  ["1", "You provide", "A profiled source region, its real build command, and a representative benchmark"],
+  ["2", "vLadder models", "The values produced, dependencies, memory traffic, state changes, and valid lifetimes"],
+  ["3", "vLadder searches", "A finite grammar of equivalent loops, layouts, schedules, fusion, packing, and reuse"],
+  ["4", "Tools verify", "Z3, Alive2, differential tests, and protocol checks cover their declared boundaries"],
+  ["5", "Hardware decides", "You get a reviewable patch with evidence, or a recorded rejection when it does not win"],
 ];
 
 export default async function Home() {
@@ -60,26 +68,44 @@ export default async function Home() {
 
       <section className="intro" id="top">
         <div className="intro-copy">
-          <p className="eyebrow">A local superoptimizer for systems code</p>
+          <p className="eyebrow">Verified superoptimization for systems software</p>
           <h1>vLadder</h1>
-          <p className="lede">Turn a measured hot path into a faster, verified source implementation.</p>
-          <p className="intro-detail">vLadder analyzes how information is computed, moved, stored, and reused across a bounded C, C++, Rust, Zig, Julia, or GPU region. It searches a finite grammar of equivalent implementations, regenerates source, checks semantic parity, and benchmarks the candidate against the original on your hardware.</p>
-          <p className="audience-note"><strong>You keep the compiler.</strong> vLadder changes the implementation you give it. Clang, LLVM, or your existing toolchain still lowers the accepted source to machine code. Coding agents can run the same proof-gated process through the included <code>SKILL.md</code>.</p>
+          <p className="lede">vLadder rewrites performance-critical systems code into a faster source implementation, then proves and benchmarks the result before you keep it.</p>
+          <p className="intro-detail">Point it at a measured C, C++, Rust, Zig, Julia, or GPU hot path. vLadder extracts what the code must do into a shared information-flow graph, searches a bounded set of equivalent implementations, and regenerates the best candidates as readable source.</p>
+          <p className="audience-note"><strong>It complements rather than replaces your compiler.</strong> vLadder chooses the computation and dataflow that should exist; Clang, LLVM, or your normal toolchain still generates machine code. Engineers can drive the CLI directly. Coding agents get the same fail-closed workflow through the included <code>SKILL.md</code>.</p>
           <div className="actions">
             <a className="primary-action" href={`${github}/releases`}><ArrowDownToLine size={19} />Get vLadder</a>
             <a className="secondary-action" href="#workflow"><Route size={19} />See how it works</a>
           </div>
           <CopyCommand command={install} />
         </div>
-        <div className="release-status" aria-label="A vLadder optimization run">
-          <div className="status-heading"><ShieldCheck size={22} /><span>A vLadder run</span></div>
+        <div className="release-status" aria-label="An optimization run at a glance">
+          <div className="status-heading"><Workflow size={22} /><span>One optimization run</span></div>
           <dl>
-            <div><dt>You provide</dt><dd>A profiled region, its build configuration, and a representative workload</dd></div>
-            <div><dt>It searches</dt><dd>Equivalent code, dataflow, layout, schedule, placement, and lifetime choices</dd></div>
-            <div><dt>It checks</dt><dd>Formal proof where tractable, behavioral parity, and paired hardware performance</dd></div>
-            <div><dt>You receive</dt><dd><Check size={16} />A patch and evidence, or an explicit rejection with the reason</dd></div>
+            <div><dt>Input</dt><dd>A hot source region, exact compiler settings, semantic contract, and benchmark</dd></div>
+            <div><dt>Translate</dt><dd>Source and compiled IR become a graph of computation, memory, state, and lifetime</dd></div>
+            <div><dt>Optimize</dt><dd>The grammar changes how information is computed, moved, represented, reused, or eliminated</dd></div>
+            <div><dt>Check</dt><dd>Formal and differential verification reject behavior changes; paired measurements reject slow code</dd></div>
+            <div><dt>Output</dt><dd><Check size={16} />A source patch with proof and benchmark evidence, or a precise rejection</dd></div>
           </dl>
-          <p><strong>No speedup is still a result.</strong> Candidates that fail proof, lose in the real workload, or cross an unmodeled system boundary are not promoted.</p>
+          <p><strong>“Workflow completed” does not mean “optimization accepted.”</strong> Capture, candidate generation, proof, benchmark win, and production promotion remain separate reported outcomes.</p>
+        </div>
+      </section>
+
+      <section className="plain-flow-section" aria-labelledby="plain-flow-title">
+        <div className="section-inner">
+          <div className="plain-flow-heading">
+            <p className="eyebrow">What it actually does</p>
+            <h2 id="plain-flow-title">Keep the behavior fixed. Search how the work is physically realized.</h2>
+          </div>
+          <ol className="plain-flow">
+            {plainFlow.map(([number, label, detail]) => (
+              <li key={number}>
+                <span>{number}</span>
+                <div><strong>{label}</strong><small>{detail}</small></div>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
@@ -87,15 +113,34 @@ export default async function Home() {
         <div className="section-inner">
           <div className="section-heading capability-heading">
             <div>
-              <p className="eyebrow">The missing layer</p>
-              <h2>Choose better code before compiling it</h2>
+              <p className="eyebrow">What makes it different</p>
+              <h2>It changes choices a normal compiler usually treats as fixed</h2>
             </div>
-            <p>A profiler tells you where time went. A compiler optimizes the implementation you wrote. vLadder searches for a different implementation with the same declared behavior, then proves and measures whether it is actually better.</p>
+            <p>A profiler identifies expensive code. A compiler improves the code shape you supplied. vLadder works between them: it searches for a different source-level way to produce the same observable result, then sends each candidate through your compiler and measures the result.</p>
           </div>
           <div className="capability-list">
-            <article><span>01</span><h3>Compute it differently</h3><p>Rewrite expressions, loops, reductions, packing, codecs, masks, and stable compaction.</p></article>
-            <article><span>02</span><h3>Move less information</h3><p>Fuse stages, change traversal or layout, stream outputs, and remove unnecessary CPU/GPU transfers.</p></article>
-            <article><span>03</span><h3>Realize it at the right lifetime</h3><p>Derive once and reuse while valid, invalidate at the true boundary, or eliminate a temporary entirely.</p></article>
+            <article><span>01</span><h3>Compute it another way</h3><p>Change a loop, reduction, codec, branch, mask, scan, compaction pipeline, or fixed-width kernel while preserving its contract.</p></article>
+            <article><span>02</span><h3>Move and store less</h3><p>Fuse stages, change traversal or layout, stream directly to a consumer, or remove an unnecessary temporary and copy.</p></article>
+            <article><span>03</span><h3>Realize data at the right lifetime</h3><p>Compute once and reuse while valid, invalidate at the real mutation boundary, retire after final use, or never materialize it.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section className="audience-section">
+        <div className="section-inner audience-grid">
+          <div className="audience-heading">
+            <p className="eyebrow">Who it is for</p>
+            <h2>A performance workflow humans and agents can both audit</h2>
+          </div>
+          <div className="audience-lanes">
+            <article>
+              <Cpu size={24} />
+              <div><h3>For systems engineers</h3><p>Use vLadder as a local CLI and evidence pipeline. Inspect every assumption, candidate, proof boundary, counterexample, confidence interval, and final source diff.</p></div>
+            </article>
+            <article>
+              <Code2 size={24} />
+              <div><h3>For coding agents</h3><p>Install the vLadder skill and give the agent a target workload. The skill drives profiling, extraction, search, proof, benchmarking, source realization, and honest reporting through explicit gates.</p></div>
+            </article>
           </div>
         </div>
       </section>
@@ -128,8 +173,8 @@ export default async function Home() {
         <div className="section-inner">
           <div className="section-heading">
             <p className="eyebrow">How it works</p>
-            <h2>From production source to an evidence-backed decision</h2>
-            <p className="section-intro">The workflow keeps inspection, candidate generation, proof, measurement, and promotion separate. A generated candidate is not called an optimization until it preserves the contract and improves the representative workload.</p>
+            <h2>Source → information flow → candidate source → proof → hardware</h2>
+            <p className="section-intro">The semantic graph is the stable middle layer. Frontends describe what each supported region means; the grammar changes its physical realization; emitters rebuild source; proof tools and the real machine decide whether it can ship.</p>
           </div>
           <div className="flow-visual" role="img" aria-label="Source through semantic flow, grammar search, proof, hardware, and source rewrite">
             {workflow.map(([number, label, detail], index) => (
@@ -146,8 +191,8 @@ export default async function Home() {
         <div className="section-inner support-grid">
           <div>
             <p className="eyebrow">Languages and boundaries</p>
-            <h2>One semantic model, honest proof limits</h2>
-            <p>Supported language frontends converge on the same information-flow graph. Bounded local computation can be transformed directly. Ownership, exceptions, drivers, concurrency, and external protocols receive explicit adapters or remain named boundaries rather than being treated as proved.</p>
+            <h2>Automatic where bounded. Explicit where the system boundary matters.</h2>
+            <p>Supported language frontends converge on one information-flow vocabulary. vLadder can directly extract, transform, regenerate, and prove supported bounded regions. Ownership-heavy application code, exceptions, drivers, concurrency, and external protocols use generated proof units plus explicit adapters and application-level checks. Those boundaries remain named in the report, never silently treated as proved.</p>
           </div>
           <div className="support-list">
             {support.map(([name, detail]) => <div key={name}><strong>{name}</strong><span>{detail}</span></div>)}
