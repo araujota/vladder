@@ -76,6 +76,12 @@ After both publishers exist, set their `trusted_publisher_configured` values to 
 `release/channels.toml`. This is a reviewed local attestation because PyPI does not expose pending
 publisher configuration through its public project JSON API.
 
+When the release owner does not maintain a TestPyPI account, the exact-candidate TestPyPI gate may
+be explicitly waived in `release/channels.toml`. A valid waiver records `waived = true`, the owner,
+date, and rationale. Readiness reports it as a non-blocking warning; it never reports TestPyPI as
+verified. Production still requires the protected `pypi` environment, a configured production
+Trusted Publisher, green CI, and all remaining release checks.
+
 ## Release Procedure
 
 1. Update `CHANGELOG.md`; synchronize the version in `pyproject.toml`, `vladder/__init__.py`, and

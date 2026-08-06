@@ -433,27 +433,45 @@ def _online_checks(root: Path, channels: dict[str, Any]) -> list[ReadinessCheck]
         project = channels[channel_name]["project"]
         status, payload = _http_json(f"{base}/pypi/{project}/json")
         attested = bool(channels[channel_name].get("trusted_publisher_configured"))
+        waiver = channels[channel_name] if channel_name == "testpypi" else {}
+        waiver_valid = bool(
+            waiver.get("waived")
+            and str(waiver.get("waived_by", "")).strip()
+            and re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(waiver.get("waived_at", "")))
+            and str(waiver.get("waiver_reason", "")).strip()
+        )
         project_state = "published" if status == 200 else "unclaimed" if status == 404 else "unreachable"
         latest = payload.get("info", {}).get("version") if payload else None
         release_version = str(_read_toml(root / "pyproject.toml")["project"]["version"])
         ready = attested and status in {200, 404}
         if channel_name == "testpypi":
             ready = attested and status == 200 and latest == release_version
+        check_status = "pass" if ready else "warning" if waiver_valid else "setup_required"
+        requirement = f"{channel_name} project or pending Trusted Publisher is configured"
+        detail = f"project_state={project_state}; manifest_attestation={attested}; latest={latest}; expected={release_version}"
+        remediation = (
+            f"Configure the {channel_name} pending/existing Trusted Publisher for {repository}, workflow "
+            f"{channels[channel_name]['workflow']}, environment {channels[channel_name]['environment']}; "
+            "publish this exact candidate to TestPyPI; then set the manifest attestation true."
+            if channel_name == "testpypi"
+            else
+            f"Configure the {channel_name} pending/existing Trusted Publisher for {repository}, workflow "
+            f"{channels[channel_name]['workflow']}, environment {channels[channel_name]['environment']}; "
+            "then set the manifest attestation true."
+        )
+        if channel_name == "testpypi" and waiver_valid and not ready:
+            requirement = "Exact-candidate TestPyPI trial or explicit owner waiver"
+            detail += (
+                f"; waived_by={waiver['waived_by']}; waived_at={waiver['waived_at']}; "
+                f"waiver_reason={waiver['waiver_reason']}"
+            )
+            remediation = "No action required for this release; create a TestPyPI account before removing the recorded waiver."
         checks.append(ReadinessCheck(
-            f"{channel_name}.trusted-publisher", "channels", f"{channel_name} project or pending Trusted Publisher is configured",
-            "pass" if ready else "setup_required",
-            f"project_state={project_state}; manifest_attestation={attested}; latest={latest}; expected={release_version}",
+            f"{channel_name}.trusted-publisher", "channels", requirement,
+            check_status,
+            detail,
             (f"{base}/manage/account/publishing/",),
-            (
-                f"Configure the {channel_name} pending/existing Trusted Publisher for {repository}, workflow "
-                f"{channels[channel_name]['workflow']}, environment {channels[channel_name]['environment']}; "
-                "publish this exact candidate to TestPyPI; then set the manifest attestation true."
-                if channel_name == "testpypi"
-                else
-                f"Configure the {channel_name} pending/existing Trusted Publisher for {repository}, workflow "
-                f"{channels[channel_name]['workflow']}, environment {channels[channel_name]['environment']}; "
-                "then set the manifest attestation true."
-            ),
+            remediation,
             ("pypi", "formal_release"),
         ))
     code, variables, _ = _gh_json(root, ["variable", "list", "--repo", repository, "--json", "name,value"])

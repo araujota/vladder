@@ -84,6 +84,54 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertTrue(checks)
         self.assertTrue(all(check.status == "pass" for check in checks), [check.to_dict() for check in checks])
 
+    def test_explicit_testpypi_waiver_is_visible_and_non_blocking(self):
+        channels = _read_toml(ROOT / "release" / "channels.toml")
+        channels["pypi"]["trusted_publisher_configured"] = True
+        channels["testpypi"].update({
+            "trusted_publisher_configured": False,
+            "waived": True,
+            "waived_by": "release-owner",
+            "waived_at": "2026-08-06",
+            "waiver_reason": "No TestPyPI account is maintained.",
+        })
+
+        def gh_result(_root, arguments):
+            joined = " ".join(arguments)
+            if "repo view araujota/vladder" in joined:
+                return 0, {"visibility": "PUBLIC", "defaultBranchRef": {"name": "main"}}, ""
+            if "branches/main/protection" in joined:
+                return 0, {"required_status_checks": {"contexts": ["CI"]}}, ""
+            if arguments[:2] == ["run", "list"]:
+                return 0, [{"status": "completed", "conclusion": "success"}], ""
+            if arguments[-1] == "repos/araujota/vladder/environments":
+                return 0, {"environments": [
+                    {"name": name, "protection_rules": [{"type": "required_reviewers"}]}
+                    for name in ("pypi", "testpypi", "homebrew")
+                ]}, ""
+            if arguments[:2] == ["variable", "list"]:
+                return 0, [], ""
+            if arguments[:2] == ["secret", "list"]:
+                return 0, [], ""
+            if "repo view araujota/homebrew-tap" in joined:
+                return 1, None, "missing"
+            raise AssertionError(arguments)
+
+        def http_result(url):
+            if "test.pypi.org/pypi" in url:
+                return 404, None
+            if "pypi.org/pypi" in url:
+                return 404, None
+            return 200, {"status": "ok", "capability_submission": True}
+
+        with patch("vladder.release_readiness.shutil.which", return_value="/usr/bin/gh"), patch(
+            "vladder.release_readiness._gh_json", side_effect=gh_result
+        ), patch("vladder.release_readiness._http_json", side_effect=http_result):
+            checks = _online_checks(ROOT, channels)
+        testpypi = next(check for check in checks if check.check_id == "testpypi.trusted-publisher")
+        self.assertEqual(testpypi.status, "warning")
+        self.assertIn("waived_by=release-owner", testpypi.detail)
+        self.assertTrue(_target_summary(checks)["pypi"]["ready"])
+
 
 if __name__ == "__main__":
     unittest.main()

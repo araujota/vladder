@@ -18,6 +18,10 @@ project = "vladder"
 environment = "testpypi"
 workflow = "test-publish.yml"
 trusted_publisher_configured = false
+waived = true
+waived_by = "araujota"
+waived_at = "2026-08-06"
+waiver_reason = "The project owner does not maintain a TestPyPI account; validate OIDC through the protected production PyPI release."
 
 [homebrew]
 tap_repository = "araujota/homebrew-tap"
