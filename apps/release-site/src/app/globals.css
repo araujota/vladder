@@ -98,6 +98,7 @@ footer div { display: flex; gap: 20px; }
   .lede { font-size: 23px; }
   .actions { display: grid; }
   .primary-action, .secondary-action { justify-content: center; }
+  .command-row code { white-space: normal; overflow-wrap: anywhere; text-overflow: clip; line-height: 1.35; }
   .flow-visual { grid-template-columns: 1fr; }
   .flow-step { min-height: 100px; border-right: 0; }
   footer { align-items: flex-start; gap: 20px; flex-direction: column; }
