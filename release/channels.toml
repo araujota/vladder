@@ -17,7 +17,7 @@ trusted_publisher_configured = true
 project = "vladder"
 environment = "testpypi"
 workflow = "test-publish.yml"
-trusted_publisher_configured = true
+trusted_publisher_configured = false
 
 [homebrew]
 tap_repository = "araujota/homebrew-tap"
