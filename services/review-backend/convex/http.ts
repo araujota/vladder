@@ -11,7 +11,7 @@ type SubmissionKind = "review" | "training" | "credential";
 type CapabilityScope = "review:write" | "training:write";
 
 const MAX_PAYLOAD_BYTES = 128 * 1024;
-const PUBLIC_DAILY_LIMITS: Record<SubmissionKind, number> = { review: 20, training: 200, credential: 10 };
+const DAILY_LIMITS: Record<SubmissionKind, number> = { review: 20, training: 10_000, credential: 10 };
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 const http = httpRouter();
@@ -45,21 +45,33 @@ function randomCapability(): string {
 
 async function authorizeSubmission(
   ctx: Parameters<Parameters<typeof httpAction>[0]>[0], request: Request, requiredScope: CapabilityScope,
-): Promise<{ allowed: boolean; trusted: boolean; reason: string }> {
-  if (trustedSubmission(request)) return { allowed: true, trusted: true, reason: "trusted_ingestion" };
+): Promise<{ allowed: boolean; trusted: boolean; reason: string; rateLimitIdentity: string | null }> {
+  if (trustedSubmission(request)) {
+    return { allowed: true, trusted: true, reason: "trusted_ingestion", rateLimitIdentity: null };
+  }
   const authorization = request.headers.get("authorization");
   if (!authorization?.startsWith("Bearer vc1_")) {
-    return { allowed: false, trusted: false, reason: "contributor_credential_required" };
+    return { allowed: false, trusted: false, reason: "contributor_credential_required", rateLimitIdentity: null };
   }
   const token = authorization.slice("Bearer ".length);
   const result = await ctx.runMutation(internal.contributors.authorize, {
     tokenHash: await sha256(token),
     requiredScope,
   });
-  return { allowed: result.allowed, trusted: false, reason: result.reason };
+  return {
+    allowed: result.allowed,
+    trusted: false,
+    reason: result.reason,
+    rateLimitIdentity: result.credentialId,
+  };
 }
 
-async function consumePublicLimit(ctx: Parameters<Parameters<typeof httpAction>[0]>[0], request: Request, kind: SubmissionKind) {
+async function consumePublicLimit(
+  ctx: Parameters<Parameters<typeof httpAction>[0]>[0],
+  request: Request,
+  kind: SubmissionKind,
+  capabilityIdentity: string | null = null,
+) {
   const pepper = process.env.VLADDER_SUBMISSION_PEPPER;
   if (!pepper) {
     throw new Error("public submission service is not configured");
@@ -67,13 +79,16 @@ async function consumePublicLimit(ctx: Parameters<Parameters<typeof httpAction>[
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const address = request.headers.get("cf-connecting-ip") ?? forwarded ?? "unavailable";
   const userAgent = (request.headers.get("user-agent") ?? "unknown").slice(0, 200);
-  const fingerprintHash = await sha256(`${pepper}:${address}:${userAgent}`);
+  const identity = capabilityIdentity === null
+    ? `network:${address}:${userAgent}`
+    : `capability:${capabilityIdentity}`;
+  const fingerprintHash = await sha256(`${pepper}:${identity}`);
   const bucket = new Date().toISOString().slice(0, 10);
   return await ctx.runMutation(internal.rateLimits.consume, {
     fingerprintHash,
     bucket,
     kind,
-    limit: PUBLIC_DAILY_LIMITS[kind],
+    limit: DAILY_LIMITS[kind],
   });
 }
 
@@ -202,8 +217,8 @@ http.route({
       if (boundsError) return jsonResponse({ error: boundsError }, 400);
       if (validateOnly) return jsonResponse({ status: "valid", stored: false, schema_version: "vladder-agent-review-v1" });
       if (!credential.trusted) {
-        const limit = await consumePublicLimit(ctx, request, "review");
-        if (!limit.allowed) return jsonResponse({ error: "daily public review limit exceeded" }, 429);
+        const limit = await consumePublicLimit(ctx, request, "review", credential.rateLimitIdentity);
+        if (!limit.allowed) return jsonResponse({ error: "daily capability review limit exceeded" }, 429);
       }
       const result = await ctx.runMutation(internal.reviews.storeReview, { review, payloadHash, validateOnly: false });
       return jsonResponse({ status: "accepted_for_moderation", ...result }, result.duplicate ? 200 : 202);
@@ -233,8 +248,8 @@ http.route({
       if (boundsError) return jsonResponse({ error: boundsError }, 400);
       if (validateOnly) return jsonResponse({ status: "valid", stored: false, schema_version: "vladder-training-bundle-v1" });
       if (!credential.trusted) {
-        const limit = await consumePublicLimit(ctx, request, "training");
-        if (!limit.allowed) return jsonResponse({ error: "daily public training limit exceeded" }, 429);
+        const limit = await consumePublicLimit(ctx, request, "training", credential.rateLimitIdentity);
+        if (!limit.allowed) return jsonResponse({ error: "daily capability training limit exceeded" }, 429);
       }
       const result = await ctx.runMutation(internal.training.storeBundle, { bundle, payloadHash, validateOnly: false });
       return jsonResponse({ status: "accepted_for_moderation", ...result }, result.duplicate ? 200 : 202);

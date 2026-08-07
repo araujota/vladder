@@ -1,0 +1,16 @@
+kind: sparse-update-policy
+name: exact-sparse-dense-update-policy
+attribution:
+  metric: repeated_payload_bytes_percent
+  value: 31.0
+  unit: percent
+  evidence: held-out trace byte accounting fixture
+contract:
+  max_elements: 4096
+  exact_reconstruction: true
+  capacity_failure: unchanged
+workload:
+  density_samples: [0.01, 0.05, 0.20, 0.60, 0.95]
+search:
+  density_thresholds: [0.125, 0.25, 0.5, 0.75]
+  maximum_candidates: 32

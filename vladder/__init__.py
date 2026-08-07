@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc18"
+__version__ = "1.0.0rc19"
 
 from .api import (
     AgentWorkflowRequest,
@@ -39,6 +39,13 @@ from .dataflow_grammar import BoundedDataflowGrammar, load_bounded_dataflow_gram
 from .dataflow_ir import BoundedDataflowContract, BoundedDataflowGraph, build_bounded_dataflow_graph
 from .region_closure import build_region_closure_graph, describe_c_boundary, prove_region_closure
 from .gpu_ir import GPUArchitecture, GPUExecutionPlan, GPUKernelCapture, capture_gpu_kernel
+from .heterogeneous_plan import (
+    HeterogeneousPlanGraph,
+    PlanCandidate,
+    audit_heterogeneous_project,
+    rank_heterogeneous_plans,
+    synthesize_heterogeneous_plans,
+)
 from .cuda_runtime import probe_cuda_architecture, run_cuda_artifact
 from .cuda_synthesis import optimize_cuda_pointwise, synthesize_cuda_pointwise
 from .device_protocol import DeviceProtocolEvidence, verify_device_protocol
@@ -81,6 +88,8 @@ __all__ = [
     "GPUArchitecture",
     "GPUExecutionPlan",
     "GPUKernelCapture",
+    "HeterogeneousPlanGraph",
+    "PlanCandidate",
     "DeviceProtocolEvidence",
     "EffectFootprint",
     "CallRelation",
@@ -131,6 +140,9 @@ __all__ = [
     "describe_c_boundary",
     "prove_region_closure",
     "capture_gpu_kernel",
+    "audit_heterogeneous_project",
+    "synthesize_heterogeneous_plans",
+    "rank_heterogeneous_plans",
     "probe_cuda_architecture",
     "run_cuda_artifact",
     "synthesize_cuda_pointwise",

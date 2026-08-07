@@ -1,0 +1,17 @@
+kind: presentation-policy
+name: bounded-swapchain-policy
+attribution:
+  metric: presentation_queue_delay_percent
+  value: 27.0
+  unit: percent
+  evidence: synthetic timing fixture requiring physical confirmation
+capabilities:
+  present_modes: [fifo, mailbox, immediate]
+workload:
+  refresh_period_ns: 16666667
+  render_time_ns: 7000000
+search:
+  present_modes: [fifo, mailbox, immediate]
+  image_counts: [2, 3, 4]
+  frames_in_flight: [1, 2, 3]
+  maximum_candidates: 64

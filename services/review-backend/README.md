@@ -3,8 +3,11 @@
 This optional Convex service accepts `vladder-agent-review-v1` records and strict source-free
 `vladder-training-bundle-v1` derived-feature bundles. New records are private until explicitly
 approved. A public, rate-limited registration action issues random scope-specific append
-capabilities; only token hashes are retained. Submission is rate-limited through a salted daily
-fingerprint and rejects payloads over 128 KiB. IDs are idempotent and content-addressed.
+capabilities; only token hashes are retained. Capability registration is rate-limited through a
+salted network fingerprint. Submissions are rate-limited independently by the authorized,
+scope-specific installation capability, so unrelated agents behind one host or NAT do not consume
+one another's contribution budget. Payloads over 128 KiB are rejected. IDs are idempotent and
+content-addressed.
 
 ```bash
 npm install

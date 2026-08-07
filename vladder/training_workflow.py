@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 import json
 import os
 from pathlib import Path
+import stat
+import tempfile
 import uuid
 from typing import Any
 
@@ -17,6 +20,104 @@ from .schema_registry import validate_artifact
 
 TRAINING_SCHEMA_VERSION = "vladder-training-bundle-v1"
 _ZERO_HASH = "0" * 64
+TRAINING_OUTBOX_SCHEMA_VERSION = "vladder-training-outbox-v1"
+
+
+def default_training_outbox_directory() -> Path:
+    override = os.environ.get("VLADDER_TRAINING_OUTBOX_DIR")
+    if override:
+        return Path(override).expanduser()
+    state_home = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local" / "state"))
+    return state_home / "vladder" / "training-outbox"
+
+
+def _atomic_private_json(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(path.parent, 0o700)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".training-outbox-", dir=path.parent)
+    temporary = Path(temporary_name)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, 0o600)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def enqueue_training_bundle(bundle_path: Path, *, outbox_directory: Path | None = None) -> dict[str, Any]:
+    """Durably retain a validated source-free bundle before any network attempt."""
+    validation = validate_training_bundle(bundle_path)
+    if validation["status"] != "pass":
+        raise ValueError(f"training bundle schema validation failed: {validation['errors']}")
+    payload = bundle_path.resolve().read_bytes()
+    payload_hash = hashlib.sha256(payload).hexdigest()
+    root = (outbox_directory or default_training_outbox_directory()).expanduser().resolve()
+    entry_path = root / f"{payload_hash}.json"
+    if not entry_path.exists():
+        _atomic_private_json(entry_path, json.loads(payload))
+    elif stat.S_IMODE(entry_path.stat().st_mode) & 0o077:
+        raise PermissionError(f"training outbox entry must be owner-only: {entry_path}")
+    return {
+        "schema_version": TRAINING_OUTBOX_SCHEMA_VERSION,
+        "payload_sha256": payload_hash,
+        "entry": str(entry_path),
+        "queued": True,
+    }
+
+
+def flush_training_outbox(
+    *,
+    outbox_directory: Path | None = None,
+    endpoint: str | None = None,
+    token: str | None = None,
+    timeout_seconds: float = 20.0,
+    consent_path: Path | None = None,
+) -> dict[str, Any]:
+    """Submit queued records in order, retaining every unacknowledged entry for a later run."""
+    require_consent(CANONICAL_TRAINING_DATA, consent_path)
+    root = (outbox_directory or default_training_outbox_directory()).expanduser().resolve()
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(root, 0o700)
+    pending = sorted(root.glob("*.json"), key=lambda path: (path.stat().st_mtime_ns, path.name))
+    submissions: list[dict[str, Any]] = []
+    failure: str | None = None
+    for entry in pending:
+        if stat.S_IMODE(entry.stat().st_mode) & 0o077:
+            failure = f"training outbox entry must be owner-only: {entry}"
+            break
+        validation = validate_training_bundle(entry)
+        if validation["status"] != "pass":
+            failure = f"queued training bundle failed schema validation: {entry}"
+            break
+        try:
+            submission = submit_training_bundle(
+                entry,
+                endpoint=endpoint,
+                token=token,
+                confirm_upload=True,
+                timeout_seconds=timeout_seconds,
+                consent_path=consent_path,
+            )
+        except Exception as error:  # A retained record is safer than losing a transient transport failure.
+            failure = str(error)
+            break
+        submissions.append({"entry": str(entry), "submission": submission})
+        entry.unlink()
+    remaining = len(list(root.glob("*.json")))
+    return {
+        "schema_version": "vladder-training-outbox-flush-v1",
+        "status": "pass" if failure is None else "queued_for_retry",
+        "submitted_count": len(submissions),
+        "pending_count": remaining,
+        "submissions": submissions,
+        "retryable_error": failure,
+        "outbox": str(root),
+    }
 
 
 def create_training_template(output_path: Path) -> dict[str, Any]:
@@ -406,14 +507,19 @@ def sync_promotion_summary(
     output_directory = output_directory.resolve()
     bundle_path = output_directory / "promotion-training-bundle.json"
     create_training_bundle_from_promotion_summary(summary, bundle_path, consent_path=consent_path)
-    submission = submit_training_bundle(
-        bundle_path, endpoint=None, token=None, confirm_upload=True, consent_path=consent_path,
+    queued = enqueue_training_bundle(bundle_path)
+    flush = flush_training_outbox(consent_path=consent_path)
+    current_submitted = any(
+        row.get("submission", {}).get("payload_sha256") == queued["payload_sha256"]
+        for row in flush["submissions"]
     )
     report = {
         "schema_version": "vladder-promotion-training-sync-v1",
-        "status": "pass",
+        "status": "pass" if current_submitted else "queued_for_retry",
         "bundle": str(bundle_path),
-        "submission": submission,
+        "queued_record": queued,
+        "outbox_flush": flush,
+        "current_record_submitted": current_submitted,
         "record_forms": [
             "workflow_disposition", "proof_and_promotion_state", "negative_result",
             "architectural_lifetime_finding", "adapter_gap",

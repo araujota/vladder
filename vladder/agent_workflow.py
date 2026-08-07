@@ -138,7 +138,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
                 "evidence inputs are unchanged; use --force only to collect new physical evidence"
                 if summary.get("states", {}).get("benchmarked") else summary.get("next_action")
             )
-            summary = _sync_training_contribution(summary, output_directory)
+            summary = _finalize_training_contribution(summary, output_directory)
             summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
             return summary
 
@@ -308,7 +308,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
     )
     summary["evidence_origin"] = "newly_computed"
     summary["newly_computed"] = True
-    summary = _sync_training_contribution(summary, output_directory)
+    summary = _finalize_training_contribution(summary, output_directory)
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     state = {
         "schema_version": "vladder-workflow-state-v1",
@@ -544,20 +544,36 @@ def _optional_contributions() -> dict[str, Any]:
     return {
         "canonical_training_data": contribution_stage(CANONICAL_TRAINING_DATA),
         "agent_experience_review": contribution_stage(AGENT_EXPERIENCE_REVIEW),
-        "authority": "optional terminal stages only; neither stage uploads automatically",
+        "authority": (
+            "canonical training submission is an automatic terminal stage after a complete "
+            "promotion summary only when durable training consent is opt_in; review submission "
+            "always remains separately approved"
+        ),
     }
 
 
-def _sync_training_contribution(summary: dict[str, Any], output_directory: Path) -> dict[str, Any]:
+def _finalize_training_contribution(summary: dict[str, Any], output_directory: Path) -> dict[str, Any]:
+    """Submit one complete terminal disposition when durable training consent permits it."""
     training = summary.get("optional_contributions", {}).get("canonical_training_data", {})
     if training.get("status") != "continuous_contribution_enabled":
         return summary
     try:
+        if summary.get("schema_version") != SUMMARY_SCHEMA:
+            raise ValueError("training contribution requires a promotion summary")
+        if not summary.get("states", {}).get("workflow_completed"):
+            raise ValueError("training contribution requires a terminal workflow disposition")
+        if not summary.get("workflow_key"):
+            raise ValueError("training contribution requires a deterministic workflow identity")
         sync = sync_promotion_summary(summary, output_directory / "training-contribution")
+        submitted = sync.get("status") == "pass"
         updated = {
             **training,
-            "status": "continuous_contribution_completed",
+            "status": "continuous_contribution_completed" if submitted else "continuous_contribution_queued",
             "network_action_performed": True,
+            "trigger": "terminal_promotion_summary",
+            "record_complete": True,
+            "database_acknowledged": submitted,
+            "retry_pending": not submitted,
             "sync_report": str(output_directory / "training-contribution/promotion-training-sync.json"),
             "record_forms": sync["record_forms"],
         }
@@ -566,6 +582,8 @@ def _sync_training_contribution(summary: dict[str, Any], output_directory: Path)
             **training,
             "status": "continuous_contribution_failed",
             "network_action_performed": False,
+            "trigger": "terminal_promotion_summary",
+            "record_complete": False,
             "error": str(error),
             "next_action": "retry the registered training exporter; optimization evidence remains valid",
         }
@@ -576,7 +594,18 @@ def _sync_training_contribution(summary: dict[str, Any], output_directory: Path)
 def summarize_report(report_path: Path, output_path: Path | None = None) -> dict[str, Any]:
     report_path = report_path.resolve()
     report = json.loads(report_path.read_text())
-    summary = build_promotion_summary(report, report_path=report_path)
+    summary = build_promotion_summary(
+        report,
+        report_path=report_path,
+        workflow_key=_hash_json({
+            "report_schema": report.get("schema_version"),
+            "report_sha256": _hash_bytes(report_path.read_bytes()),
+        }),
+    )
+    summary["evidence_origin"] = "imported_stage_report"
+    summary["newly_computed"] = False
+    contribution_root = output_path.resolve().parent if output_path else report_path.parent
+    summary = _finalize_training_contribution(summary, contribution_root)
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")

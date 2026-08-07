@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.0.0rc19 - 2026-08-06
+
+### Added
+
+- Add `HeterogeneousPlanGraph` and attribution-gated grammars for bounded GPU stable
+  compaction, queue overlap, exact sparse-update policy, and presentation lifecycle plans.
+- Add generated CUDA/C++ realizations, finite device-protocol and Z3 obligations,
+  deterministic GraphML, exact runner contracts, and physical-evidence promotion gates.
+- Add comprehensive systems-code design guidance and an agent triage prompt for deciding
+  between generated source, executable runtime plans, protocol adapters, and physical runners.
+- Add durable, owner-only canonical-training outbox delivery for explicitly opted-in terminal
+  workflow dispositions, including retry and contributor-scoped rate limiting.
+
+### Validation
+
+- Pass 279 repository tests, strict OpenSpec validation, strict toolchain diagnosis, package
+  build, isolated wheel installation, and installed-wheel synthesis/proof smoke tests.
+- Validate NeuralFusion's relevant P2, sparse-policy, queue, and presentation surfaces read-only;
+  preserve external driver, network, and visible-presentation behavior as explicit boundaries.
+
 ## 1.0.0rc18 - 2026-08-06
 
 ### Added

@@ -1,0 +1,42 @@
+kind: queue-overlap
+name: upload-compute-present-overlap
+attribution:
+  metric: queue_idle_cycles_percent
+  value: 22.0
+  unit: percent
+  evidence: device timestamp timeline fixture
+queues:
+  - {id: transfer-0, family: transfer}
+  - {id: compute-0, family: compute}
+  - {id: compute-1, family: compute}
+operations:
+  - id: upload-a
+    operation: upload
+    duration_ns: 100
+    eligible_queues: [transfer-0, compute-0]
+    accesses: [{resource: a, mode: write, stage: transfer}]
+  - id: upload-b
+    operation: upload
+    duration_ns: 100
+    eligible_queues: [transfer-0, compute-1]
+    accesses: [{resource: b, mode: write, stage: transfer}]
+  - id: compute-a
+    operation: dispatch
+    duration_ns: 300
+    eligible_queues: [compute-0, compute-1]
+    accesses:
+      - {resource: a, mode: read, stage: compute}
+      - {resource: output-a, mode: write, stage: compute}
+  - id: compute-b
+    operation: dispatch
+    duration_ns: 300
+    eligible_queues: [compute-0, compute-1]
+    accesses:
+      - {resource: b, mode: read, stage: compute}
+      - {resource: output-b, mode: write, stage: compute}
+dependencies:
+  - [upload-a, compute-a]
+  - [upload-b, compute-b]
+observables: [output-a hash, output-b hash, total latency]
+search:
+  maximum_candidates: 64

@@ -1,0 +1,16 @@
+kind: sparse-update-policy
+name: exact-minimum-byte-update-encoding
+attribution:
+  metric: update_payload_construction_percent
+  value: 24.0
+  unit: percent
+  evidence: exact encoding-size attribution fixture
+contract:
+  policy_model: minimum-exact-bytes
+  tie_order: [dense-bitmap, sparse-bitmap-bytes, runs, full]
+  exact_reconstruction: true
+search:
+  evaluation_orders:
+    - [dense-bitmap, sparse-bitmap-bytes, runs, full]
+    - [full, runs, sparse-bitmap-bytes, dense-bitmap]
+  maximum_candidates: 16

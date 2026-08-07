@@ -1,0 +1,17 @@
+kind: gpu-stable-compaction
+name: bounded-stable-changed-item-compaction
+attribution:
+  metric: sparse_selection_cycles_percent
+  value: 18.4
+  unit: percent
+  evidence: application timestamp attribution fixture
+contract:
+  max_elements: 64
+  element_bits: 32
+  exact_observables: true
+architecture:
+  max_threads_per_block: 1024
+  shared_memory_per_block: 49152
+search:
+  workgroup_sizes: [64, 128, 256]
+  maximum_candidates: 16

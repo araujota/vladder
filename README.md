@@ -30,7 +30,7 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc18`, the C++ closure matrix is
+The package version is `1.0.0rc19`, the C++ closure matrix is
 `bounded-cpp-regions-v8`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
 `bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
@@ -141,6 +141,25 @@ queue synchronization, DMA topology, and presentation ownership lower into share
 Static models never promote. Exact output hashes, matching device identity, clean device
 timestamps, protocol closure, and confidence intervals are required for a physical win.
 Profiler-replayed, serialized, or simulated measurements remain attribution-only.
+
+The `heterogeneous-algorithm-orchestration-v2` layer extends this from local schedules to bounded
+algorithm and policy changes. It uses the same semantic vocabulary for predicate/scan/scatter,
+queue dependencies, sparse/dense representation dispatch, and acquire/render/present/release:
+
+- `gpu-stable-compaction` emits CUDA source and launch plans for exact one-workgroup or bounded
+  hierarchical predicate, prefix-scan, capacity guard, stable index/value scatter, and extent commit;
+- `queue-overlap` exhaustively assigns a finite dependency DAG to eligible queues, generates
+  cross-queue synchronization, invokes the existing hazard verifier, and reports modeled makespan;
+- `sparse-update-policy` emits C++ for exact sparse/dense selection with stable output,
+  fail-unchanged capacity behavior, and atomic extent publication;
+- `presentation-policy` enumerates only device-supported modes, image counts, and flight counts,
+  then verifies each finite image lifecycle.
+
+Every family requires measured attribution before search, emits deterministic JSON and GraphML,
+and remains non-promotable until an exact application runner supplies matching output/state hashes
+and representative physical timestamps. GraphML or a learned model may rank candidates but cannot
+establish legality or proof. Queue plans are executable runtime manifests, not source rewrites;
+driver overlap and visible presentation remain physical claims.
 
 rc15 makes that optimization stack consumable as a public agent workflow. It adds stable schemas,
 three reproducible frontend demonstrations, seeded accepted/rejected transformations, a
@@ -310,6 +329,19 @@ it. Training opt-in authorizes continuous contribution at every eligible opportu
 anonymized source-free forms the installed release can encode. Review opt-in authorizes a review
 request at most once every 30 days, with exact-review approval still required.
 
+The decisive automatic contribution boundary is the terminal `promotion-summary.json`. At that
+point semantic coverage, candidate, proof, physical evidence, disposition, blockers, and artifact
+lineage have stopped changing for the workflow invocation. `vladder workflow run` and
+`vladder workflow summarize` locally anonymize and schema-validate that complete record, then submit
+it automatically only when durable canonical-training consent is `opt_in`. Upload failure is
+reported in the promotion summary and never invalidates local optimization evidence. Unknown or
+opt-out state performs no network action.
+
+The client writes each validated bundle to an owner-only persistent outbox before transport. A
+temporary network, service, or rate-limit failure records `continuous_contribution_queued`; a
+later opted-in terminal workflow replays pending records. The training opportunity is not lost,
+and unknown or opt-out consent never flushes the queue.
+
 The capability is append-only and scope-specific. It cannot read pending records, approve or
 modify records, invoke internal Convex functions, or access the deployment. Convex exposes no
 direct table API to the client; this registered-function authorization boundary is the service's
@@ -347,6 +379,7 @@ is in [`docs/privacy.md`](docs/privacy.md); schema compatibility is in
 
 Release and contributor guides:
 
+- [`docs/designing-systems-code-for-vladder.md`](docs/designing-systems-code-for-vladder.md)
 - [`docs/grammar-authoring.md`](docs/grammar-authoring.md)
 - [`docs/proof-boundaries.md`](docs/proof-boundaries.md)
 - [`docs/benchmark-reproducibility.md`](docs/benchmark-reproducibility.md)
@@ -356,10 +389,10 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc18` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc19` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc18'
+python3 -m pip install --pre 'vladder==1.0.0rc19'
 vladder doctor
 ```
 
@@ -479,6 +512,8 @@ vladder gpu cuda-optimize --source kernel.cu --function transform \
   --architecture gpu-architecture.yaml --out-dir vladder-cuda-out
 vladder gpu queue-template --topology device-topology.json --out queue.yaml
 vladder gpu protocol-verify --manifest queue.yaml --out-dir queue-proof
+vladder gpu plan-synthesize --manifest algorithm-or-policy.yaml --out-dir plans
+vladder gpu plan-rank --manifest physical-plan-ranking.yaml --out-dir plan-ranking
 ```
 
 For an automatically supported Rust region:

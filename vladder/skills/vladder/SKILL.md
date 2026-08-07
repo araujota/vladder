@@ -19,7 +19,7 @@ If the command is unavailable or reports another version, tell the user that the
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc18'
+python3 -m pip install --pre 'vladder==1.0.0rc19'
 vladder doctor --strict
 ```
 
@@ -27,7 +27,7 @@ Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or t
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc18`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc19`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v8`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
@@ -41,6 +41,9 @@ The executable `bounded-dataflow-v1` grammar adds stable variable-output compact
 fixed-width codecs, transactional state deltas, AoS projected multi-reductions, and deterministic
 4x4 packed blocks. Read [bounded-dataflow.md](references/bounded-dataflow.md) when the observable
 includes indices, values, exact extent, packed bytes, or next state rather than only a scalar.
+
+Read [systems-code-design.md](references/systems-code-design.md) before restructuring production
+code; preserve idiomatic ownership/protocol shells and expose bounded semantics and observables.
 
 All supported frontends converge on `SemanticFlowGraph v2`. Read typed `obligations`, `effects`,
 `protocols`, and `claims` before interpreting a graph. An obligation is actionable through its ID,
@@ -120,6 +123,14 @@ Before the first canonical workflow run, show the user the complete machine-read
 each `unknown` contribution scope and ask for an explicit opt-in or opt-out. This is a required
 informed clarification, not a suggestion; optimization remains available regardless of either
 answer.
+
+Terminal promotion-summary creation is the ubiquitous canonical training trigger. When durable
+`canonical_training_data` consent is `opt_in`, `workflow run` and `workflow summarize` must
+automatically anonymize, schema-validate, and submit the complete disposition record without
+asking again. Read `optional_contributions.canonical_training_data` for completion or a retryable
+transport failure. The validated record is durably queued before transport; a later opted-in
+terminal workflow replays pending records. Unknown or opt-out consent must perform no network
+request and must not flush the outbox.
 
 Read `promotion-summary.json` first. Answer, in order:
 
@@ -436,25 +447,13 @@ overlapping regions cannot be compounded without an explicit interaction measure
 For public resources, run `vladder protocol template --kind queue` and `protocol verify`; never add
 external implementation internals to local candidate search.
 
-For GPU compute and device-resident flow, read [gpu-workflow.md](references/gpu-workflow.md) and
-start with `vladder gpu support`, `vladder gpu probe`, and `vladder gpu topology`. Use
-`gpu cuda-synthesize|cuda-optimize` for a recognized bounded CUDA pointwise source region; use
-`gpu capture|synthesize|verify|rank` for general SPIR-V/PTX capture and manifest-driven external
-runners. The CUDA optimizer compiles candidates for the probed architecture, inspects JIT resource
-usage, proves schedule coverage/injectivity and expression identity, runs exact output hashes, and
-uses randomized clean CUDA-event timing. It emits source, patch, and launch plan only after physical
-promotion. Apply all three as one candidate.
-
-Model queue synchronization, DMA topology, and presentation ownership independently. Generate
-live-bound templates with `gpu queue-template|dma-template|presentation-template`, then run
-`gpu protocol-verify`. A topology probe is capability evidence, not proof that registration,
-transfer, page flip, or scanout occurred. Direct GPUDirect requires both CUDA export and RDMA NIC
-import capability; DMA templates fail until application ordering mechanisms are supplied;
-presentation templates fail without an active connector. `spirv-val`, static occupancy,
-launch-index proof, protocol proof, and Nsight counters are supporting evidence, not physical
-equivalence. Promotion requires exact outputs, matching device identity, clean device timestamps,
-and a confidence interval excluding the declared minimum effect. Driver scheduling, firmware,
-undeclared device loss, and external actors remain explicit claim boundaries.
+For GPU compute, algorithms, and device protocols, follow
+[gpu-workflow.md](references/gpu-workflow.md). Use `cuda-synthesize|cuda-optimize` for bounded CUDA,
+`capture|synthesize|verify|rank` for general kernel evidence, and `plan-synthesize|plan-rank` for
+attributed compaction, queue, sparse-policy, or presentation grammars. Use
+[heterogeneous-plan-triage.md](prompts/heterogeneous-plan-triage.md) first. Generated source and
+runtime plans are distinct; GraphML and simulation never prove or promote. External DMA, driver,
+network, and visible presentation behavior require explicit protocols and physical runners.
 
 ### 7. Rewrite Production Source
 
@@ -486,14 +485,10 @@ result as `bounded_optimal_local` only after exhaustive coverage with sound prun
 
 ## Advanced Modes
 
-- Fused streaming operators: `vladder operator analyze|optimize`
-- Stateful pipelines: `vladder pipeline optimize`
-- Hierarchical pipeline research: `vladder pipeline analyze-v4|optimize-v4`
-- Projection complexes: `vladder projection analyze|profile|synthesize`
-- Attribution-gated kernels: `vladder sksf validate-attribution|synthesize`
-- Production Q4_K research: `vladder q4k ...`
-- Heterogeneous GPU execution: `vladder gpu support|capture|synthesize|verify|rank`
-- Lifetime-aware realization: `vladder lifetime analyze|synthesize|evaluate-corpus`
+- Streaming operators and stateful pipelines: `vladder operator analyze|optimize`, `vladder pipeline optimize`
+- Hierarchical pipelines and projections: `vladder pipeline analyze-v4|optimize-v4`, `vladder projection ...`
+- Attribution-gated and Q4_K kernels: `vladder sksf validate-attribution|synthesize`, `vladder q4k ...`
+- GPU and lifetime workflows: `vladder gpu support|capture|synthesize|verify|rank`, `vladder lifetime ...`
 
 These modes are contract-specific. Read their example manifests in the installed package before
 use and preserve their stated proof classification. They are not implied to have generic source

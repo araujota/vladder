@@ -64,6 +64,10 @@ def gpu_support_matrix() -> dict[str, Any]:
         "executable_grammars": {
             "cuda-pointwise-schedule-v1": "operational" if tools["nvcc"] else "nvcc_required",
             "glsl-workgroup-source-rewrite": "operational" if tools["glslangValidator"] else "glslang_required",
+            "gpu-stable-compaction-v2": "operational" if tools["nvcc"] else "source_generation_only_nvcc_required",
+            "queue-overlap-v2": "operational_runtime_plan_application_binding_required",
+            "sparse-update-policy-v2": "operational_generated_cpp",
+            "presentation-policy-v2": "operational_runtime_plan_physical_display_runner_required",
             "opaque-ptx-code-shape": "adapter_required",
             "opaque-spirv-code-shape": "adapter_required",
         },
@@ -100,8 +104,9 @@ def gpu_support_matrix() -> dict[str, Any]:
         "local_nvidia_device": device,
         "tools": tools,
         "claim_boundary": (
-            "bounded CUDA pointwise physical ranking has a native runner; arbitrary kernels, final "
-            "driver scheduling, DMA completion, and presentation require concrete application runners"
+            "bounded CUDA pointwise has a native runner, and bounded stable compaction has a source/launch lowerer; queue, "
+            "sparse, and presentation policies emit verified executable plans, while final driver "
+            "scheduling, DMA completion, network delivery, and visible presentation require concrete runners"
         ),
     }
 

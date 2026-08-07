@@ -23,6 +23,15 @@ a request at most once per 30 days; exact-review submission remains separately a
 workflows sync registered training exporters only under training opt-in, and schema/privacy checks
 remain mandatory.
 
+The ubiquitous contribution trigger is terminal promotion-summary creation. Both `workflow run`
+and `workflow summarize` automatically invoke the registered source-free exporter after the summary
+contains the final semantic, candidate, proof, physical, disposition, blocker, and lineage states.
+The contribution result is recorded under `optional_contributions.canonical_training_data`.
+Submission failure is non-fatal to local evidence and is surfaced for retry; unknown or opt-out
+consent never performs a network request.
+Every locally valid record is written to the owner-only persistent training outbox before network
+access. A later opted-in terminal workflow retries queued records; opt-out never flushes them.
+
 ## Evidence States
 
 The states are independent and ordered:
@@ -73,4 +82,6 @@ all selected candidates still require the ordinary proof and physical-promotion 
 `optional_canonical_training_contribution` reports consent and sync state. Unknown or opt-out never
 uses the network. A prior workflow with continuous training opt-in automatically runs every
 registered anonymized prior exporter; inspect its bundle count and export gaps. For other workflow
-kinds, run registered exporters after completion and report missing adapters explicitly.
+kinds, terminal promotion-summary creation automatically runs the generic disposition exporter;
+run additional registered exporters for richer canonical candidate stores and report missing
+adapters explicitly.

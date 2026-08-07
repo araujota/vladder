@@ -21,8 +21,9 @@ from vladder.contribution_transport import (
 )
 from vladder.training_workflow import (
     create_training_bundle_from_prior, create_training_bundle_from_promotion_summary,
-    create_training_template, export_all_training_bundles_from_prior, submit_training_bundle,
-    sync_all_training_bundles_from_prior, sync_promotion_summary, validate_training_bundle,
+    create_training_template, enqueue_training_bundle, export_all_training_bundles_from_prior,
+    flush_training_outbox, submit_training_bundle, sync_all_training_bundles_from_prior,
+    sync_promotion_summary, validate_training_bundle,
 )
 from vladder.prior_synthetic import generate_synthetic_prior_corpus
 from vladder.paired_benchmark import run_paired_benchmark
@@ -300,14 +301,43 @@ class PublicReleaseContractTests(unittest.TestCase):
             )
             self.assertEqual(validate_training_bundle(root / "bundle.json")["status"], "pass")
             self.assertNotIn("private/project/path.cpp", json.dumps(bundle))
-            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
-                with patch("urllib.request.urlopen") as urlopen:
-                    response = urlopen.return_value.__enter__.return_value
-                    response.status = 202
-                    response.read.return_value = b'{"status":"accepted_for_moderation"}'
-                    report = sync_promotion_summary(summary, root / "sync", consent_path=consent_path)
-                    self.assertEqual(report["status"], "pass")
-                    self.assertEqual(urlopen.call_count, 1)
+            with patch.dict("os.environ", {"VLADDER_TRAINING_OUTBOX_DIR": str(root / "outbox")}):
+                with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+                    with patch("urllib.request.urlopen") as urlopen:
+                        response = urlopen.return_value.__enter__.return_value
+                        response.status = 202
+                        response.read.return_value = b'{"status":"accepted_for_moderation"}'
+                        report = sync_promotion_summary(summary, root / "sync", consent_path=consent_path)
+                        self.assertEqual(report["status"], "pass")
+                        self.assertTrue(report["current_record_submitted"])
+                        self.assertEqual(urlopen.call_count, 1)
+                        self.assertEqual(list((root / "outbox").glob("*.json")), [])
+
+    def test_training_outbox_retains_transport_failures_and_replays_on_next_opportunity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            consent_path = root / "consent.json"
+            outbox = root / "outbox"
+            set_consent(
+                CANONICAL_TRAINING_DATA, "opt_in", path=consent_path, confirmed_user_choice=True,
+            )
+            bundle_path = root / "bundle.json"
+            bundle = create_training_template(bundle_path)
+            bundle["privacy"]["submission_consent"] = True
+            bundle_path.write_text(json.dumps(bundle))
+            queued = enqueue_training_bundle(bundle_path, outbox_directory=outbox)
+            self.assertEqual(Path(queued["entry"]).stat().st_mode & 0o777, 0o600)
+            with patch("vladder.training_workflow.submit_training_bundle", side_effect=RuntimeError("HTTP 429")):
+                first = flush_training_outbox(outbox_directory=outbox, consent_path=consent_path)
+            self.assertEqual(first["status"], "queued_for_retry")
+            self.assertEqual(first["pending_count"], 1)
+            with patch("vladder.training_workflow.submit_training_bundle", return_value={
+                "status": "submitted", "payload_sha256": queued["payload_sha256"],
+            }):
+                second = flush_training_outbox(outbox_directory=outbox, consent_path=consent_path)
+            self.assertEqual(second["status"], "pass")
+            self.assertEqual(second["submitted_count"], 1)
+            self.assertEqual(second["pending_count"], 0)
 
     def test_contributor_capability_is_scope_keyed_cached_and_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

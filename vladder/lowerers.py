@@ -387,6 +387,17 @@ class TypedSpirvCoreLowerer(DeclarativeFamilyLowerer):
     }
 
 
+class HeterogeneousAlgorithmOrchestrationLowerer(DeclarativeFamilyLowerer):
+    family_id = "heterogeneous-algorithm-orchestration"
+    region_kind = "bounded-heterogeneous-execution-plan"
+    rules = {
+        "gpu-stable-compaction": "select a bounded device compaction topology with exact stable output extent, capacity behavior, and uniform synchronization",
+        "queue-overlap": "schedule a finite resource-dependency DAG across queues while preserving inferred hazards, publication, completion, and retirement",
+        "sparse-update-policy": "select an exact sparse, run, bitmap, or dense representation with canonical ties and atomic capacity failure",
+        "presentation-policy": "select a supported finite presentation lifecycle while preserving image ownership, queueing, completion, and retirement",
+    }
+
+
 class FiniteResourceProtocolLowerer(DeclarativeFamilyLowerer):
     family_id = "finite-resource-protocol"
     region_kind = "finite-resource-state-machine"

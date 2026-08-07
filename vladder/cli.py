@@ -84,6 +84,7 @@ from .device_topology import (
 )
 from .device_protocol import verify_device_protocol
 from .gpu_ir import load_gpu_architecture
+from .heterogeneous_plan import audit_heterogeneous_project, rank_heterogeneous_plans, synthesize_heterogeneous_plans
 from .prior_workflow import (
     evaluate_prior, evaluate_prior_generalization, generate_prior_dataset, ingest_prior_dataset, prior_support,
     initialize_prior_manifest, initialize_prior_training_template, materialize_prior_dataset_template,
@@ -1276,6 +1277,12 @@ def gpu_command(args: argparse.Namespace) -> int:
         report = verify_device_protocol(Path(args.manifest), Path(args.out_dir)).to_dict()
     elif args.gpu_command == "cuda-run":
         report = run_cuda_artifact(Path(args.artifact))
+    elif args.gpu_command == "plan-synthesize":
+        report = synthesize_heterogeneous_plans(Path(args.manifest), Path(args.out_dir))
+    elif args.gpu_command == "plan-rank":
+        report = rank_heterogeneous_plans(Path(args.manifest), Path(args.out_dir))
+    elif args.gpu_command == "project-audit":
+        report = audit_heterogeneous_project(Path(args.project), Path(args.out_dir))
     elif args.gpu_command in {"cuda-synthesize", "cuda-optimize"}:
         output_directory = Path(args.out_dir).resolve()
         if args.architecture:
@@ -1957,6 +1964,27 @@ def build_parser() -> argparse.ArgumentParser:
     gpu_run = gpu_sub.add_parser("cuda-run", help="execute one bounded CUDA artifact with exact output hashing and device timestamps")
     gpu_run.add_argument("--artifact", required=True)
     gpu_run.set_defaults(func=gpu_command)
+    gpu_plan = gpu_sub.add_parser(
+        "plan-synthesize",
+        help="synthesize bounded GPU-algorithm, queue-overlap, sparse-policy, or presentation plans",
+    )
+    gpu_plan.add_argument("--manifest", required=True)
+    gpu_plan.add_argument("--out-dir", default="vladder-heterogeneous-plans")
+    gpu_plan.set_defaults(func=gpu_command)
+    gpu_plan_rank = gpu_sub.add_parser(
+        "plan-rank",
+        help="physically rank generated heterogeneous plans through an exact application runner",
+    )
+    gpu_plan_rank.add_argument("--manifest", required=True)
+    gpu_plan_rank.add_argument("--out-dir", default="vladder-heterogeneous-ranking")
+    gpu_plan_rank.set_defaults(func=gpu_command)
+    gpu_project_audit = gpu_sub.add_parser(
+        "project-audit",
+        help="recognize heterogeneous algorithm and policy binding surfaces without writing the target project",
+    )
+    gpu_project_audit.add_argument("--project", required=True)
+    gpu_project_audit.add_argument("--out-dir", default="vladder-heterogeneous-project-audit")
+    gpu_project_audit.set_defaults(func=gpu_command)
     for action, help_text, default_out in (
         ("cuda-synthesize", "extract and generate proved bounded CUDA pointwise schedules", "vladder-cuda-synthesis"),
         ("cuda-optimize", "generate, prove, physically rank, and conditionally emit a CUDA replacement", "vladder-cuda-optimization"),

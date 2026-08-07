@@ -334,6 +334,23 @@
       }
     },
     {
+      "id": "heterogeneous-algorithm-orchestration",
+      "title": "Bounded GPU algorithms and runtime orchestration policies",
+      "status": "experimental",
+      "concerns": ["GPU algorithm topology", "stable device compaction", "queue overlap", "sparse/dense update policy", "presentation pacing", "external physical observables"],
+      "rules": ["gpu-stable-compaction", "queue-overlap", "sparse-update-policy", "presentation-policy"],
+      "contract_facts": ["bounded extent and resource set", "exact output and state observables", "capacity failure", "dependency and hazard preservation", "supported present modes", "physical evidence class"],
+      "proof_strategies": ["SemanticFlowGraph v2", "Z3 bounded coverage and policy obligations", "finite device protocol verification", "native compilation", "exact differential runner", "randomized physical ranking"],
+      "cost_signals": ["useful output bytes", "workgroup barriers", "critical-path makespan", "queue idle time", "sparse density", "presentation queue delay", "device timestamps"],
+      "lowerer": "vladder.lowerers:HeterogeneousAlgorithmOrchestrationLowerer",
+      "source_routes": {
+        "gpu-stable-compaction": "vladder.heterogeneous_plan:synthesize_heterogeneous_plans",
+        "queue-overlap": "vladder.heterogeneous_plan:synthesize_heterogeneous_plans",
+        "sparse-update-policy": "vladder.heterogeneous_plan:synthesize_heterogeneous_plans",
+        "presentation-policy": "vladder.heterogeneous_plan:synthesize_heterogeneous_plans"
+      }
+    },
+    {
       "id": "finite-resource-protocol",
       "title": "Finite external resource and publication protocols",
       "status": "operational",

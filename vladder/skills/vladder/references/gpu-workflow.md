@@ -17,6 +17,38 @@ vladder gpu verify --manifest gpu-workflow.yaml --out-dir gpu-proof
 vladder gpu rank --manifest gpu-workflow.yaml --out-dir gpu-ranking
 ```
 
+## Algorithm And Policy Search
+
+Use the v2 plan grammar when the implementation choice changes the algorithmic graph or runtime
+organization rather than only launch geometry:
+
+```bash
+vladder gpu plan-synthesize --manifest gpu-compaction.yaml --out-dir compaction-plans
+vladder gpu plan-synthesize --manifest queue-overlap.yaml --out-dir queue-plans
+vladder gpu plan-synthesize --manifest sparse-policy.yaml --out-dir sparse-plans
+vladder gpu plan-synthesize --manifest presentation-policy.yaml --out-dir presentation-plans
+vladder gpu plan-rank --manifest physical-plan-ranking.yaml --out-dir plan-ranking
+```
+
+All manifests require an attribution record with a positive measured cost and evidence provenance.
+The initial executable families are deliberately finite:
+
+- one-workgroup or bounded hierarchical CUDA stable compaction with exact extent, stable order, and fail-unchanged capacity;
+- finite queue assignment with generated semaphore/barrier plans and hazard verification;
+- generated C++ sparse/dense update dispatch with exact reconstruction and extent-last commit;
+- supported swapchain mode/image/flight policy with finite lifecycle verification.
+
+Each candidate emits `heterogeneous-plan-graph.json`, `semantic-flow-graph.json`, GraphML, Z3
+obligations, and either source or an executable runtime manifest. Generated source can be compiled
+directly. A runtime manifest still needs repository binding. The external runner must return
+`total_time_ns`, `output_hash`, `state_hash`, `device_identity`, and `evidence_class`. Only clean
+device/presentation/end-to-end timestamp classes can promote. Modeled overlap, modeled frame time,
+simulated execution, and GraphML scores are hypotheses.
+
+Recursive regions require a declared `maximum_depth`; unbounded SCCs fail closed. GraphML preserves
+the bound for a future learned prior, but model scores never add transformations or remove proof
+obligations.
+
 For a bounded CUDA pointwise kernel, use the executable source path directly:
 
 ```bash

@@ -6,10 +6,12 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import yaml
 
-from vladder.agent_workflow import run_agent_workflow
+from vladder.agent_workflow import run_agent_workflow, summarize_report
+from vladder.consent import CANONICAL_TRAINING_DATA, set_consent
 from vladder.cpp_adapters import generate_cpp_adapter_bundle
 from vladder.cpp_regions import inspect_cpp_matrix, inspect_cpp_region
 from vladder.lifetime_workflow import synthesize_lifetime_flow
@@ -188,6 +190,68 @@ class AgenticRc6Tests(unittest.TestCase):
             self.assertTrue(second["states"]["candidate_proved"])
             self.assertFalse(second["states"]["production_promoted"])
             self.assertLessEqual(len(second["decisive_artifacts"]), 5)
+
+    def test_terminal_promotion_summary_ubiquitously_submits_when_opted_in(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            consent_path = root / "consent.json"
+            set_consent(
+                CANONICAL_TRAINING_DATA, "opt_in", path=consent_path,
+                confirmed_user_choice=True,
+            )
+            manifest = root / "workflow.yaml"
+            manifest.write_text(yaml.safe_dump({
+                "schema_version": "vladder-agent-workflow-v1",
+                "name": "terminal-training-record",
+                "region": {
+                    "kind": "protocol", "action": "verify",
+                    "manifest": str(ROOT / "examples" / "protocols" / "versioned_cache.yaml"),
+                },
+                "contract": {"identity": "cache-v1", "exact": True},
+                "workload": {"identity": "protocol-only"},
+            }))
+            sync_result = {
+                "status": "pass",
+                "record_forms": ["workflow_disposition", "proof_and_promotion_state"],
+            }
+            with patch.dict("os.environ", {"VLADDER_CONSENT_FILE": str(consent_path)}):
+                with patch("vladder.agent_workflow.sync_promotion_summary", return_value=sync_result) as sync:
+                    first = run_agent_workflow(manifest, root / "out")
+                    second = run_agent_workflow(manifest, root / "out")
+                    imported = summarize_report(
+                        root / "out" / "stage" / "protocol-proof.json",
+                        root / "imported-summary.json",
+                    )
+            self.assertEqual(sync.call_count, 3)
+            for summary in (first, second, imported):
+                contribution = summary["optional_contributions"]["canonical_training_data"]
+                self.assertEqual(contribution["status"], "continuous_contribution_completed")
+                self.assertEqual(contribution["trigger"], "terminal_promotion_summary")
+                self.assertTrue(contribution["record_complete"])
+                self.assertTrue(summary["states"]["workflow_completed"])
+                self.assertTrue(summary["workflow_key"])
+
+    def test_terminal_promotion_summary_never_submits_after_opt_out(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            consent_path = root / "consent.json"
+            set_consent(
+                CANONICAL_TRAINING_DATA, "opt_out", path=consent_path,
+                confirmed_user_choice=True,
+            )
+            report_path = root / "protocol-proof.json"
+            verify_state_protocol(
+                ROOT / "examples" / "protocols" / "versioned_cache.yaml", root / "protocol",
+            )
+            generated_report = root / "protocol" / "protocol-proof.json"
+            report_path.write_bytes(generated_report.read_bytes())
+            with patch.dict("os.environ", {"VLADDER_CONSENT_FILE": str(consent_path)}):
+                with patch("vladder.agent_workflow.sync_promotion_summary") as sync:
+                    summary = summarize_report(report_path, root / "summary.json")
+            sync.assert_not_called()
+            contribution = summary["optional_contributions"]["canonical_training_data"]
+            self.assertEqual(contribution["status"], "disabled_by_user")
+            self.assertFalse(contribution["network_action_performed"])
 
 
 if __name__ == "__main__":

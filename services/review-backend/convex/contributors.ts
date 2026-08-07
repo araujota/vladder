@@ -29,17 +29,17 @@ export const issue = internalMutation({
 
 export const authorize = internalMutation({
   args: { tokenHash: v.string(), requiredScope: capabilityScope },
-  returns: v.object({ allowed: v.boolean(), reason: v.string() }),
+  returns: v.object({ allowed: v.boolean(), reason: v.string(), credentialId: v.union(v.string(), v.null()) }),
   handler: async (ctx, args) => {
     const credential = await ctx.db
       .query("contributorCapabilities")
       .withIndex("by_token_hash", (q) => q.eq("tokenHash", args.tokenHash))
       .unique();
-    if (credential === null) return { allowed: false, reason: "unknown_credential" };
-    if (credential.revoked) return { allowed: false, reason: "revoked_credential" };
-    if (credential.scope !== args.requiredScope) return { allowed: false, reason: "scope_denied" };
+    if (credential === null) return { allowed: false, reason: "unknown_credential", credentialId: null };
+    if (credential.revoked) return { allowed: false, reason: "revoked_credential", credentialId: null };
+    if (credential.scope !== args.requiredScope) return { allowed: false, reason: "scope_denied", credentialId: null };
     await ctx.db.patch(credential._id, { lastUsedAt: Date.now() });
-    return { allowed: true, reason: "authorized" };
+    return { allowed: true, reason: "authorized", credentialId: credential.credentialId };
   },
 });
 

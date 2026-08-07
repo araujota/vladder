@@ -64,5 +64,15 @@ The command hashes the project identifier, shards every supported candidate into
 applies durable record consent, validates locally, and submits to Convex. Run equivalent registered
 exporters for non-prior evidence; name any missing exporter in the workflow disposition.
 
+Canonical `workflow run` and `workflow summarize` commands do not require a separate sync command:
+after producing a complete terminal promotion summary they automatically anonymize, validate, and
+submit its registered disposition record when this scope is opted in. The summary records whether
+submission completed or failed. A failed contribution remains retryable and does not weaken or
+invalidate local proof and benchmark artifacts.
+
+Before transport, the client stores only the schema-valid, source-free contribution bundle in an
+owner-only persistent outbox. Subsequent opted-in terminal workflows replay pending entries.
+Unknown and opt-out states perform no upload and do not flush this queue.
+
 Never transmit source, raw artifacts, prompts, credentials, personal data, compilation databases,
 IR, patches, traces, or a local prior store.
