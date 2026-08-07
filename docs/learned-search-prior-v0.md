@@ -43,12 +43,35 @@ define semantic identity. The graph canonicalizer is an identity aid, not an equ
 Use root, project, language, hardware, and temporal holdouts. Candidate-level random splitting is
 prohibited because candidates from one semantic root are correlated.
 
+The contribution/training interchange is `vladder-model-training-bundle-v2`. It preserves three
+linked tables: roots with bounded attributed topology, candidates with structured grammar actions
+and hardware/workload context, and append-only observations. `graph_learning_examples()` exposes
+`node_features`, `edge_index`, relation features, action/context features, labels, and a
+`ranking_group` keyed by root/hardware/workload. This is the unit consumed by a relational GNN or
+pairwise/listwise ranker. Legacy `vladder-training-bundle-v1` records remain telemetry and must not
+be treated as equivalent graph-model samples.
+
+```bash
+vladder training graph-examples --bundle vladder-model-training-bundle.json \
+  --out graph-learning-examples.jsonl
+vladder training ingest-model --bundle vladder-model-training-bundle.json --store experience
+```
+
+The JSONL path preserves every project/language occurrence. The v0 prior-store compatibility path
+deduplicates exact semantic clones because that older store keys roots by semantic identity; use the
+JSONL/relational loader for language- and project-holdout training.
+
 The training boundary is intentionally open to future grammar growth. Canonical identity captures
 every non-provenance typed node and edge field, including previously unknown relations,
 lifetime/authority metadata, protocol annotations, and family-specific attributes. Structured
 actions carry `family`, `family_version`, ordered `primitives`, nested `parameters`, and namespaced
 `extensions`. Hardware and workload descriptors are open mappings. Stable canonical outcome
 classes remain fixed so grammar expansion does not fragment labels.
+
+Contribution sanitization preserves the standard action coordinates and supports future public
+grammar coordinates through `public_training_schema: true` plus typed `training_features`.
+Undeclared extension payloads are omitted. This allows grammar growth without a schema migration
+while preventing arbitrary source-derived extension data from crossing the privacy boundary.
 
 ```bash
 vladder prior template --out training-template.yaml
@@ -60,21 +83,25 @@ vladder prior split --store experience --method project --out split.json
 
 Prior datasets remain local by default. `prior-summary.json` exposes the canonical training
 contribution stage and its durable consent state. Unknown or opt-out performs no network action;
-opt-in automatically shards and syncs every supported anonymized form after each newly completed
+opt-in automatically shards and syncs every supported pseudonymized form after each newly completed
 prior workflow. Before the first decision, the agent must show the complete notice and local volume
 estimate, ask for explicit opt-in or opt-out, and honor the decision across sessions. Only validated
-source-free bundles are sent; local experience stores and canonical graphs are not uploaded as
-arbitrary artifacts.
+model-training bundles are sent; local experience stores and arbitrary graph/source artifacts are
+not uploaded. The v2 bundle is pseudonymized rather than anonymous because normalized topology is
+included and can fingerprint a distinctive algorithm. Source identifiers, paths, user-defined
+types and literals are removed, and linked IDs are installation-secret HMACs. Older training
+consent does not carry forward across this disclosure change.
 
 ## Pilot Model
 
-v0 implements a deterministic bootstrapped linear ensemble over hashed pooled graph, action,
+v0 implements a deterministic bootstrapped linear ensemble over hashed relational graph motifs, action,
 hardware, workload, lifetime, and authority features. It has applicability, pairwise ranking,
 proof-risk, and ordinal outcome heads. Calibration uses held-out roots, ensemble disagreement,
 semantic graph distance, and a conformal residual summary.
 
 This deliberately small backend validates the data and authority boundaries before introducing a
-12-30M parameter heterogeneous relational graph transformer. Training that larger model is gated on
+12-30M parameter heterogeneous relational graph transformer. The v2 interchange already retains
+the raw topology that model requires. Training that larger model is gated on
 at least 2,500 roots, 20 projects, 3 languages, 2 hardware targets, and 25,000 non-synthetic Grade
 A/B physical observations. Meeting the size gate makes the corpus eligible for model evaluation;
 it does not automatically authorize budgeted production search.

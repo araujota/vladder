@@ -268,5 +268,13 @@ benchmark outputs. Specialist integrations consume externally pinned dependencie
 Optional contribution is outside the optimization authority chain. Agent and prior summaries
 report two independent terminal stages, canonical training data and agent experience review. A
 user-level consent ledger outside the installation persists explicit opt-in or opt-out across
-sessions and updates; no workflow automatically executes either stage. The client still validates
-and confirms the exact source-free record before the Convex moderation service can receive it.
+sessions and updates. Opted-in terminal workflows automatically queue and send registered training
+forms; reviews retain a periodic request and exact-record approval. Unknown or opt-out training
+state performs no network action.
+
+The model-ready interchange separates sanitized semantic roots, structured candidate actions, and
+observation sequences. Root topology is retained so relational encoders can reason about operation,
+data, control, lifetime, authority, and placement edges; candidates sharing root/hardware/workload
+form one ranking group. The privacy boundary removes source identity and uses consent-epoch HMAC
+links, but classifies the result as pseudonymized structural data because topology can fingerprint
+an algorithm. A broader disclosure policy invalidates stale training consent.

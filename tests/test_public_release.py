@@ -17,7 +17,8 @@ from vladder.consent import (
 )
 from vladder.review_workflow import create_review_template, submit_review, validate_review
 from vladder.contribution_transport import (
-    DEFAULT_REVIEW_ENDPOINT, DEFAULT_TRAINING_ENDPOINT, load_or_register_capability,
+    DEFAULT_MODEL_TRAINING_ENDPOINT, DEFAULT_REVIEW_ENDPOINT, DEFAULT_TRAINING_ENDPOINT,
+    load_or_register_capability,
 )
 from vladder.training_workflow import (
     create_training_bundle_from_prior, create_training_bundle_from_promotion_summary,
@@ -25,6 +26,8 @@ from vladder.training_workflow import (
     flush_training_outbox, submit_training_bundle, sync_all_training_bundles_from_prior,
     sync_promotion_summary, validate_training_bundle,
 )
+from vladder.model_training_data import graph_learning_examples, ingest_model_training_bundle
+from vladder.training_privacy import load_or_create_training_identity, private_identity, sanitize_graph
 from vladder.prior_synthetic import generate_synthetic_prior_corpus
 from vladder.paired_benchmark import run_paired_benchmark
 from vladder.schema_registry import list_artifact_schemas, validate_artifact
@@ -69,11 +72,16 @@ class PublicReleaseContractTests(unittest.TestCase):
                 "semantic-flow",
                 "spirv-semantics",
                 "system-closure",
+                "model-training-bundle",
                 "training-bundle",
                 "whole-build-index",
             },
         )
-        self.assertTrue(all(item["stability"] == "stable" for item in report["artifacts"].values()))
+        self.assertEqual(report["artifacts"]["model-training-bundle"]["stability"], "candidate")
+        self.assertTrue(all(
+            item["stability"] == "stable"
+            for name, item in report["artifacts"].items() if name != "model-training-bundle"
+        ))
 
     def test_promotion_summary_validation_accepts_contract_and_rejects_missing_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -217,10 +225,13 @@ class PublicReleaseContractTests(unittest.TestCase):
                 maximum_examples=8,
             )
             self.assertEqual(validate_training_bundle(bundle_path)["status"], "pass")
-            self.assertGreater(len(bundle["examples"]), 0)
+            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v2")
+            self.assertGreater(len(bundle["candidates"]), 0)
+            self.assertGreater(len(bundle["roots"]), 0)
             self.assertFalse(bundle["privacy"]["submission_consent"])
             serialized = bundle_path.read_text()
-            self.assertNotIn("semantic_graph", serialized)
+            self.assertIn('"graph"', serialized)
+            self.assertNotIn('"semantic_graph"', serialized)
             self.assertNotIn("provenance", serialized)
             with self.assertRaisesRegex(ConsentRequiredError, "must ask the user"):
                 create_training_bundle_from_prior(
@@ -244,11 +255,11 @@ class PublicReleaseContractTests(unittest.TestCase):
             )
             self.assertTrue(exported["all_supported_candidates_exported"])
             self.assertEqual(
-                sum(len(json.loads(Path(path).read_text())["examples"]) for path in exported["bundles"]),
+                sum(len(json.loads(Path(path).read_text())["candidates"]) for path in exported["bundles"]),
                 exported["candidate_count"],
             )
             first_export = json.loads(Path(exported["bundles"][0]).read_text())
-            self.assertNotEqual(first_export["dataset"]["project_id"], "private-project-name")
+            self.assertNotEqual(first_export["roots"][0]["project_id"], "private-project-name")
             with patch("urllib.request.urlopen") as urlopen:
                 with self.assertRaisesRegex(ConsentRequiredError, "must ask the user"):
                     sync_all_training_bundles_from_prior(
@@ -269,6 +280,120 @@ class PublicReleaseContractTests(unittest.TestCase):
                     )
                     self.assertEqual(urlopen.call_count, synced["export"]["bundle_count"])
                     self.assertTrue(synced["continuous_opt_in_applied"])
+
+    def test_model_training_v2_preserves_topology_and_round_trips_without_source_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            generate_synthetic_prior_corpus(root / "corpus", root_count=3)
+            identity = root / "identity.json"
+            bundle_path = root / "model-training.json"
+            bundle = create_training_bundle_from_prior(
+                root / "corpus/experience", bundle_path,
+                project_id="SecretEnterpriseRepository",
+                producer_agent="codex", producer_model="fixture", maximum_examples=12,
+                identity_path=identity,
+            )
+            serialized = bundle_path.read_text()
+            self.assertEqual(bundle["privacy"]["risk_classification"], "pseudonymized_structural_data")
+            self.assertTrue(bundle["privacy"]["topology_included"])
+            self.assertNotIn("SecretEnterpriseRepository", serialized)
+            self.assertNotIn("source_path", serialized)
+            examples = graph_learning_examples(bundle_path)
+            self.assertEqual(len(examples), len(bundle["candidates"]))
+            self.assertTrue(any(example["graph"]["edge_index"][0] for example in examples))
+            groups = {example["ranking_group"] for example in examples}
+            self.assertLessEqual(len(groups), len(bundle["roots"]))
+            report = ingest_model_training_bundle(bundle_path, root / "ingested")
+            self.assertEqual(report["status"], "pass")
+            ingested = __import__("vladder.prior_data", fromlist=["PriorExperienceStore"]).PriorExperienceStore(
+                root / "ingested",
+            ).load()
+            self.assertGreater(len(ingested["candidates"]), 0)
+            self.assertLessEqual(len(ingested["candidates"]), len(bundle["candidates"]))
+            self.assertGreater(len(ingested["observations"]), 0)
+            self.assertIn("collapses exact semantic clones", report["compatibility_note"])
+            consent_path = root / "consent.json"
+            set_consent(
+                CANONICAL_TRAINING_DATA, "opt_in", path=consent_path, confirmed_user_choice=True,
+            )
+            consented_path = root / "consented-model-training.json"
+            create_training_bundle_from_prior(
+                root / "corpus/experience", consented_path,
+                project_id="SecretEnterpriseRepository", producer_agent="codex", producer_model="fixture",
+                maximum_examples=4, identity_path=identity, apply_durable_consent=True,
+                consent_path=consent_path,
+            )
+            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+                with patch("urllib.request.urlopen") as urlopen:
+                    response = urlopen.return_value.__enter__.return_value
+                    response.status = 200
+                    response.read.return_value = b'{"status":"valid","stored":false}'
+                    submit_training_bundle(
+                        consented_path, endpoint=None, token=None, confirm_upload=True,
+                        validate_only=True, consent_path=consent_path,
+                    )
+                    request = urlopen.call_args.args[0]
+            self.assertEqual(request.full_url, DEFAULT_MODEL_TRAINING_ENDPOINT + "?validate_only=true")
+
+    def test_legacy_training_opt_in_requires_reconsent_for_structural_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            consent_path = Path(directory) / "consent.json"
+            legacy = {
+                "schema_version": "vladder-consent-v1",
+                "policy_version": "vladder-contribution-consent-v2",
+                "updated_at": "2026-01-01T00:00:00Z",
+                "decisions": {
+                    CANONICAL_TRAINING_DATA: {
+                        "decision": "opt_in", "updated_at": "2026-01-01T00:00:00Z",
+                        "decision_source": "explicit_user_direction",
+                        "policy_version": "vladder-contribution-consent-v2",
+                    },
+                    AGENT_EXPERIENCE_REVIEW: {
+                        "decision": "opt_in", "updated_at": "2026-01-01T00:00:00Z",
+                        "decision_source": "explicit_user_direction",
+                        "policy_version": "vladder-contribution-consent-v2",
+                    },
+                },
+                "activity": {},
+            }
+            consent_path.write_text(json.dumps(legacy))
+            ledger = load_consent(consent_path)
+            self.assertEqual(ledger["states"][CANONICAL_TRAINING_DATA], "unknown")
+            self.assertEqual(ledger["states"][AGENT_EXPERIENCE_REVIEW], "opt_in")
+            self.assertEqual(ledger["stale_decisions"], [CANONICAL_TRAINING_DATA])
+
+    def test_structural_deidentification_removes_source_vocabulary_and_uses_secret_ids(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            graph = {
+                "nodes": [
+                    {
+                        "id": "AcmeSecret::PricingEngine::alpha.cpp:42",
+                        "kind": "ProprietaryNodeKind", "operation": "secret_transform",
+                        "output_type": "struct AcmeCustomerRecord", "trip_count": 37,
+                        "source_path": "/enterprise/acme/alpha.cpp", "literal": "MATERIAL_SECRET",
+                    },
+                    {"id": "result", "kind": "Emit", "operation": "output", "output_type": "i32"},
+                ],
+                "edges": [{
+                    "source": "AcmeSecret::PricingEngine::alpha.cpp:42", "destination": "result",
+                    "relation": "private_relation_name",
+                }],
+            }
+            sanitized = sanitize_graph(graph)
+            rendered = json.dumps(sanitized)
+            self.assertEqual([node["index"] for node in sanitized["nodes"]], [0, 1])
+            self.assertEqual(sanitized["nodes"][0]["kind"], "Other")
+            self.assertEqual(sanitized["nodes"][0]["operation"], "other")
+            self.assertEqual(sanitized["edges"][0]["relation"], "other")
+            for secret in ("Acme", "PricingEngine", "alpha.cpp", "MATERIAL_SECRET", "/enterprise"):
+                self.assertNotIn(secret, rendered)
+            first = load_or_create_training_identity(root / "first.json")
+            second = load_or_create_training_identity(root / "second.json")
+            self.assertEqual(private_identity(first, "root", "same"), private_identity(first, "root", "same"))
+            self.assertNotEqual(private_identity(first, "root", "same"), private_identity(second, "root", "same"))
+            with self.assertRaisesRegex(ValueError, "1 to 512"):
+                sanitize_graph({"nodes": [{"id": f"n{index}"} for index in range(513)], "edges": []})
 
     def test_review_schema_rejects_source_or_raw_artifact_inclusion(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

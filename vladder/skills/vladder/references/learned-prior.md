@@ -34,5 +34,8 @@ in canonical identity and model features rather than being silently discarded.
 
 Never report a rank score as correctness, speed, or production safety. Use it only as search
 priority. Read `docs/learned-search-prior-v0.md` for schema, calibration, split, and scale gates.
+Contributed v2 records preserve bounded sanitized topology, structured action, hardware/workload,
+and observation sequences. Treat candidates sharing one root/hardware/workload as a ranking group;
+do not flatten them into independent examples or train a graph model from legacy v1 telemetry.
 Before budgeted deployment, run `vladder prior evaluate-matrix` and inspect every root, project,
 language, hardware, and temporal view separately; an aggregate score may not hide a weak holdout.

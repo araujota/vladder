@@ -18,7 +18,7 @@ from use of vLadder, prior uploads, this workflow, or silence.
 
 A durable opt-out suppresses both upload and repeated prompts in future sessions until the user
 explicitly requests a change. Training opt-in directs the agent to submit every supported
-anonymized training form at each eligible opportunity without a new question. Review opt-in allows
+pseudonymized training form at each eligible opportunity without a new question. Review opt-in allows
 a request at most once per 30 days; exact-review submission remains separately approved. Prior
 workflows sync registered training exporters only under training opt-in, and schema/privacy checks
 remain mandatory.
@@ -81,7 +81,7 @@ read `prior-summary.json`. `model_trained` means only that a model artifact exis
 all selected candidates still require the ordinary proof and physical-promotion workflow.
 `optional_canonical_training_contribution` reports consent and sync state. Unknown or opt-out never
 uses the network. A prior workflow with continuous training opt-in automatically runs every
-registered anonymized prior exporter; inspect its bundle count and export gaps. For other workflow
+registered de-identified prior exporter; inspect its bundle count and export gaps. For other workflow
 kinds, terminal promotion-summary creation automatically runs the generic disposition exporter;
 run additional registered exporters for richer canonical candidate stores and report missing
 adapters explicitly.

@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/model-training-bundle-v2.schema.json",
+  "title": "vLadder Model-Ready Training Bundle v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "created_at", "vladder_version", "producer", "dataset", "roots", "candidates", "observations", "privacy"],
+  "properties": {
+    "schema_version": {"const": "vladder-model-training-bundle-v2"},
+    "bundle_id": {"$ref": "#/$defs/id"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "vladder_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "producer": {
+      "type": "object", "additionalProperties": false, "required": ["agent", "model", "provider"],
+      "properties": {
+        "agent": {"type": "string", "minLength": 1, "maxLength": 120},
+        "model": {"type": "string", "minLength": 1, "maxLength": 120},
+        "provider": {"type": ["string", "null"], "maxLength": 120}
+      }
+    },
+    "dataset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["grammar_version", "grammar_hash", "canonicalizer_version", "identity_epoch"],
+      "properties": {
+        "grammar_version": {"type": "string", "minLength": 1, "maxLength": 120},
+        "grammar_hash": {"$ref": "#/$defs/hash"},
+        "canonicalizer_version": {"const": "model-ready-graph-v2"},
+        "identity_epoch": {"type": "string", "pattern": "^epoch:[0-9a-f-]{36}$"}
+      }
+    },
+    "roots": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/root"}},
+    "candidates": {"type": "array", "minItems": 1, "maxItems": 128, "items": {"$ref": "#/$defs/candidate"}},
+    "observations": {"type": "array", "maxItems": 512, "items": {"$ref": "#/$defs/observation"}},
+    "privacy": {"$ref": "#/$defs/privacy"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"},
+    "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,95}$"},
+    "numericFeature": {
+      "type": "object", "additionalProperties": false, "required": ["name", "value"],
+      "properties": {"name": {"$ref": "#/$defs/token"}, "value": {"type": "number"}}
+    },
+    "categoricalFeature": {
+      "type": "object", "additionalProperties": false, "required": ["name", "value"],
+      "properties": {"name": {"$ref": "#/$defs/token"}, "value": {"$ref": "#/$defs/token"}}
+    },
+    "featureSet": {
+      "type": "object", "additionalProperties": false, "required": ["numeric", "categorical"],
+      "properties": {
+        "numeric": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/categoricalFeature"}}
+      }
+    },
+    "node": {
+      "type": "object", "additionalProperties": false,
+      "required": ["index", "kind", "operation", "type_class", "bit_width", "vector_lanes", "numeric_features", "categorical_features"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0, "maximum": 511},
+        "kind": {"$ref": "#/$defs/token"},
+        "operation": {"$ref": "#/$defs/token"},
+        "type_class": {"enum": ["boolean", "integer", "float", "pointer", "aggregate", "unknown", "other"]},
+        "bit_width": {"type": ["integer", "null"], "minimum": 1, "maximum": 1024},
+        "vector_lanes": {"type": ["integer", "null"], "minimum": 1, "maximum": 1024},
+        "numeric_features": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical_features": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/categoricalFeature"}}
+      }
+    },
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "destination", "relation", "ordering", "numeric_features", "categorical_features"],
+      "properties": {
+        "source": {"type": "integer", "minimum": 0, "maximum": 511},
+        "destination": {"type": "integer", "minimum": 0, "maximum": 511},
+        "relation": {"$ref": "#/$defs/token"},
+        "ordering": {"$ref": "#/$defs/token"},
+        "numeric_features": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical_features": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/categoricalFeature"}}
+      }
+    },
+    "obligation": {
+      "type": "object", "additionalProperties": false, "required": ["category", "scope", "proof_method"],
+      "properties": {"category": {"$ref": "#/$defs/token"}, "scope": {"$ref": "#/$defs/token"}, "proof_method": {"$ref": "#/$defs/token"}}
+    },
+    "effect": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "phase", "ordering"],
+      "properties": {"kind": {"$ref": "#/$defs/token"}, "phase": {"$ref": "#/$defs/token"}, "ordering": {"$ref": "#/$defs/token"}}
+    },
+    "protocol": {
+      "type": "object", "additionalProperties": false, "required": ["kind"],
+      "properties": {"kind": {"$ref": "#/$defs/token"}}
+    },
+    "claim": {
+      "type": "object", "additionalProperties": false, "required": ["status", "scope"],
+      "properties": {"status": {"$ref": "#/$defs/token"}, "scope": {"$ref": "#/$defs/token"}}
+    },
+    "graph": {
+      "type": "object", "additionalProperties": false, "required": ["nodes", "edges", "obligations", "effects", "protocols", "claims"],
+      "properties": {
+        "nodes": {"type": "array", "minItems": 1, "maxItems": 512, "items": {"$ref": "#/$defs/node"}},
+        "edges": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/edge"}},
+        "obligations": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/obligation"}},
+        "effects": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/effect"}},
+        "protocols": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/protocol"}},
+        "claims": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/claim"}}
+      }
+    },
+    "root": {
+      "type": "object", "additionalProperties": false,
+      "required": ["root_id", "project_id", "graph_version", "languages", "graph", "contract_features"],
+      "properties": {
+        "root_id": {"$ref": "#/$defs/hash"}, "project_id": {"$ref": "#/$defs/hash"},
+        "graph_version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "languages": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"enum": ["c", "cpp", "rust", "zig", "julia", "cuda", "spirv", "other"]}},
+        "graph": {"$ref": "#/$defs/graph"}, "contract_features": {"$ref": "#/$defs/featureSet"}
+      }
+    },
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["family", "family_version", "primitives", "numeric_parameters", "categorical_parameters", "extension_namespaces"],
+      "properties": {
+        "family": {"$ref": "#/$defs/token"}, "family_version": {"$ref": "#/$defs/token"},
+        "primitives": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/token"}},
+        "numeric_parameters": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical_parameters": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/categoricalFeature"}},
+        "extension_namespaces": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/token"}}
+      }
+    },
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": ["candidate_id", "root_id", "baseline", "action", "hardware", "workload"],
+      "properties": {
+        "candidate_id": {"$ref": "#/$defs/hash"}, "root_id": {"$ref": "#/$defs/hash"}, "baseline": {"type": "boolean"},
+        "action": {"$ref": "#/$defs/action"}, "hardware": {"$ref": "#/$defs/featureSet"}, "workload": {"$ref": "#/$defs/featureSet"}
+      }
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["observation_id", "candidate_id", "kind", "outcome", "quality_grade", "proof_class", "benchmark_scope", "speedup_percent", "ci_lower_percent", "ci_upper_percent", "sample_count", "resource_features"],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/hash"}, "candidate_id": {"$ref": "#/$defs/hash"},
+        "kind": {"enum": ["grammar_disposition", "proof", "differential", "compilation", "assembly", "static_cost", "benchmark", "hardware_counter", "composition"]},
+        "outcome": {"enum": ["inapplicable", "missing_contract", "semantic_mismatch", "illegal", "proof_failed", "proof_unknown", "proof_passed", "compiler_identical", "measured_regression", "statistical_tie", "small_win_below_floor", "material_regional_win", "composed_regression", "composed_win", "resource_regression"]},
+        "quality_grade": {"enum": ["A", "B", "C", "D"]}, "proof_class": {"$ref": "#/$defs/token"},
+        "benchmark_scope": {"enum": ["none", "micro", "regional", "composed", "end_to_end"]},
+        "speedup_percent": {"type": ["number", "null"]}, "ci_lower_percent": {"type": ["number", "null"]}, "ci_upper_percent": {"type": ["number", "null"]},
+        "sample_count": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "resource_features": {"$ref": "#/$defs/featureSet"}
+      }
+    },
+    "privacy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_version", "risk_classification", "identity_scheme", "identity_epoch", "topology_included", "source_included", "source_identifiers_included", "raw_literals_included", "raw_artifacts_included", "prompts_included", "personal_data_included", "submission_consent", "residual_risks"],
+      "properties": {
+        "profile_version": {"const": "enterprise-graph-deidentification-v1"},
+        "risk_classification": {"const": "pseudonymized_structural_data"},
+        "identity_scheme": {"const": "hmac-sha256-consent-epoch"},
+        "identity_epoch": {"type": "string", "pattern": "^epoch:[0-9a-f-]{36}$"},
+        "topology_included": {"const": true}, "source_included": {"const": false},
+        "source_identifiers_included": {"const": false}, "raw_literals_included": {"const": false},
+        "raw_artifacts_included": {"const": false}, "prompts_included": {"const": false},
+        "personal_data_included": {"const": false}, "submission_consent": {"type": "boolean"},
+        "residual_risks": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"enum": ["algorithm_topology_fingerprinting", "within_epoch_record_linkability"]}}
+      }
+    }
+  }
+}

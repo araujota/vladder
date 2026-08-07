@@ -56,6 +56,12 @@
       "stability": "stable",
       "producer": "vladder training template"
     },
+    "model-training-bundle": {
+      "artifact_schema_version": "vladder-model-training-bundle-v2",
+      "file": "model-training-bundle-v2.schema.json",
+      "stability": "candidate",
+      "producer": "vladder training from-prior"
+    },
     "whole-build-index": {
       "artifact_schema_version": "vladder-whole-build-index-v1",
       "file": "whole-build-index-v1.schema.json",

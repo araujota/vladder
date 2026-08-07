@@ -17,10 +17,15 @@ from . import __version__
 DEFAULT_CONTRIBUTION_BASE = "https://ceaseless-manatee-888.convex.site"
 DEFAULT_REVIEW_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/reviews"
 DEFAULT_TRAINING_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/training"
-MAX_CONTRIBUTION_BYTES = 128 * 1024
+DEFAULT_MODEL_TRAINING_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/training/v2"
+MAX_CONTRIBUTION_BYTES = 768 * 1024
 CAPABILITY_SCHEMA_VERSION = "vladder-contributor-capability-v1"
 CAPABILITY_FILE_VERSION = "vladder-contributor-credentials-v1"
-CAPABILITY_SCOPES = {"agent-review": "review:write", "training-bundle": "training:write"}
+CAPABILITY_SCOPES = {
+    "agent-review": "review:write",
+    "training-bundle": "training:write",
+    "model-training-bundle": "training:write",
+}
 
 
 def default_credential_path() -> Path:
@@ -171,6 +176,10 @@ def probe_contribution_service(
             "observed": request_status("/api/training?validate_only=true", "POST", empty, training_token)[0],
             "expected": [400],
         },
+        "model_training_scope_reaches_schema": {
+            "observed": request_status("/api/training/v2?validate_only=true", "POST", empty, training_token)[0],
+            "expected": [400],
+        },
         "review_scope_reaches_schema": {
             "observed": request_status("/api/reviews?validate_only=true", "POST", empty, review_token)[0],
             "expected": [400],
@@ -189,8 +198,18 @@ def probe_contribution_service(
             )[0],
             "expected": [401],
         },
+        "contributor_cannot_moderate_model_training": {
+            "observed": request_status(
+                "/api/training/v2/approval", "PATCH", b'{"submissionId":"untrusted","approved":true}', training_token,
+            )[0],
+            "expected": [401],
+        },
         "private_training_read_absent": {
             "observed": request_status("/api/training", "GET", None, training_token)[0],
+            "expected": [404, 405],
+        },
+        "private_model_training_read_absent": {
+            "observed": request_status("/api/training/v2", "GET", None, training_token)[0],
             "expected": [404, 405],
         },
     }

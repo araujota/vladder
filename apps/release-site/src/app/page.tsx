@@ -2,7 +2,7 @@ import { ArrowDownToLine, BookOpen, Check, Code2, Cpu, LockKeyhole, MessageSquar
 import { CopyCommand } from "../components/copy-command";
 
 const github = "https://github.com/araujota/vladder";
-const install = "python3 -m pip install --pre vladder==1.0.0rc19";
+const install = "python3 -m pip install --pre vladder==1.0.0rc20";
 
 type Review = {
   review_id: string;
@@ -239,8 +239,8 @@ for (i = 0; i < n; ++i)
           <LockKeyhole size={34} />
           <div>
             <p className="eyebrow">Privacy posture</p>
-            <h2>Your code stays local</h2>
-            <p>Optimization commands do not upload source, traces, proofs, or measurements. Optional source-free contributions require independent durable opt-in, schema validation, and explicit record and command consent.</p>
+            <h2>Your source stays local</h2>
+            <p>Optimization commands do not upload source or raw artifacts. Optional model-training contribution sends bounded normalized graph topology, actions, and outcomes only after a separate informed opt-in. It removes source identifiers and literals, but is described as pseudonymized structural data because distinctive topology can fingerprint an algorithm.</p>
           </div>
           <a href={`${github}/blob/main/docs/privacy.md`}>Read the policy</a>
         </div>

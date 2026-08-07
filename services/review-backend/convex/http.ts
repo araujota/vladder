@@ -4,15 +4,18 @@ import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { agentReviewValidator } from "./reviewValidators";
 import { trainingBundleValidator } from "./trainingValidators";
+import { modelTrainingBundleValidator } from "./modelTrainingValidators";
 
 type AgentReview = Infer<typeof agentReviewValidator>;
 type TrainingBundle = Infer<typeof trainingBundleValidator>;
+type ModelTrainingBundle = Infer<typeof modelTrainingBundleValidator>;
 type SubmissionKind = "review" | "training" | "credential";
 type CapabilityScope = "review:write" | "training:write";
 
-const MAX_PAYLOAD_BYTES = 128 * 1024;
+const MAX_PAYLOAD_BYTES = 768 * 1024;
 const DAILY_LIMITS: Record<SubmissionKind, number> = { review: 20, training: 10_000, credential: 10 };
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
+const TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,95}$/;
 
 const http = httpRouter();
 
@@ -143,6 +146,56 @@ function trainingBounds(bundle: TrainingBundle): string | null {
   return null;
 }
 
+function modelTrainingBounds(bundle: ModelTrainingBundle): string | null {
+  if (bundle.roots.length < 1 || bundle.roots.length > 16) return "roots must contain 1 to 16 records";
+  if (bundle.candidates.length < 1 || bundle.candidates.length > 128) return "candidates must contain 1 to 128 records";
+  if (bundle.observations.length > 512) return "observations exceed 512 records";
+  if (bundle.dataset.identity_epoch !== bundle.privacy.identity_epoch) return "identity epoch mismatch";
+  if (!HASH_PATTERN.test(bundle.dataset.grammar_hash)) return "invalid grammar hash";
+  const featuresValid = (features: { numeric: Array<{ name: string }>; categorical: Array<{ name: string; value: string }> }) =>
+    features.numeric.length <= 128 && features.categorical.length <= 128
+    && features.numeric.every((item) => TOKEN_PATTERN.test(item.name))
+    && features.categorical.every((item) => TOKEN_PATTERN.test(item.name) && TOKEN_PATTERN.test(item.value));
+  const roots = new Set(bundle.roots.map((root) => root.root_id));
+  const candidates = new Set<string>();
+  for (const root of bundle.roots) {
+    if (!HASH_PATTERN.test(root.root_id) || !HASH_PATTERN.test(root.project_id)) return "invalid root identity";
+    if (root.graph.nodes.length < 1 || root.graph.nodes.length > 512) return "graph node count outside bounds";
+    if (root.graph.edges.length > 2048) return "graph edge count outside bounds";
+    if (root.graph.obligations.length > 128 || root.graph.effects.length > 128
+      || root.graph.protocols.length > 64 || root.graph.claims.length > 128) return "graph annotation count outside bounds";
+    if (!featuresValid(root.contract_features)) return "root feature count or token outside bounds";
+    if (root.graph.nodes.some((node) => !TOKEN_PATTERN.test(node.kind) || !TOKEN_PATTERN.test(node.operation)
+      || node.numeric_features.length > 64 || node.categorical_features.length > 32)) return "invalid graph node features";
+    if (root.graph.edges.some((edge) => !TOKEN_PATTERN.test(edge.relation) || !TOKEN_PATTERN.test(edge.ordering)
+      || edge.numeric_features.length > 64 || edge.categorical_features.length > 32)) return "invalid graph edge features";
+    const nodeIds = new Set(root.graph.nodes.map((node) => node.index));
+    if (nodeIds.size !== root.graph.nodes.length) return "duplicate graph node index";
+    if (root.graph.edges.some((edge) => !nodeIds.has(edge.source) || !nodeIds.has(edge.destination))) {
+      return "graph edge references an unknown node";
+    }
+  }
+  for (const candidate of bundle.candidates) {
+    if (!HASH_PATTERN.test(candidate.candidate_id) || !roots.has(candidate.root_id)) return "invalid candidate linkage";
+    if (!TOKEN_PATTERN.test(candidate.action.family) || !TOKEN_PATTERN.test(candidate.action.family_version)
+      || candidate.action.primitives.length > 64 || candidate.action.numeric_parameters.length > 64
+      || candidate.action.categorical_parameters.length > 64 || candidate.action.extension_namespaces.length > 8) {
+      return "candidate action outside bounds";
+    }
+    if (!featuresValid(candidate.hardware) || !featuresValid(candidate.workload)) return "candidate context outside bounds";
+    if (candidates.has(candidate.candidate_id)) return "duplicate candidate identity";
+    candidates.add(candidate.candidate_id);
+  }
+  for (const observation of bundle.observations) {
+    if (!HASH_PATTERN.test(observation.observation_id) || !candidates.has(observation.candidate_id)) {
+      return "invalid observation linkage";
+    }
+    if (!Number.isInteger(observation.sample_count) || observation.sample_count < 0) return "invalid sample count";
+    if (!featuresValid(observation.resource_features)) return "observation resources outside bounds";
+  }
+  return null;
+}
+
 http.route({
   path: "/api/health",
   method: "GET",
@@ -151,6 +204,7 @@ http.route({
     service: "vladder-contributions-v1",
     review_schema: "vladder-agent-review-v1",
     training_schema: "vladder-training-bundle-v1",
+    model_training_schema: "vladder-model-training-bundle-v2",
     public_submission: false,
     capability_submission: true,
     public_capability_registration: true,
@@ -261,6 +315,37 @@ http.route({
 });
 
 http.route({
+  path: "/api/training/v2",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const credential = await authorizeSubmission(ctx, request, "training:write");
+    if (!credential.allowed) {
+      return jsonResponse({ error: credential.reason }, credential.reason === "scope_denied" ? 403 : 401);
+    }
+    const input = await readBoundedJson(request);
+    if (input instanceof Response) return input;
+    const bundle = input.value as ModelTrainingBundle;
+    const validateOnly = new URL(request.url).searchParams.get("validate_only") === "true";
+    const payloadHash = await sha256(input.text);
+    try {
+      await ctx.runMutation(internal.modelTraining.storeBundle, { bundle, payloadHash, validateOnly: true });
+      const boundsError = modelTrainingBounds(bundle);
+      if (boundsError) return jsonResponse({ error: boundsError }, 400);
+      if (validateOnly) return jsonResponse({ status: "valid", stored: false, schema_version: "vladder-model-training-bundle-v2" });
+      if (!credential.trusted) {
+        const limit = await consumePublicLimit(ctx, request, "training", credential.rateLimitIdentity);
+        if (!limit.allowed) return jsonResponse({ error: "daily capability training limit exceeded" }, 429);
+      }
+      const result = await ctx.runMutation(internal.modelTraining.storeBundle, { bundle, payloadHash, validateOnly: false });
+      return jsonResponse({ status: "accepted_for_moderation", ...result }, result.duplicate ? 200 : 202);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "invalid model-training bundle";
+      return jsonResponse({ error: message.slice(0, 1000) }, 400);
+    }
+  }),
+});
+
+http.route({
   path: "/api/reviews/approval",
   method: "PATCH",
   handler: httpAction(async (ctx, request) => {
@@ -290,6 +375,26 @@ http.route({
       return jsonResponse({ error: "submissionId and approved are required" }, 400);
     }
     await ctx.runMutation(internal.training.setApproval, { submissionId: body.submissionId, approved: body.approved });
+    return jsonResponse({ status: "updated" });
+  }),
+});
+
+http.route({
+  path: "/api/training/v2/approval",
+  method: "PATCH",
+  handler: httpAction(async (ctx, request) => {
+    const expected = process.env.VLADDER_REVIEW_ADMIN_TOKEN;
+    if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+      return jsonResponse({ error: "unauthorized" }, 401);
+    }
+    const body = await request.json();
+    if (typeof body !== "object" || body === null || typeof body.submissionId !== "string" || typeof body.approved !== "boolean") {
+      return jsonResponse({ error: "submissionId and approved are required" }, 400);
+    }
+    await ctx.runMutation(internal.modelTraining.setApproval, {
+      submissionId: body.submissionId,
+      approved: body.approved,
+    });
     return jsonResponse({ status: "updated" });
   }),
 });

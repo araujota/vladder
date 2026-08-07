@@ -28,6 +28,7 @@ def extract_prior_features(
     for kind, count in summary.get("node_kinds", {}).items(): tokens.append((f"root.node_kind.{kind}", float(count)))
     for operation, count in summary.get("operations", {}).items(): tokens.append((f"root.operation.{operation}", float(count)))
     for relation, count in summary.get("edge_relations", {}).items(): tokens.append((f"root.edge_relation.{relation}", float(count)))
+    tokens.extend(_topology_tokens(root.get("semantic_graph", {})))
     _flatten_tokens("graph.feature_inventory", root.get("canonical_graph", {}).get("feature_inventory", {}), tokens)
     _flatten_tokens("contract", root.get("contract", {}), tokens)
     _flatten_tokens("action", candidate.get("action", {}), tokens)
@@ -93,7 +94,7 @@ def train_prior_model(
     model = {
         "schema_version": PRIOR_MODEL_SCHEMA,
         "model_version": "vladder-prior-v0.linear-ensemble.1",
-        "feature_schema": "semantic-flow-open-pooled-hash-v1",
+        "feature_schema": "semantic-flow-relational-motifs-v2",
         "dimension": DEFAULT_DIMENSION,
         "dataset_hash": dataset.get("dataset_hash", canonical_hash(dataset)),
         "split_hash": split.get("split_hash", canonical_hash(split)),
@@ -261,6 +262,46 @@ def _root_signature(root: dict[str, Any]) -> set[str]:
     result.update(f"contract:{key}" for key in root.get("contract", {}))
     result.update(f"graph:{key}" for key in root.get("canonical_graph", {}))
     return result
+
+
+def _topology_tokens(graph: dict[str, Any]) -> list[tuple[str, float]]:
+    """Encode one- and two-hop relational motifs for the dependency-free pilot ranker.
+
+    The exported v2 record retains the full graph for a future relational GNN. These motifs make
+    the current lightweight ranker topology-sensitive instead of reducing every graph to counts.
+    """
+    nodes = {
+        str(item.get("id")): (
+            str(item.get("kind", "Other")), str(item.get("operation", "other")),
+        )
+        for item in graph.get("nodes", []) if isinstance(item, dict)
+    }
+    outgoing: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    incoming: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    tokens: list[tuple[str, float]] = []
+    for edge in graph.get("edges", []):
+        if not isinstance(edge, dict):
+            continue
+        source = str(edge.get("source")); destination = str(edge.get("destination"))
+        if source not in nodes or destination not in nodes:
+            continue
+        relation = str(edge.get("relation", edge.get("kind", "data")))
+        source_kind, source_op = nodes[source]; destination_kind, destination_op = nodes[destination]
+        tokens.append((f"topology.1hop.{source_kind}.{source_op}.{relation}.{destination_kind}.{destination_op}", 1.0))
+        outgoing[source].append((destination, relation)); incoming[destination].append((source, relation))
+    for middle, left_edges in incoming.items():
+        for source, left_relation in left_edges:
+            for destination, right_relation in outgoing.get(middle, []):
+                source_op = nodes[source][1]; middle_op = nodes[middle][1]; destination_op = nodes[destination][1]
+                tokens.append((
+                    f"topology.2hop.{source_op}.{left_relation}.{middle_op}.{right_relation}.{destination_op}",
+                    1.0,
+                ))
+    for identifier, (kind, operation) in nodes.items():
+        in_degree = min(8, len(incoming.get(identifier, [])))
+        out_degree = min(8, len(outgoing.get(identifier, [])))
+        tokens.append((f"topology.degree.{kind}.{operation}.in{in_degree}.out{out_degree}", 1.0))
+    return tokens
 
 
 def _hardware_capability(hardware: dict[str, Any]) -> dict[str, Any]:

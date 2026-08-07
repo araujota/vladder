@@ -9,7 +9,10 @@ from typing import Any
 
 
 CONSENT_SCHEMA_VERSION = "vladder-consent-v1"
-CONSENT_POLICY_VERSION = "vladder-contribution-consent-v2"
+CONSENT_POLICY_VERSION = "vladder-contribution-consent-v3"
+LEGACY_CONSENT_POLICY_VERSION = "vladder-contribution-consent-v2"
+TRAINING_CONSENT_POLICY_VERSION = "vladder-model-training-consent-v3"
+REVIEW_CONSENT_POLICY_VERSION = "vladder-review-consent-v2"
 CANONICAL_TRAINING_DATA = "canonical_training_data"
 AGENT_EXPERIENCE_REVIEW = "agent_experience_review"
 CONSENT_SCOPES = (CANONICAL_TRAINING_DATA, AGENT_EXPERIENCE_REVIEW)
@@ -18,23 +21,29 @@ REVIEW_REQUEST_INTERVAL_DAYS = 30
 
 SCOPE_NOTICES: dict[str, dict[str, Any]] = {
     CANONICAL_TRAINING_DATA: {
-        "title": "Anonymized canonical optimization training data",
+        "title": "Pseudonymized structural optimization training data",
         "opt_in_effect": (
-            "At every eligible optimization opportunity, the agent sends all source-free training "
-            "record forms supported by the installed vLadder release to the configured Convex moderation database."
+            "At every eligible optimization opportunity, the agent sends every supported model-training "
+            "record to the configured Convex moderation database. Records preserve bounded, normalized graph "
+            "topology and candidate relationships needed to train the search prior."
         ),
         "frequency": "at every eligible newly produced workflow, candidate, proof, rejection, and measurement opportunity",
         "included": [
-            "anonymized canonical information-flow/lifetime graph features and content hashes",
+            "pseudonymized bounded information-flow/lifetime graph nodes, edges, and topology",
             "structured grammar actions, candidate dispositions, and negative results",
             "proof, differential, compilation, assembly-identity, cost, counter, benchmark, and composition labels",
             "coarsened hardware and workload descriptors plus confidence and quality metadata",
+            "installation-epoch HMAC identifiers that link related roots, candidates, and observations",
         ],
         "excluded": [
             "source code and source paths", "raw IR, assembly, proofs, traces, patches, prompts, and model files",
             "credentials and declared personal data", "the unredacted local prior store",
         ],
         "destination": "the configured vLadder Convex contribution endpoint; records are private pending moderation",
+        "residual_risk": (
+            "This is pseudonymized structural data, not anonymous data. A distinctive normalized graph may "
+            "fingerprint an algorithm, and records remain linkable within one local identity epoch."
+        ),
         "revocation": "opt out at any time; the new decision stops future sends but cannot recall already submitted records",
     },
     AGENT_EXPERIENCE_REVIEW: {
@@ -91,7 +100,7 @@ def load_consent(path: Path | None = None) -> dict[str, Any]:
         if not isinstance(value, dict) or value.get("schema_version") != CONSENT_SCHEMA_VERSION:
             raise ValueError(f"unsupported vLadder consent ledger at {ledger_path}")
         if (
-            value.get("policy_version") != CONSENT_POLICY_VERSION
+            value.get("policy_version") not in {CONSENT_POLICY_VERSION, LEGACY_CONSENT_POLICY_VERSION}
             or not isinstance(value.get("decisions"), dict)
             or not isinstance(value.get("activity", {}), dict)
         ):
@@ -103,7 +112,10 @@ def load_consent(path: Path | None = None) -> dict[str, Any]:
             if (
                 not isinstance(record, dict)
                 or record.get("decision") not in CONSENT_DECISIONS
-                or record.get("policy_version") != CONSENT_POLICY_VERSION
+                or record.get("policy_version") not in {
+                    CONSENT_POLICY_VERSION, LEGACY_CONSENT_POLICY_VERSION,
+                    TRAINING_CONSENT_POLICY_VERSION, REVIEW_CONSENT_POLICY_VERSION,
+                }
                 or not isinstance(record.get("updated_at"), str)
                 or not isinstance(record.get("decision_source"), str)
             ):
@@ -112,13 +124,19 @@ def load_consent(path: Path | None = None) -> dict[str, Any]:
     states = {}
     for scope in CONSENT_SCOPES:
         record = ledger["decisions"].get(scope)
-        decision = record.get("decision") if isinstance(record, dict) else None
+        decision = record.get("decision") if _decision_is_current(scope, record) else None
         states[scope] = decision if decision in CONSENT_DECISIONS else "unknown"
     result = {
         **ledger,
+        "stored_policy_version": ledger.get("policy_version"),
+        "policy_version": CONSENT_POLICY_VERSION,
         "path": str(ledger_path),
         "states": states,
         "requires_user_clarification": [scope for scope, decision in states.items() if decision == "unknown"],
+        "stale_decisions": [
+            scope for scope in CONSENT_SCOPES
+            if scope in ledger["decisions"] and not _decision_is_current(scope, ledger["decisions"].get(scope))
+        ],
         "scope_notices": SCOPE_NOTICES,
     }
     result["review_request"] = _review_request_state(result)
@@ -147,7 +165,7 @@ def set_consent(
         "decision": decision,
         "updated_at": now,
         "decision_source": decision_source,
-        "policy_version": CONSENT_POLICY_VERSION,
+        "policy_version": _scope_policy_version(scope),
     }
     payload = {
         "schema_version": CONSENT_SCHEMA_VERSION,
@@ -257,6 +275,19 @@ def _review_request_state(ledger: dict[str, Any]) -> dict[str, Any]:
         "next_eligible_at": next_value,
         "interval_days": REVIEW_REQUEST_INTERVAL_DAYS,
     }
+
+
+def _scope_policy_version(scope: str) -> str:
+    return TRAINING_CONSENT_POLICY_VERSION if scope == CANONICAL_TRAINING_DATA else REVIEW_CONSENT_POLICY_VERSION
+
+
+def _decision_is_current(scope: str, record: Any) -> bool:
+    if not isinstance(record, dict) or record.get("decision") not in CONSENT_DECISIONS:
+        return False
+    policy = record.get("policy_version")
+    if scope == AGENT_EXPERIENCE_REVIEW:
+        return policy in {REVIEW_CONSENT_POLICY_VERSION, LEGACY_CONSENT_POLICY_VERSION}
+    return policy == TRAINING_CONSENT_POLICY_VERSION
 
 
 def _write_ledger(ledger_path: Path, payload: dict[str, Any]) -> None:

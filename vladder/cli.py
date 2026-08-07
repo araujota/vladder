@@ -59,6 +59,7 @@ from .training_workflow import (
     create_training_bundle_from_prior, create_training_template, export_all_training_bundles_from_prior,
     submit_training_bundle, sync_all_training_bundles_from_prior, validate_training_bundle,
 )
+from .model_training_data import ingest_model_training_bundle, write_graph_learning_jsonl
 from .schema_registry import list_artifact_schemas, validate_artifact
 from .toolchain import alive2_check, compile_c, compiler_version, cpu_flags, cpu_model, discover_toolchain, emit_alive2_ir, run, static_estimates, tool_version
 from .sksf_workflow import synthesize_kernel_v6, validate_attribution_v6
@@ -1491,6 +1492,10 @@ def training_command(args: argparse.Namespace) -> int:
         )
     elif args.training_command == "validate":
         report = validate_training_bundle(Path(args.bundle))
+    elif args.training_command == "ingest-model":
+        report = ingest_model_training_bundle(Path(args.bundle), Path(args.store))
+    elif args.training_command == "graph-examples":
+        report = write_graph_learning_jsonl(Path(args.bundle), Path(args.out))
     else:
         report = submit_training_bundle(
             Path(args.bundle), endpoint=args.endpoint, token=None,
@@ -2173,6 +2178,18 @@ def build_parser() -> argparse.ArgumentParser:
     training_validate = training_sub.add_parser("validate", help="validate a training bundle without network access")
     training_validate.add_argument("--bundle", required=True)
     training_validate.set_defaults(func=training_command)
+    training_ingest = training_sub.add_parser(
+        "ingest-model", help="ingest a validated v2 graph/action/outcome bundle into a local prior store",
+    )
+    training_ingest.add_argument("--bundle", required=True)
+    training_ingest.add_argument("--store", required=True)
+    training_ingest.set_defaults(func=training_command)
+    training_graph = training_sub.add_parser(
+        "graph-examples", help="emit topology-preserving candidate/ranking examples as JSONL",
+    )
+    training_graph.add_argument("--bundle", required=True)
+    training_graph.add_argument("--out", default="vladder-graph-learning-examples.jsonl")
+    training_graph.set_defaults(func=training_command)
     training_submit = training_sub.add_parser("submit", help="submit only a validated source-free bundle after explicit consent")
     training_submit.add_argument("--bundle", required=True)
     training_submit.add_argument("--endpoint", help="override the public training endpoint or VLADDER_TRAINING_ENDPOINT")

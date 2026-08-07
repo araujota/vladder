@@ -10,6 +10,8 @@
 
 import type * as contributors from "../contributors.js";
 import type * as http from "../http.js";
+import type * as modelTraining from "../modelTraining.js";
+import type * as modelTrainingValidators from "../modelTrainingValidators.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as reviewValidators from "../reviewValidators.js";
 import type * as reviews from "../reviews.js";
@@ -25,6 +27,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   contributors: typeof contributors;
   http: typeof http;
+  modelTraining: typeof modelTraining;
+  modelTrainingValidators: typeof modelTrainingValidators;
   rateLimits: typeof rateLimits;
   reviewValidators: typeof reviewValidators;
   reviews: typeof reviews;

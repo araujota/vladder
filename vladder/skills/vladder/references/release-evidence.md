@@ -45,8 +45,10 @@ artifacts. Remote submission is optional and requires durable `agent_experience_
 explicit user consent at both CLI and record levels, and exact-payload preview.
 
 For continuously consented search-prior evidence, use `vladder training sync-prior`; it shards all
-supported anonymized forms into `vladder-training-bundle-v1` records. Use `export-prior` first for
-local-only volume inspection. The records contain bounded derived features and evidence labels.
+supported forms into linked `vladder-model-training-bundle-v2` roots, candidates, and observations.
+Use `export-prior` first for local-only volume inspection. The records contain bounded normalized
+topology, structured actions/context, and evidence labels and are classified as pseudonymized
+structural data, not anonymous data. Legacy v1 records are telemetry, not graph-model samples.
 Never place source, IR, patches, prompts, raw traces, personal data, or a local prior store in it.
 Both contribution paths default to the moderated release service and require their independent
 durable opt-in plus `--confirm-upload`; training sync applies the latter mechanically without a

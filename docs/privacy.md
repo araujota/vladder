@@ -13,7 +13,7 @@ Network access occurs only in explicit administrative operations:
 - publishing commands operated by maintainers contact release services;
 - `vladder review submit` sends one schema-validated agent-review record only after
   durable `agent_experience_review` opt-in, `--confirm-upload`, and record-level consent;
-- `vladder training submit` sends one schema-validated, source-free derived-feature bundle only
+- `vladder training submit` sends one schema-validated model-training or legacy telemetry bundle only
   after independent durable `canonical_training_data` opt-in and the same per-record and
   per-command gates.
 
@@ -26,11 +26,14 @@ independent scope. A saved opt-out prohibits upload and repeated prompting unles
 explicitly requests reconsideration.
 
 Training opt-in authorizes ongoing contribution at every eligible opportunity without repeated
-questions. The installed release sends all training forms it can anonymize and encode, including
-canonical graph features/hashes, structured actions, negative and positive proof/physical
-outcomes, and coarsened hardware/workload descriptors. An unsupported eligible form is reported as
-an export gap. Review opt-in only authorizes a periodic request, at most every 30 days. The exact
-review is still shown for submission approval.
+questions. The current model-training policy sends bounded normalized graph nodes, edges and
+topology; structured actions; negative and positive proof/physical outcomes; and coarsened
+hardware/workload descriptors. This is **pseudonymized structural data, not anonymous data**. A
+distinctive graph may fingerprint an algorithm, and installation-secret HMAC identities link
+related roots, candidates and observations within one identity epoch. A materially broader policy
+invalidates an older training opt-in and requires a new informed decision. An unsupported eligible
+form is reported as an export gap. Review opt-in only authorizes a periodic request, at most every
+30 days. The exact review is still shown for submission approval.
 
 The release endpoints are built into the package, but no shared credential is embedded. After the
 relevant durable opt-in, a fresh host obtains a random scope-specific append capability and stores
@@ -50,14 +53,21 @@ direct database access.
 `--validate-only` exercises remote schema acceptance without storing the record, but transmits the
 payload and therefore requires the same durable opt-in.
 
-Review records cannot contain source or raw artifact attachments. Training bundles contain only
-bounded numeric/categorical features, content hashes, grammar identifiers, proof dispositions, and
-measurement labels. Their schema rejects source, raw artifacts, prompts, and personal data. The
-CLI never uploads a local prior store, compilation unit, proof bundle, or arbitrary file.
+Review records cannot contain source or raw artifact attachments. Model-training v2 bundles contain
+bounded normalized graph topology, public semantic vocabulary, structured grammar actions, proof
+dispositions, and measurement labels. Source text, paths, symbols, user-defined type names, raw
+literals, raw artifacts, prompts, and declared personal data are excluded. Graph node IDs are
+locally remapped; project/root/candidate links use an installation-secret HMAC rather than public
+source hashes. Unknown source-defined vocabulary is collapsed to public `other` categories rather
+than hashed into a dictionary target. The CLI never uploads a local prior store, compilation unit,
+proof bundle, or arbitrary file.
 
 ## Threat Model
 
-Do not place secrets in manifests, contribution JSON, benchmark output, or public issue reports.
+Structural de-identification reduces disclosure but cannot guarantee anonymity against an attacker
+who already knows a distinctive algorithm. Enterprises may keep training contribution disabled
+while retaining all local optimization features. Do not place secrets in manifests, contribution
+JSON, benchmark output, or public issue reports.
 Review every generated record before changing `privacy.submission_consent` to true. Maintainers
 may supply a trusted token through `VLADDER_CONTRIBUTION_TOKEN`; ordinary users do not need one.
 

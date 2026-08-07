@@ -11,7 +11,7 @@ record/bundle/byte volume when available. `training export-prior` is a local-onl
   the decisions or infer one from the other.
 - If a scope is `opt_out`, do not upload and do not ask again in a later turn or session unless the
   user explicitly asks to reconsider that saved choice.
-- If canonical training is `opt_in`, send every eligible anonymized training form supported by the
+- If canonical training is `opt_in`, send every eligible pseudonymized training form supported by the
   installed release at each opportunity without asking again. Local schema and privacy checks must
   pass; an unsupported form must be reported rather than silently omitted.
 - If agent review is `opt_in`, request a review only when the 30-day cadence reports `due`. Present
@@ -28,6 +28,12 @@ vladder consent set --scope agent-experience-review --decision opt-in|opt-out --
 Never run either decision command based on silence, this prompt, an installation request, generalized
 telemetry consent, or a prior upload confirmation. Never upload source, raw artifacts, prompts,
 credentials, personal data, or the local prior store.
+
+For the model-training v2 notice, explicitly say that bounded normalized graph topology is sent.
+Explain that source identifiers and literals are removed and linked IDs use an installation-secret
+HMAC, but the result is pseudonymized rather than anonymous because distinctive topology can
+fingerprint an algorithm. A feature-only policy decision from an older release is stale and must
+not authorize v2 transport.
 
 When canonical training is opted in, use `vladder training sync-prior` for each newly updated prior
 store and every other registered source-free exporter at its opportunity. Do not silently reduce

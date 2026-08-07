@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.0.0rc20 - 2026-08-07
+
+### Added
+
+- Add the candidate `vladder-model-training-bundle-v2` schema with bounded normalized graph
+  topology, structured grammar actions, hardware/workload context, and relationship-preserving
+  candidate and observation records for learned search-prior training.
+- Add graph-learning JSONL conversion, compatibility ingestion into the pilot prior store, and
+  relational graph-motif features for the dependency-free shadow ranker.
+- Add privacy-preserving topology export with consent-epoch HMAC identifiers, a public semantic
+  vocabulary, source-derived feature coarsening, and fail-closed extension handling.
+- Add a private Convex `/api/training/v2` append path with schema validation, scoped capabilities,
+  payload bounds, relationship checks, and no public training-data read route.
+- Expand the agent workflow and consent notice to distinguish legacy telemetry from
+  pseudonymized structural model data and require renewed informed opt-in.
+
+### Validation
+
+- Pass strict OpenSpec validation, release-candidate checks, focused and full repository tests,
+  package/skill/schema validation, Convex typechecking and deployment, and release-site builds.
+- Round-trip a 20-root synthetic corpus into 620 topology-preserving graph-learning examples and
+  train the pilot ranker over 5,850 within-root preference pairs without uploading source data.
+
 ## 1.0.0rc19 - 2026-08-06
 
 ### Added
@@ -81,6 +104,13 @@
   seven remain explicitly partial around allocation, exception, helper, and external protocols.
 
 ## Unreleased
+
+- Add the `vladder-model-training-bundle-v2` interchange with bounded sanitized graph topology,
+  linked candidate actions, hardware/workload context, and append-only proof/physical outcomes.
+- Add GraphML/GNN JSONL export, v0 prior-store ingestion, topology-sensitive pilot features, and
+  production Convex v2 ingestion with private moderation storage and no public read route.
+- Replace the feature-only training disclosure with a scope-versioned pseudonymized-structural-data
+  policy; stale training opt-ins require renewed informed consent while review consent is preserved.
 
 - Add a target-aware release-readiness engine and `vladder release check` command spanning source
   identity, full functionality, proof and quality checks, public-service builds, distribution

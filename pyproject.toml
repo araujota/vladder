@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vladder"
-version = "1.0.0rc19"
+version = "1.0.0rc20"
 description = "Verified hardware-aware information-flow superoptimization for systems languages"
 readme = "README.md"
 requires-python = ">=3.10"

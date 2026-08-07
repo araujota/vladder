@@ -19,7 +19,7 @@ If the command is unavailable or reports another version, tell the user that the
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc19'
+python3 -m pip install --pre 'vladder==1.0.0rc20'
 vladder doctor --strict
 ```
 
@@ -27,7 +27,7 @@ Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or t
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc19`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc20`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v8`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
@@ -100,7 +100,7 @@ ordinary proof and physical gate.
     `vladder consent set ... --confirmed-user-choice`. Honor the two scopes independently.
 12. A saved `opt_out` means do not upload and do not ask again across turns, sessions, or package
     updates unless the user explicitly requests reconsideration. Training opt-in means contribute
-    every eligible anonymized training form at every opportunity without re-prompting; report any
+    every eligible pseudonymized training form at every opportunity without re-prompting; report any
     form lacking an export adapter. Review opt-in means request a review only when the persistent
     30-day cadence is due and obtain approval for the exact review before submission. Neither scope
     waives schema/privacy validation or permits source/raw-artifact upload.
@@ -126,7 +126,7 @@ answer.
 
 Terminal promotion-summary creation is the ubiquitous canonical training trigger. When durable
 `canonical_training_data` consent is `opt_in`, `workflow run` and `workflow summarize` must
-automatically anonymize, schema-validate, and submit the complete disposition record without
+automatically de-identify, schema-validate, and submit the complete disposition record without
 asking again. Read `optional_contributions.canonical_training_data` for completion or a retryable
 transport failure. The validated record is durably queued before transport; a later opted-in
 terminal workflow replays pending records. Unknown or opt-out consent must perform no network
@@ -152,6 +152,10 @@ vladder prior run --manifest prior.yaml --out-dir prior-out
 
 Read `prior-summary.json`. A valid synthetic pilot and a trained model do not imply production
 eligibility or that any live candidate was pruned.
+
+For learned-model interchange, require `vladder-model-training-bundle-v2` and convert it with
+`vladder training graph-examples`. Preserve root/hardware/workload ranking groups; legacy v1
+telemetry lacks sufficient topology and is not a relational graph-model example.
 
 The operational state order is strict:
 
@@ -179,9 +183,11 @@ release endpoint and requires durable scope opt-in, schema validation, record co
 `--confirm-upload`; no shared token is required. Training opt-in authorizes those per-opportunity
 mechanical gates without repeated questions. Reviews still require exact-record approval.
 `--validate-only` is also a network action and
-requires the same durable opt-in, though it tests remote acceptance without storage. Training
-bundles are a strict source-free schema, not an upload path for local prior stores or arbitrary
-artifacts. Read [release-evidence.md](references/release-evidence.md) and `docs/privacy.md`.
+requires the same durable opt-in, though it tests remote acceptance without storage. Model-training
+v2 bundles are a strict de-identified schema, not an upload path for local prior stores or arbitrary
+artifacts. They include normalized topology and are pseudonymized, not anonymous; distinctive
+graphs may fingerprint algorithms. Re-request stale feature-only consent under the v2 notice. Read
+[release-evidence.md](references/release-evidence.md) and `docs/privacy.md`.
 On first opted-in use, the client obtains an owner-protected, installation-scoped append capability;
 it does not receive a Convex deployment credential. Run `vladder contribution doctor` when release
 service access must be verified. The probe stores no contribution and must show both intended
@@ -484,7 +490,6 @@ result as `bounded_optimal_local` only after exhaustive coverage with sound prun
 `best_verified_found`. Never claim global optimality.
 
 ## Advanced Modes
-
 - Streaming operators and stateful pipelines: `vladder operator analyze|optimize`, `vladder pipeline optimize`
 - Hierarchical pipelines and projections: `vladder pipeline analyze-v4|optimize-v4`, `vladder projection ...`
 - Attribution-gated and Q4_K kernels: `vladder sksf validate-attribution|synthesize`, `vladder q4k ...`

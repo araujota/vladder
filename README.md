@@ -30,7 +30,7 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc19`, the C++ closure matrix is
+The package version is `1.0.0rc20`, the C++ closure matrix is
 `bounded-cpp-regions-v8`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
 `bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
@@ -326,7 +326,7 @@ Agents must present the full `consent show` notice and explicitly ask for opt in
 recording an unknown scope. Training and review are independent. A saved opt-out suppresses upload
 and repeated requests across sessions and package updates until the user explicitly asks to change
 it. Training opt-in authorizes continuous contribution at every eligible opportunity of all
-anonymized source-free forms the installed release can encode. Review opt-in authorizes a review
+supported pseudonymized model-training forms the installed release can encode. Review opt-in authorizes a review
 request at most once every 30 days, with exact-review approval still required.
 
 The decisive automatic contribution boundary is the terminal `promotion-summary.json`. At that
@@ -363,17 +363,21 @@ vladder training sync-prior --store experience --project-id PROJECT_ID \
 vladder review submit --review agent-review.json --confirm-upload
 ```
 
-The training exporter includes anonymized canonical graph features/hashes, structured grammar
-actions, all supported outcome classes and negative results, evidence quality, and coarsened
-hardware/workload descriptors. It excludes source, paths, raw artifacts, prompts, personal data,
-and the unredacted prior store. Agents must report an eligible form lacking an exporter rather than
-silently treating it as contributed.
+The v2 training exporter includes bounded normalized graph nodes, edges and topology; structured
+grammar actions; all supported outcome classes and negative results; evidence quality; and
+coarsened hardware/workload descriptors. Roots, candidates and observations remain separate so a
+ranker can compare alternatives under one semantic root. It excludes source, paths, symbols,
+user-defined type names, literals, raw artifacts, prompts, personal data, and the unredacted prior
+store. This is pseudonymized structural data, not anonymous data: distinctive topology can
+fingerprint an algorithm. A policy change that broadens disclosure invalidates old training
+consent. Agents must report an eligible form lacking an exporter rather than silently treating it
+as contributed.
 
 The consent ledger is stored outside the package under the user's configuration directory (or
 `VLADDER_CONSENT_FILE`) with owner-only permissions. Use `--validate-only` to test the remote path
 without storage; because it sends the exact payload to the service, it requires opt-in too. Reviews
 and derived-feature training bundles are private pending moderation. Override endpoints with `VLADDER_REVIEW_ENDPOINT` or
-`VLADDER_TRAINING_ENDPOINT`; ordinary optimization never uses the network. The local privacy policy
+`VLADDER_TRAINING_ENDPOINT` (legacy) or `VLADDER_MODEL_TRAINING_ENDPOINT`; ordinary optimization never uses the network. The local privacy policy
 is in [`docs/privacy.md`](docs/privacy.md); schema compatibility is in
 [`docs/artifact-schemas.md`](docs/artifact-schemas.md).
 
@@ -389,10 +393,10 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc19` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc20` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc19'
+python3 -m pip install --pre 'vladder==1.0.0rc20'
 vladder doctor
 ```
 
