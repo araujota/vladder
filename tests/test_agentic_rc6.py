@@ -223,6 +223,7 @@ class AgenticRc6Tests(unittest.TestCase):
                         root / "imported-summary.json",
                     )
             self.assertEqual(sync.call_count, 3)
+            self.assertTrue(all(isinstance(call.kwargs.get("report"), dict) for call in sync.call_args_list))
             for summary in (first, second, imported):
                 contribution = summary["optional_contributions"]["canonical_training_data"]
                 self.assertEqual(contribution["status"], "continuous_contribution_completed")

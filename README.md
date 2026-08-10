@@ -30,7 +30,7 @@ contract for an attending code agent; they do not claim generic repository sourc
 
 ## Release Status
 
-The package version is `1.0.0rc20`, the C++ closure matrix is
+The package version is `1.0.0rc21`, the C++ closure matrix is
 `bounded-cpp-regions-v8`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
 `bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
@@ -376,8 +376,11 @@ as contributed.
 The consent ledger is stored outside the package under the user's configuration directory (or
 `VLADDER_CONSENT_FILE`) with owner-only permissions. Use `--validate-only` to test the remote path
 without storage; because it sends the exact payload to the service, it requires opt-in too. Reviews
-and derived-feature training bundles are private pending moderation. Override endpoints with `VLADDER_REVIEW_ENDPOINT` or
-`VLADDER_TRAINING_ENDPOINT` (legacy) or `VLADDER_MODEL_TRAINING_ENDPOINT`; ordinary optimization never uses the network. The local privacy policy
+and graph-ready v2 training bundles are private pending moderation. Override endpoints with
+`VLADDER_REVIEW_ENDPOINT` or `VLADDER_MODEL_TRAINING_ENDPOINT`; ordinary optimization never uses
+the network. v1 training bundles are historical validation artifacts only: current producers
+reject them, queued v1 records are quarantined locally, and the retired service route returns
+`410 Gone`. The local privacy policy
 is in [`docs/privacy.md`](docs/privacy.md); schema compatibility is in
 [`docs/artifact-schemas.md`](docs/artifact-schemas.md).
 
@@ -393,10 +396,10 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc20` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc21` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc20'
+python3 -m pip install --pre 'vladder==1.0.0rc21'
 vladder doctor
 ```
 

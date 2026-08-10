@@ -2,7 +2,7 @@ import { ArrowDownToLine, BookOpen, Check, Code2, Cpu, LockKeyhole, MessageSquar
 import { CopyCommand } from "../components/copy-command";
 
 const github = "https://github.com/araujota/vladder";
-const install = "python3 -m pip install --pre vladder==1.0.0rc20";
+const install = "python3 -m pip install --pre vladder==1.0.0rc21";
 
 type Review = {
   review_id: string;

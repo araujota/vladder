@@ -48,7 +48,8 @@ linked tables: roots with bounded attributed topology, candidates with structure
 and hardware/workload context, and append-only observations. `graph_learning_examples()` exposes
 `node_features`, `edge_index`, relation features, action/context features, labels, and a
 `ranking_group` keyed by root/hardware/workload. This is the unit consumed by a relational GNN or
-pairwise/listwise ranker. Legacy `vladder-training-bundle-v1` records remain telemetry and must not
+pairwise/listwise ranker. Legacy `vladder-training-bundle-v1` records are historical validation-only
+artifacts and must not
 be treated as equivalent graph-model samples.
 
 ```bash

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0rc21 - 2026-08-09
+
+### Fixed
+
+- Make `vladder-model-training-bundle-v2` the exclusive output of templates, prior exports, and
+  terminal agent-workflow contribution boundaries.
+- Preserve captured semantic topology when available and emit typed workflow-evidence graphs when
+  a terminal disposition has no extracted graph.
+- Reject v1 enqueue and submission, quarantine pre-existing v1 outbox entries locally, and retire
+  the hosted v1 append route with `410 Gone`.
+
+### Validation
+
+- Add producer, relationship, privacy, endpoint, and outbox regression coverage plus an opted-in
+  production smoke submission to the private v2 moderation table.
+
 ## 1.0.0rc20 - 2026-08-07
 
 ### Added

@@ -19,7 +19,7 @@ If the command is unavailable or reports another version, tell the user that the
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc20'
+python3 -m pip install --pre 'vladder==1.0.0rc21'
 vladder doctor --strict
 ```
 
@@ -27,7 +27,7 @@ Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or t
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc20`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc21`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v8`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
@@ -153,9 +153,9 @@ vladder prior run --manifest prior.yaml --out-dir prior-out
 Read `prior-summary.json`. A valid synthetic pilot and a trained model do not imply production
 eligibility or that any live candidate was pruned.
 
-For learned-model interchange, require `vladder-model-training-bundle-v2` and convert it with
-`vladder training graph-examples`. Preserve root/hardware/workload ranking groups; legacy v1
-telemetry lacks sufficient topology and is not a relational graph-model example.
+Require `vladder-model-training-bundle-v2` and convert it with `vladder training graph-examples`.
+Preserve ranking groups. All current producers and submissions must emit v2; v1 is historical
+validation-only evidence and must never be enqueued, submitted, regenerated, or converted.
 
 The operational state order is strict:
 
@@ -177,7 +177,7 @@ vladder schema validate --kind promotion-summary --artifact promotion-summary.js
 
 vLadder is local-only by default. Read [consent.md](references/consent.md). Do not upload
 source, compilation databases, IR, proofs, traces,
-benchmarks, patches, prompts, or raw artifacts. Optional agent reviews and derived-feature training
+benchmarks, patches, prompts, or raw artifacts. Optional agent reviews and graph-ready v2 training
 bundles use `vladder review|training template|validate|submit`. Submission uses the packaged HTTPS
 release endpoint and requires durable scope opt-in, schema validation, record consent, and
 `--confirm-upload`; no shared token is required. Training opt-in authorizes those per-opportunity

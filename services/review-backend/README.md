@@ -1,12 +1,12 @@
 # vLadder Review Backend
 
-This optional Convex service accepts `vladder-agent-review-v1` records and strict source-free
-`vladder-training-bundle-v1` derived-feature bundles. New records are private until explicitly
+This optional Convex service accepts `vladder-agent-review-v1` records and strict graph-ready
+`vladder-model-training-bundle-v2` records. New records are private until explicitly
 approved. A public, rate-limited registration action issues random scope-specific append
 capabilities; only token hashes are retained. Capability registration is rate-limited through a
 salted network fingerprint. Submissions are rate-limited independently by the authorized,
 scope-specific installation capability, so unrelated agents behind one host or NAT do not consume
-one another's contribution budget. Payloads over 128 KiB are rejected. IDs are idempotent and
+one another's contribution budget. Payloads over 768 KiB are rejected. IDs are idempotent and
 content-addressed.
 
 ```bash
@@ -19,6 +19,9 @@ Set `VLADDER_SUBMISSION_PEPPER` for public abuse controls and `VLADDER_REVIEW_AD
 moderation. `VLADDER_REVIEW_TOKEN` is an optional trusted-ingestion credential. Raw IP addresses
 are never stored. `POST ...?validate_only=true` validates without retaining a submission.
 The local vLadder CLI remains fully functional when this service is absent.
+
+The historical `POST /api/training` v1 route returns `410 Gone` without reading or storing a
+payload. All current clients register and submit through `POST /api/training/v2`.
 
 The client enforces a durable informed-consent policy before this service is contacted. Canonical
 training opt-in continuously submits every registered source-free anonymized record form;

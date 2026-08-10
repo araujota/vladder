@@ -13,7 +13,7 @@ Network access occurs only in explicit administrative operations:
 - publishing commands operated by maintainers contact release services;
 - `vladder review submit` sends one schema-validated agent-review record only after
   durable `agent_experience_review` opt-in, `--confirm-upload`, and record-level consent;
-- `vladder training submit` sends one schema-validated model-training or legacy telemetry bundle only
+- `vladder training submit` sends one schema-validated model-training v2 bundle only
   after independent durable `canonical_training_data` opt-in and the same per-record and
   per-command gates.
 
@@ -61,6 +61,11 @@ locally remapped; project/root/candidate links use an installation-secret HMAC r
 source hashes. Unknown source-defined vocabulary is collapsed to public `other` categories rather
 than hashed into a dictionary target. The CLI never uploads a local prior store, compilation unit,
 proof bundle, or arbitrary file.
+
+Legacy `vladder-training-bundle-v1` files remain locally schema-valid for historical inspection,
+but no current producer emits them. Enqueue and submit reject them, outbox flush moves pre-existing
+v1 entries into an owner-only quarantine, and the hosted legacy endpoint returns `410 Gone` before
+reading or storing the body.
 
 ## Threat Model
 

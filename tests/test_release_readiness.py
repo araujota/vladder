@@ -75,7 +75,7 @@ class ReleaseReadinessTests(unittest.TestCase):
         def http_result(url):
             if url.endswith("/api/health"):
                 return 200, {"status": "ok", "capability_submission": True}
-            return 200, {"info": {"version": "1.0.0rc20"}}
+            return 200, {"info": {"version": "1.0.0rc21"}}
 
         with patch("vladder.release_readiness.shutil.which", return_value="/usr/bin/gh"), patch(
             "vladder.release_readiness._gh_json", side_effect=gh_result

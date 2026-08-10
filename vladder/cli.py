@@ -2128,10 +2128,14 @@ def build_parser() -> argparse.ArgumentParser:
     review_submit.add_argument("--timeout", type=float, default=20.0)
     review_submit.add_argument("--consent-file", help=argparse.SUPPRESS)
     review_submit.set_defaults(func=review_command)
-    training = sub.add_parser("training", help="create, validate, or explicitly submit source-free training data")
+    training = sub.add_parser(
+        "training", help="create, validate, or explicitly submit graph-ready v2 training data",
+    )
     training_sub = training.add_subparsers(dest="training_command", required=True)
-    training_template = training_sub.add_parser("template", help="create a strict source-free training bundle")
-    training_template.add_argument("--out", default="vladder-training-bundle.json")
+    training_template = training_sub.add_parser(
+        "template", help="create a strict graph-ready v2 training bundle",
+    )
+    training_template.add_argument("--out", default="vladder-model-training-bundle-v2.json")
     training_template.set_defaults(func=training_command)
     training_prior = training_sub.add_parser("from-prior", help="derive a source-free bundle from a local canonical prior store")
     training_prior.add_argument("--store", required=True)
@@ -2145,7 +2149,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="set record consent from the saved training opt-in for continuous contribution",
     )
     training_prior.add_argument("--consent-file", help=argparse.SUPPRESS)
-    training_prior.add_argument("--out", default="vladder-training-bundle.json")
+    training_prior.add_argument("--out", default="vladder-model-training-bundle-v2.json")
     training_prior.set_defaults(func=training_command)
     training_export = training_sub.add_parser(
         "export-prior", help="export every supported anonymized prior record into bounded bundles",
@@ -2169,7 +2173,7 @@ def build_parser() -> argparse.ArgumentParser:
     training_sync.add_argument("--model", required=True)
     training_sync.add_argument("--provider")
     training_sync.add_argument("--examples-per-bundle", type=int, default=12)
-    training_sync.add_argument("--endpoint", help="override VLADDER_TRAINING_ENDPOINT")
+    training_sync.add_argument("--endpoint", help="override VLADDER_MODEL_TRAINING_ENDPOINT")
     training_sync.add_argument("--validate-only", action="store_true")
     training_sync.add_argument("--timeout", type=float, default=20.0)
     training_sync.add_argument("--consent-file", help=argparse.SUPPRESS)
@@ -2190,9 +2194,13 @@ def build_parser() -> argparse.ArgumentParser:
     training_graph.add_argument("--bundle", required=True)
     training_graph.add_argument("--out", default="vladder-graph-learning-examples.jsonl")
     training_graph.set_defaults(func=training_command)
-    training_submit = training_sub.add_parser("submit", help="submit only a validated source-free bundle after explicit consent")
+    training_submit = training_sub.add_parser(
+        "submit", help="submit only a validated graph-ready v2 bundle after explicit consent",
+    )
     training_submit.add_argument("--bundle", required=True)
-    training_submit.add_argument("--endpoint", help="override the public training endpoint or VLADDER_TRAINING_ENDPOINT")
+    training_submit.add_argument(
+        "--endpoint", help="override the public v2 endpoint or VLADDER_MODEL_TRAINING_ENDPOINT",
+    )
     training_submit.add_argument("--confirm-upload", action="store_true", help="required explicit consent gate")
     training_submit.add_argument("--validate-only", action="store_true", help="validate through the service without storing")
     training_submit.add_argument("--timeout", type=float, default=20.0)

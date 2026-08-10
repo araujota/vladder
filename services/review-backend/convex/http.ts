@@ -3,11 +3,9 @@ import type { Infer } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { agentReviewValidator } from "./reviewValidators";
-import { trainingBundleValidator } from "./trainingValidators";
 import { modelTrainingBundleValidator } from "./modelTrainingValidators";
 
 type AgentReview = Infer<typeof agentReviewValidator>;
-type TrainingBundle = Infer<typeof trainingBundleValidator>;
 type ModelTrainingBundle = Infer<typeof modelTrainingBundleValidator>;
 type SubmissionKind = "review" | "training" | "credential";
 type CapabilityScope = "review:write" | "training:write";
@@ -98,7 +96,7 @@ async function consumePublicLimit(
 async function readBoundedJson(request: Request): Promise<{ text: string; value: unknown } | Response> {
   const text = await request.text();
   if (new TextEncoder().encode(text).byteLength > MAX_PAYLOAD_BYTES) {
-    return jsonResponse({ error: "payload exceeds 128 KiB" }, 413);
+    return jsonResponse({ error: "payload exceeds 768 KiB" }, 413);
   }
   try {
     return { text, value: JSON.parse(text) as unknown };
@@ -121,28 +119,6 @@ function reviewBounds(review: AgentReview): string | null {
   ];
   if (lists.some((items) => items.length > 100)) return "review list exceeds 100 items";
   if (!HASH_PATTERN.test(review.evidence.promotion_summary_sha256)) return "invalid promotion summary hash";
-  return null;
-}
-
-function trainingBounds(bundle: TrainingBundle): string | null {
-  if (bundle.examples.length < 1 || bundle.examples.length > 256) return "examples must contain 1 to 256 records";
-  if (!HASH_PATTERN.test(bundle.dataset.grammar_hash) || !HASH_PATTERN.test(bundle.dataset.hardware_manifest_hash)) {
-    return "invalid dataset hash";
-  }
-  const ids = new Set<string>();
-  for (const example of bundle.examples) {
-    if (ids.has(example.example_id)) return "duplicate example_id";
-    ids.add(example.example_id);
-    if (!HASH_PATTERN.test(example.semantic_root_hash) || !HASH_PATTERN.test(example.candidate_hash)) {
-      return "invalid example hash";
-    }
-    if (example.numeric_features.length > 256 || example.categorical_features.length > 128) {
-      return "example feature count exceeds schema bounds";
-    }
-    if (!Number.isInteger(example.evidence.sample_count) || example.evidence.sample_count < 0) {
-      return "sample_count must be a nonnegative integer";
-    }
-  }
   return null;
 }
 
@@ -203,8 +179,9 @@ http.route({
     status: "ok",
     service: "vladder-contributions-v1",
     review_schema: "vladder-agent-review-v1",
-    training_schema: "vladder-training-bundle-v1",
+    training_schema: "vladder-model-training-bundle-v2",
     model_training_schema: "vladder-model-training-bundle-v2",
+    legacy_training_submission: "retired_410",
     public_submission: false,
     capability_submission: true,
     public_capability_registration: true,
@@ -286,32 +263,11 @@ http.route({
 http.route({
   path: "/api/training",
   method: "POST",
-  handler: httpAction(async (ctx, request) => {
-    const credential = await authorizeSubmission(ctx, request, "training:write");
-    if (!credential.allowed) {
-      return jsonResponse({ error: credential.reason }, credential.reason === "scope_denied" ? 403 : 401);
-    }
-    const input = await readBoundedJson(request);
-    if (input instanceof Response) return input;
-    const bundle = input.value as TrainingBundle;
-    const validateOnly = new URL(request.url).searchParams.get("validate_only") === "true";
-    const payloadHash = await sha256(input.text);
-    try {
-      await ctx.runMutation(internal.training.storeBundle, { bundle, payloadHash, validateOnly: true });
-      const boundsError = trainingBounds(bundle);
-      if (boundsError) return jsonResponse({ error: boundsError }, 400);
-      if (validateOnly) return jsonResponse({ status: "valid", stored: false, schema_version: "vladder-training-bundle-v1" });
-      if (!credential.trusted) {
-        const limit = await consumePublicLimit(ctx, request, "training", credential.rateLimitIdentity);
-        if (!limit.allowed) return jsonResponse({ error: "daily capability training limit exceeded" }, 429);
-      }
-      const result = await ctx.runMutation(internal.training.storeBundle, { bundle, payloadHash, validateOnly: false });
-      return jsonResponse({ status: "accepted_for_moderation", ...result }, result.duplicate ? 200 : 202);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "invalid training bundle";
-      return jsonResponse({ error: message.slice(0, 1000) }, message.includes("not configured") ? 503 : 400);
-    }
-  }),
+  handler: httpAction(async () => jsonResponse({
+    error: "legacy training submission is retired; upgrade vLadder and submit vladder-model-training-bundle-v2 to /api/training/v2",
+    required_schema: "vladder-model-training-bundle-v2",
+    endpoint: "/api/training/v2",
+  }, 410)),
 });
 
 http.route({

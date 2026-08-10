@@ -17,7 +17,7 @@ from vladder.consent import (
 )
 from vladder.review_workflow import create_review_template, submit_review, validate_review
 from vladder.contribution_transport import (
-    DEFAULT_MODEL_TRAINING_ENDPOINT, DEFAULT_REVIEW_ENDPOINT, DEFAULT_TRAINING_ENDPOINT,
+    DEFAULT_MODEL_TRAINING_ENDPOINT, DEFAULT_REVIEW_ENDPOINT,
     load_or_register_capability,
 )
 from vladder.training_workflow import (
@@ -56,6 +56,51 @@ class PublicReleaseContractTests(unittest.TestCase):
             "blockers": ["application benchmark adapter required"],
             "next_action": "complete the benchmark adapter",
             "claim_boundary": "local proof does not establish owning wrapper equivalence",
+        }
+
+    def _legacy_training_bundle(self) -> dict[str, object]:
+        return {
+            "schema_version": "vladder-training-bundle-v1",
+            "bundle_id": "bundle:legacy-fixture",
+            "created_at": "2026-08-09T00:00:00Z",
+            "vladder_version": "1.0.0rc20",
+            "producer": {"agent": "fixture", "model": "fixture", "provider": None},
+            "dataset": {
+                "project_id": "legacy-project",
+                "grammar_version": "legacy-v1",
+                "grammar_hash": "0" * 64,
+                "hardware_class": "other",
+                "hardware_manifest_hash": "0" * 64,
+            },
+            "examples": [{
+                "example_id": "example:legacy-fixture",
+                "semantic_root_hash": "0" * 64,
+                "candidate_hash": "1" * 64,
+                "language": "cpp",
+                "region_kind": "legacy_fixture",
+                "grammar_family": "legacy_fixture",
+                "grammar_rule": "legacy_fixture",
+                "numeric_features": [],
+                "categorical_features": [],
+                "evidence": {
+                    "semantic_outcome": "proof_unknown",
+                    "physical_outcome": "not_measured",
+                    "proof_class": "none",
+                    "quality_grade": "D",
+                    "benchmark_scope": "none",
+                    "speedup_percent": None,
+                    "ci_lower_percent": None,
+                    "ci_upper_percent": None,
+                    "sample_count": 0,
+                },
+            }],
+            "privacy": {
+                "source_included": False,
+                "raw_artifacts_included": False,
+                "prompts_included": False,
+                "personal_data_included": False,
+                "submission_consent": True,
+            },
         }
 
     def test_schema_registry_lists_stable_public_artifacts(self) -> None:
@@ -185,6 +230,9 @@ class PublicReleaseContractTests(unittest.TestCase):
             bundle_path = Path(directory) / "training.json"
             consent_path = Path(directory) / "consent.json"
             bundle = create_training_template(bundle_path)
+            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v2")
+            self.assertTrue(bundle["roots"][0]["graph"]["nodes"])
+            self.assertTrue(bundle["candidates"][0]["baseline"])
             self.assertEqual(validate_training_bundle(bundle_path)["status"], "pass")
             with self.assertRaisesRegex(ConsentRequiredError, "must ask the user"):
                 submit_training_bundle(
@@ -208,7 +256,7 @@ class PublicReleaseContractTests(unittest.TestCase):
                     )
                     request = urlopen.call_args.args[0]
             self.assertEqual(result["status"], "validated_remotely")
-            self.assertEqual(request.full_url, DEFAULT_TRAINING_ENDPOINT + "?validate_only=true")
+            self.assertEqual(request.full_url, DEFAULT_MODEL_TRAINING_ENDPOINT + "?validate_only=true")
             self.assertEqual(request.get_header("Authorization"), "Bearer vc1_training")
             bundle["privacy"]["source_included"] = True
             bundle_path.write_text(json.dumps(bundle))
@@ -424,6 +472,11 @@ class PublicReleaseContractTests(unittest.TestCase):
             bundle = create_training_bundle_from_promotion_summary(
                 summary, root / "bundle.json", consent_path=consent_path,
             )
+            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v2")
+            self.assertGreaterEqual(len(bundle["roots"][0]["graph"]["nodes"]), 7)
+            self.assertEqual(len(bundle["candidates"]), 2)
+            self.assertTrue(bundle["candidates"][0]["baseline"])
+            self.assertTrue(bundle["observations"])
             self.assertEqual(validate_training_bundle(root / "bundle.json")["status"], "pass")
             self.assertNotIn("private/project/path.cpp", json.dumps(bundle))
             with patch.dict("os.environ", {"VLADDER_TRAINING_OUTBOX_DIR": str(root / "outbox")}):
@@ -436,6 +489,10 @@ class PublicReleaseContractTests(unittest.TestCase):
                         self.assertEqual(report["status"], "pass")
                         self.assertTrue(report["current_record_submitted"])
                         self.assertEqual(urlopen.call_count, 1)
+                        self.assertEqual(
+                            urlopen.call_args.args[0].full_url,
+                            DEFAULT_MODEL_TRAINING_ENDPOINT,
+                        )
                         self.assertEqual(list((root / "outbox").glob("*.json")), [])
 
     def test_training_outbox_retains_transport_failures_and_replays_on_next_opportunity(self) -> None:
@@ -464,6 +521,38 @@ class PublicReleaseContractTests(unittest.TestCase):
             self.assertEqual(second["submitted_count"], 1)
             self.assertEqual(second["pending_count"], 0)
 
+    def test_legacy_training_is_historical_only_and_quarantined_without_transport(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            consent_path = root / "consent.json"
+            outbox = root / "outbox"
+            set_consent(
+                CANONICAL_TRAINING_DATA, "opt_in", path=consent_path, confirmed_user_choice=True,
+            )
+            legacy_path = root / "legacy.json"
+            legacy_path.write_text(json.dumps(self._legacy_training_bundle()))
+            self.assertEqual(validate_training_bundle(legacy_path)["status"], "pass")
+            with self.assertRaisesRegex(ValueError, "historical only"):
+                enqueue_training_bundle(legacy_path, outbox_directory=outbox)
+            with self.assertRaisesRegex(ValueError, "legacy v1 upload is disabled"):
+                submit_training_bundle(
+                    legacy_path, endpoint=None, token=None, confirm_upload=True,
+                    consent_path=consent_path,
+                )
+            outbox.mkdir()
+            queued_legacy = outbox / "legacy.json"
+            queued_legacy.write_text(json.dumps(self._legacy_training_bundle()))
+            queued_legacy.chmod(0o600)
+            with patch("vladder.training_workflow.submit_training_bundle") as submit:
+                report = flush_training_outbox(
+                    outbox_directory=outbox, consent_path=consent_path,
+                )
+            submit.assert_not_called()
+            self.assertEqual(report["status"], "pass")
+            self.assertEqual(report["quarantined_legacy_count"], 1)
+            self.assertEqual(report["pending_count"], 0)
+            self.assertTrue(Path(report["quarantined_legacy_entries"][0]).exists())
+
     def test_contributor_capability_is_scope_keyed_cached_and_owner_only(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             credential_path = Path(directory) / "credentials.json"
@@ -472,11 +561,11 @@ class PublicReleaseContractTests(unittest.TestCase):
                     "credential_id": "credential:test", "scope": "training:write", "token": "vc1_training",
                 }
                 first = load_or_register_capability(
-                    DEFAULT_TRAINING_ENDPOINT, "training:write", timeout_seconds=1,
+                    DEFAULT_MODEL_TRAINING_ENDPOINT, "training:write", timeout_seconds=1,
                     credential_path=credential_path,
                 )
                 second = load_or_register_capability(
-                    DEFAULT_TRAINING_ENDPOINT, "training:write", timeout_seconds=1,
+                    DEFAULT_MODEL_TRAINING_ENDPOINT, "training:write", timeout_seconds=1,
                     credential_path=credential_path,
                 )
             self.assertEqual(first, "vc1_training")

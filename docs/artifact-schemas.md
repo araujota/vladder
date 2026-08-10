@@ -17,12 +17,13 @@ Every public artifact includes its own `schema_version`. Consumers must reject u
 versions rather than guessing from file names. Internal research artifacts may remain experimental
 and must not be presented as stable API unless registered.
 
-`vladder-training-bundle-v1` is intentionally not a generic artifact envelope. It accepts bounded
-derived features and evidence labels only. This prevents the contribution command from becoming a
-back door for source, raw IR, patches, prompts, traces, credentials, or arbitrary attachments.
+`vladder-training-bundle-v1` is a historical, validation-only artifact. Current package producers,
+outbox enqueue, and submission APIs do not emit or accept it for transport. This preserves access
+to old local evidence without allowing flattened telemetry to enter the graph-learning corpus.
 
 `vladder-model-training-bundle-v2` is the candidate graph-model interchange. It stores linked,
 bounded roots, candidates, and observations, including sanitized graph topology and structured
 action/hardware/workload descriptors. It is classified as pseudonymized structural data rather
-than anonymous data. Legacy v1 bundles remain valid telemetry but cannot substitute for v2 graph
+than anonymous data. It is the exclusive output of current training producers and the only training
+schema accepted by the public append service. Legacy v1 bundles cannot substitute for v2 graph
 samples in relational or listwise training.

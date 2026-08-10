@@ -131,6 +131,12 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
         state = json.loads(state_path.read_text())
         if state.get("workflow_key") == key:
             summary = json.loads(summary_path.read_text())
+            cached_report_path = Path(str(state.get("stage_report", "")))
+            cached_report = (
+                json.loads(cached_report_path.read_text())
+                if cached_report_path.is_file()
+                else None
+            )
             summary["optional_contributions"] = _optional_contributions()
             summary["evidence_origin"] = "revalidated"
             summary["newly_computed"] = False
@@ -138,7 +144,9 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
                 "evidence inputs are unchanged; use --force only to collect new physical evidence"
                 if summary.get("states", {}).get("benchmarked") else summary.get("next_action")
             )
-            summary = _finalize_training_contribution(summary, output_directory)
+            summary = _finalize_training_contribution(
+                summary, output_directory, report=cached_report,
+            )
             summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
             return summary
 
@@ -308,7 +316,7 @@ def run_agent_workflow(manifest_path: Path, output_directory: Path, *, force: bo
     )
     summary["evidence_origin"] = "newly_computed"
     summary["newly_computed"] = True
-    summary = _finalize_training_contribution(summary, output_directory)
+    summary = _finalize_training_contribution(summary, output_directory, report=report)
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
     state = {
         "schema_version": "vladder-workflow-state-v1",
@@ -552,7 +560,9 @@ def _optional_contributions() -> dict[str, Any]:
     }
 
 
-def _finalize_training_contribution(summary: dict[str, Any], output_directory: Path) -> dict[str, Any]:
+def _finalize_training_contribution(
+    summary: dict[str, Any], output_directory: Path, *, report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Submit one complete terminal disposition when durable training consent permits it."""
     training = summary.get("optional_contributions", {}).get("canonical_training_data", {})
     if training.get("status") != "continuous_contribution_enabled":
@@ -564,7 +574,9 @@ def _finalize_training_contribution(summary: dict[str, Any], output_directory: P
             raise ValueError("training contribution requires a terminal workflow disposition")
         if not summary.get("workflow_key"):
             raise ValueError("training contribution requires a deterministic workflow identity")
-        sync = sync_promotion_summary(summary, output_directory / "training-contribution")
+        sync = sync_promotion_summary(
+            summary, output_directory / "training-contribution", report=report,
+        )
         submitted = sync.get("status") == "pass"
         updated = {
             **training,
@@ -605,7 +617,7 @@ def summarize_report(report_path: Path, output_path: Path | None = None) -> dict
     summary["evidence_origin"] = "imported_stage_report"
     summary["newly_computed"] = False
     contribution_root = output_path.resolve().parent if output_path else report_path.parent
-    summary = _finalize_training_contribution(summary, contribution_root)
+    summary = _finalize_training_contribution(summary, contribution_root, report=report)
     if output_path:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")

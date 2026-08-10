@@ -16,7 +16,6 @@ from . import __version__
 
 DEFAULT_CONTRIBUTION_BASE = "https://ceaseless-manatee-888.convex.site"
 DEFAULT_REVIEW_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/reviews"
-DEFAULT_TRAINING_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/training"
 DEFAULT_MODEL_TRAINING_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/training/v2"
 MAX_CONTRIBUTION_BYTES = 768 * 1024
 CAPABILITY_SCHEMA_VERSION = "vladder-contributor-capability-v1"
@@ -160,7 +159,7 @@ def probe_contribution_service(
                 value = body
             return exc.code, value
 
-    training_endpoint = base_url + "/api/training"
+    training_endpoint = base_url + "/api/training/v2"
     review_endpoint = base_url + "/api/reviews"
     training_token = load_or_register_capability(
         training_endpoint, "training:write", timeout_seconds=timeout_seconds, credential_path=credential_path,
@@ -172,9 +171,9 @@ def probe_contribution_service(
     empty = b"{}"
     checks = {
         "health": {"observed": health[0], "expected": [200]},
-        "training_scope_reaches_schema": {
+        "legacy_training_submission_retired": {
             "observed": request_status("/api/training?validate_only=true", "POST", empty, training_token)[0],
-            "expected": [400],
+            "expected": [410],
         },
         "model_training_scope_reaches_schema": {
             "observed": request_status("/api/training/v2?validate_only=true", "POST", empty, training_token)[0],
@@ -189,7 +188,7 @@ def probe_contribution_service(
             "expected": [403],
         },
         "review_scope_cannot_write_training": {
-            "observed": request_status("/api/training?validate_only=true", "POST", empty, review_token)[0],
+            "observed": request_status("/api/training/v2?validate_only=true", "POST", empty, review_token)[0],
             "expected": [403],
         },
         "contributor_cannot_moderate": {
