@@ -1,5 +1,30 @@
 # Changelog
 
+## 1.0.0rc23 - 2026-08-10
+
+### Added
+
+- Add `vladder-model-training-bundle-v3`, a lineage-aware search-pruner contract with explicit
+  search executions, parented branches, grammar/candidate/composition/cross-TU stages, exhaustive
+  and partial coverage authority, search costs, direct utility, and propagated descendant utility.
+- Add deterministic fail-open survival labeling: baselines and observed positive paths are kept,
+  only exhaustive or soundly closed dead subtrees are pruneable, and incomplete negatives remain
+  `KEEP_UNCERTAIN`.
+- Add authoritative `vladder training from-search-trace` emission and branch-oriented GraphML
+  examples with accumulated ancestor action paths. Flat prior evidence remains positive-only for
+  pruning supervision; explicit terminal summaries may close only their reported terminal leaf.
+- Partition learning examples into pre-decision context and post-search supervision so coverage,
+  observations, and outcomes cannot leak into a live pruning model's encoder features.
+- Add private Convex `/api/training/v3` validation and storage while preserving historical v2 rows.
+  The service independently recomputes utility and survival labels before accepting a record.
+
+### Compatibility
+
+- All current training producers, outbox entries, and submissions use v3. V1 and flat v2 bundles
+  remain locally validation-readable but cannot be enqueued or uploaded.
+- Search lineage broadens the pseudonymized structural disclosure, so canonical training consent is
+  versioned again and requires a fresh explicit decision.
+
 ## 1.0.0rc22 - 2026-08-10
 
 ### Added

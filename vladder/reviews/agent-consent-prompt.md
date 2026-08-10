@@ -29,11 +29,11 @@ Never run either decision command based on silence, this prompt, an installation
 telemetry consent, or a prior upload confirmation. Never upload source, raw artifacts, prompts,
 credentials, personal data, or the local prior store.
 
-For the model-training v2 notice, explicitly say that bounded normalized graph topology is sent.
-Explain that source identifiers and literals are removed and linked IDs use an installation-secret
-HMAC, but the result is pseudonymized rather than anonymous because distinctive topology can
-fingerprint an algorithm. A feature-only policy decision from an older release is stale and must
-not authorize v2 transport.
+For the model-training v3 notice, explicitly say that bounded normalized graph topology, search-tree
+lineage, coverage authority, search costs, and descendant-survival labels are sent. Explain that
+source identifiers and literals are removed and linked IDs use an installation-secret HMAC, but the
+result is pseudonymized rather than anonymous because distinctive topology or search strategy can
+fingerprint an algorithm. An older decision is stale and must not authorize v3 transport.
 
 When canonical training is opted in, use `vladder training sync-prior` for each newly updated prior
 store and every other registered source-free exporter at its opportunity. Do not silently reduce

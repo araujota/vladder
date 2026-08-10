@@ -13,7 +13,7 @@ Network access occurs only in explicit administrative operations:
 - publishing commands operated by maintainers contact release services;
 - `vladder review submit` sends one schema-validated agent-review record only after
   durable `agent_experience_review` opt-in, `--confirm-upload`, and record-level consent;
-- `vladder training submit` sends one schema-validated model-training v2 bundle only
+- `vladder training submit` sends one schema-validated model-training v3 search bundle only
   after independent durable `canonical_training_data` opt-in and the same per-record and
   per-command gates.
 
@@ -27,10 +27,12 @@ explicitly requests reconsideration.
 
 Training opt-in authorizes ongoing contribution at every eligible opportunity without repeated
 questions. The current model-training policy sends bounded normalized graph nodes, edges and
-topology; structured actions; negative and positive proof/physical outcomes; and coarsened
+topology; structured actions; parent/child search lineage; completeness authority; direct and
+descendant utility; negative and positive proof/physical outcomes; search costs; and coarsened
 hardware/workload descriptors. This is **pseudonymized structural data, not anonymous data**. A
 distinctive graph may fingerprint an algorithm, and installation-secret HMAC identities link
-related roots, candidates and observations within one identity epoch. A materially broader policy
+related roots, searches, branches and observations within one identity epoch. Distinctive search
+structure may also fingerprint an optimization strategy. A materially broader policy
 invalidates an older training opt-in and requires a new informed decision. An unsupported eligible
 form is reported as an export gap. Review opt-in only authorizes a periodic request, at most every
 30 days. The exact review is still shown for submission approval.
@@ -53,19 +55,20 @@ direct database access.
 `--validate-only` exercises remote schema acceptance without storing the record, but transmits the
 payload and therefore requires the same durable opt-in.
 
-Review records cannot contain source or raw artifact attachments. Model-training v2 bundles contain
-bounded normalized graph topology, public semantic vocabulary, structured grammar actions, proof
-dispositions, and measurement labels. Source text, paths, symbols, user-defined type names, raw
+Review records cannot contain source or raw artifact attachments. Model-training v3 bundles contain
+bounded normalized graph topology, public semantic vocabulary, structured grammar actions, search
+lineage, coverage authority, descendant-survival labels, proof dispositions, and measurement labels.
+Source text, paths, symbols, user-defined type names, raw
 literals, raw artifacts, prompts, and declared personal data are excluded. Graph node IDs are
-locally remapped; project/root/candidate links use an installation-secret HMAC rather than public
+locally remapped; project/root/search/branch links use an installation-secret HMAC rather than public
 source hashes. Unknown source-defined vocabulary is collapsed to public `other` categories rather
 than hashed into a dictionary target. The CLI never uploads a local prior store, compilation unit,
 proof bundle, or arbitrary file.
 
-Legacy `vladder-training-bundle-v1` files remain locally schema-valid for historical inspection,
-but no current producer emits them. Enqueue and submit reject them, outbox flush moves pre-existing
-v1 entries into an owner-only quarantine, and the hosted legacy endpoint returns `410 Gone` before
-reading or storing the body.
+Legacy `vladder-training-bundle-v1` and flat `vladder-model-training-bundle-v2` files remain locally
+schema-valid for historical inspection, but no current producer emits them. Enqueue and submit reject
+them, outbox flush quarantines pre-existing entries, and the hosted legacy endpoints return `410 Gone`
+before reading or storing the body.
 
 ## Threat Model
 

@@ -15,6 +15,8 @@ import type * as modelTrainingValidators from "../modelTrainingValidators.js";
 import type * as rateLimits from "../rateLimits.js";
 import type * as reviewValidators from "../reviewValidators.js";
 import type * as reviews from "../reviews.js";
+import type * as searchTraining from "../searchTraining.js";
+import type * as searchTrainingValidators from "../searchTrainingValidators.js";
 import type * as training from "../training.js";
 import type * as trainingValidators from "../trainingValidators.js";
 
@@ -32,6 +34,8 @@ declare const fullApi: ApiFromModules<{
   rateLimits: typeof rateLimits;
   reviewValidators: typeof reviewValidators;
   reviews: typeof reviews;
+  searchTraining: typeof searchTraining;
+  searchTrainingValidators: typeof searchTrainingValidators;
   training: typeof training;
   trainingValidators: typeof trainingValidators;
 }>;

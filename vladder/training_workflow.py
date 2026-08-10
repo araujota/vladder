@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -8,10 +7,8 @@ from pathlib import Path
 import platform
 import stat
 import tempfile
-import uuid
 from typing import Any
 
-from . import __version__
 from .consent import CANONICAL_TRAINING_DATA, require_consent
 from .contribution_transport import (
     DEFAULT_MODEL_TRAINING_ENDPOINT,
@@ -24,16 +21,18 @@ from .training_privacy import (
     MAX_CANDIDATES_PER_BUNDLE,
     MAX_OBSERVATIONS_PER_BUNDLE,
     MAX_ROOTS_PER_BUNDLE,
-    load_or_create_training_identity,
-    privacy_manifest,
-    sanitize_candidate,
-    sanitize_observation,
-    sanitize_root,
+)
+from .search_training import (
+    MODEL_TRAINING_SCHEMA_VERSION,
+    build_search_training_bundle,
+    make_branch,
+    make_branch_observation,
+    search_training_integrity_errors,
 )
 
 
 LEGACY_TRAINING_SCHEMA_VERSION = "vladder-training-bundle-v1"
-MODEL_TRAINING_SCHEMA_VERSION = "vladder-model-training-bundle-v2"
+HISTORICAL_MODEL_TRAINING_SCHEMA_VERSION = "vladder-model-training-bundle-v2"
 TRAINING_OUTBOX_SCHEMA_VERSION = "vladder-training-outbox-v1"
 
 
@@ -71,7 +70,7 @@ def enqueue_training_bundle(bundle_path: Path, *, outbox_directory: Path | None 
     schema_version = json.loads(bundle_path.resolve().read_text()).get("schema_version")
     if schema_version != MODEL_TRAINING_SCHEMA_VERSION:
         raise ValueError(
-            f"training emission requires {MODEL_TRAINING_SCHEMA_VERSION}; legacy v1 records are historical only"
+            f"training emission requires {MODEL_TRAINING_SCHEMA_VERSION}; historical v1/v2 records are validation-only"
         )
     payload = bundle_path.resolve().read_bytes()
     payload_hash = hashlib.sha256(payload).hexdigest()
@@ -111,8 +110,9 @@ def flush_training_outbox(
             failure = f"training outbox entry must be owner-only: {entry}"
             break
         payload = json.loads(entry.read_text())
-        if payload.get("schema_version") == LEGACY_TRAINING_SCHEMA_VERSION:
-            quarantine = root / "legacy-v1-quarantine"
+        if payload.get("schema_version") in {LEGACY_TRAINING_SCHEMA_VERSION, HISTORICAL_MODEL_TRAINING_SCHEMA_VERSION}:
+            version = "v1" if payload.get("schema_version") == LEGACY_TRAINING_SCHEMA_VERSION else "v2"
+            quarantine = root / f"legacy-{version}-quarantine"
             quarantine.mkdir(parents=True, exist_ok=True, mode=0o700)
             os.chmod(quarantine, 0o700)
             destination = quarantine / entry.name
@@ -188,11 +188,15 @@ def validate_training_bundle(bundle_path: Path) -> dict[str, Any]:
         schema_version = json.loads(bundle_path.resolve().read_text()).get("schema_version")
     except (json.JSONDecodeError, AttributeError):
         schema_version = None
-    kind = "model-training-bundle" if schema_version == MODEL_TRAINING_SCHEMA_VERSION else "training-bundle"
+    kind = (
+        "model-training-bundle" if schema_version == MODEL_TRAINING_SCHEMA_VERSION else
+        "model-training-bundle-v2" if schema_version == HISTORICAL_MODEL_TRAINING_SCHEMA_VERSION else
+        "training-bundle"
+    )
     report = validate_artifact(kind, bundle_path)
     if report["status"] == "pass" and schema_version == MODEL_TRAINING_SCHEMA_VERSION:
         payload = json.loads(bundle_path.resolve().read_text())
-        integrity_errors = _model_training_integrity_errors(payload)
+        integrity_errors = search_training_integrity_errors(payload)
         if integrity_errors:
             report["status"] = "fail"
             report["errors"].extend({"path": "/", "message": error, "validator": "link_integrity"} for error in integrity_errors)
@@ -200,6 +204,7 @@ def validate_training_bundle(bundle_path: Path) -> dict[str, Any]:
 
 
 def _model_training_integrity_errors(bundle: dict[str, Any]) -> list[str]:
+    """Historical v2 integrity checker retained for local artifact inspection."""
     errors: list[str] = []
     root_ids = [item["root_id"] for item in bundle["roots"]]
     candidate_ids = [item["candidate_id"] for item in bundle["candidates"]]
@@ -246,48 +251,16 @@ def _write_model_training_bundle(
         raise ValueError(f"model bundle requires 1 to {MAX_CANDIDATES_PER_BUNDLE} candidates")
     if len(observations) > MAX_OBSERVATIONS_PER_BUNDLE:
         raise ValueError(f"model bundle permits at most {MAX_OBSERVATIONS_PER_BUNDLE} observations")
-    source_roots = {str(item["root_id"]): item for item in roots}
-    if len(source_roots) != len(roots):
-        raise ValueError("model bundle roots must have unique identities")
-    identity = load_or_create_training_identity(identity_path)
-    sanitized_roots = [
-        sanitize_root(item, identity, project_identity=project_identity) for item in roots
-    ]
-    root_ids = dict(zip(
-        (str(item["root_id"]) for item in roots),
-        (item["root_id"] for item in sanitized_roots),
-        strict=True,
-    ))
-    sanitized_candidates = [sanitize_candidate(item, identity, root_ids) for item in candidates]
-    candidate_ids = dict(zip(
-        (str(item["candidate_id"]) for item in candidates),
-        (item["candidate_id"] for item in sanitized_candidates),
-        strict=True,
-    ))
-    sanitized_observations = [
-        sanitize_observation(item, identity, candidate_ids) for item in observations
-    ]
-    bundle = {
-        "schema_version": MODEL_TRAINING_SCHEMA_VERSION,
-        "bundle_id": f"bundle:{uuid.uuid4()}",
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "vladder_version": __version__,
-        "producer": {
-            "agent": producer_agent,
-            "model": producer_model,
-            "provider": producer_provider,
-        },
-        "dataset": {
-            "grammar_version": grammar_version,
-            "grammar_hash": canonical_hash([item["action"] for item in candidates]),
-            "canonicalizer_version": "model-ready-graph-v2",
-            "identity_epoch": identity["identity_epoch"],
-        },
-        "roots": sanitized_roots,
-        "candidates": sanitized_candidates,
-        "observations": sanitized_observations,
-        "privacy": privacy_manifest(identity, submission_consent=submission_consent),
-    }
+    searches, branches, branch_observations = _flat_candidates_to_partial_searches(
+        roots, candidates, observations, grammar_version=grammar_version,
+    )
+    bundle = build_search_training_bundle(
+        roots, searches, branches, branch_observations,
+        project_identity=project_identity, producer_agent=producer_agent,
+        producer_model=producer_model, producer_provider=producer_provider,
+        submission_consent=submission_consent, identity_path=identity_path,
+        grammar_version=grammar_version,
+    )
     output_path = output_path.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n")
@@ -295,6 +268,153 @@ def _write_model_training_bundle(
     if validation["status"] != "pass":
         raise ValueError(f"model training bundle failed schema validation: {validation['errors']}")
     return bundle
+
+
+def create_training_bundle_from_search_trace(
+    trace: dict[str, Any], output_path: Path, *, project_id: str,
+    producer_agent: str, producer_model: str, producer_provider: str | None = None,
+    apply_durable_consent: bool = False, consent_path: Path | None = None,
+    identity_path: Path | None = None,
+) -> dict[str, Any]:
+    """Emit an authoritative v3 trace without flattening branch lineage."""
+    if apply_durable_consent:
+        require_consent(CANONICAL_TRAINING_DATA, consent_path)
+    required = ("roots", "searches", "branches", "observations")
+    missing = [key for key in required if not isinstance(trace.get(key), list)]
+    if missing:
+        raise ValueError(f"search trace is missing list fields: {missing}")
+    bundle = build_search_training_bundle(
+        trace["roots"], trace["searches"], trace["branches"], trace["observations"],
+        project_identity=project_id, producer_agent=producer_agent, producer_model=producer_model,
+        producer_provider=producer_provider, submission_consent=apply_durable_consent,
+        identity_path=identity_path, grammar_version=str(trace.get("grammar_version", "structured-open-actions-v3")),
+    )
+    output_path = output_path.resolve()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n")
+    validation = validate_training_bundle(output_path)
+    if validation["status"] != "pass":
+        raise ValueError(f"search training bundle failed schema validation: {validation['errors']}")
+    return bundle
+
+
+def _flat_candidates_to_partial_searches(
+    roots: list[dict[str, Any]], candidates: list[dict[str, Any]], observations: list[dict[str, Any]],
+    *, grammar_version: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    candidates_by_root: dict[str, list[dict[str, Any]]] = {}
+    for candidate in candidates:
+        candidates_by_root.setdefault(str(candidate["root_id"]), []).append(candidate)
+    observations_by_candidate: dict[str, list[dict[str, Any]]] = {}
+    for observation in observations:
+        observations_by_candidate.setdefault(str(observation["candidate_id"]), []).append(observation)
+    searches: list[dict[str, Any]] = []
+    branches: list[dict[str, Any]] = []
+    branch_observations: list[dict[str, Any]] = []
+    for root in roots:
+        root_id = str(root["root_id"])
+        selected = candidates_by_root.get(root_id, [])
+        baseline_candidate = next((item for item in selected if item.get("baseline")), None)
+        if baseline_candidate is None:
+            baseline_candidate = make_candidate(
+                root_id,
+                {"family": "baseline", "family_version": "v1", "primitives": ["existing_implementation"]},
+                selected[0].get("hardware", {}) if selected else {}, selected[0].get("workload", {}) if selected else {},
+                baseline=True,
+            )
+        alternatives = [item for item in selected if not item.get("baseline")]
+        search_id = canonical_hash({
+            "root_id": root_id, "grammar_version": grammar_version,
+            "hardware": baseline_candidate.get("hardware", {}), "workload": baseline_candidate.get("workload", {}),
+            "candidate_ids": sorted(str(item["candidate_id"]) for item in alternatives), "flat_import": True,
+        })
+        baseline_branch = make_branch(
+            search_id, baseline_candidate["action"], parent_branch_id=None, depth=0, stage="baseline",
+            baseline=True, state="expanded", evidence_coverage="partial",
+            coverage={
+                "children_status": "partially_enumerated" if alternatives else "not_enumerated",
+                "emitted_child_count": len(alternatives), "expected_child_count": None,
+                "completeness_reason": "unknown", "soundness_proof_class": "none",
+            }, identity_material={"candidate_id": baseline_candidate["candidate_id"], "search_id": search_id},
+        )
+        searches.append({
+            "search_id": search_id, "root_id": root_id, "root_branch_id": baseline_branch["branch_id"],
+            "grammar_version": grammar_version, "grammar_hash": canonical_hash([item["action"] for item in selected]),
+            "selection_policy": "terminal_workflow_import" if grammar_version.startswith("terminal-") else "flat_prior_import",
+            "coverage": "partial",
+            "stage_coverage": {"grammar_family": "partial", "candidate_family": "partial", "composition": "not_attempted", "cross_tu": "not_attempted"},
+            "fragment": {"kind": "partial_snapshot", "external_parent_branch_id": None},
+            "exploration_reserve_fraction": 0.0,
+            "hardware": baseline_candidate.get("hardware", {}), "workload": baseline_candidate.get("workload", {}),
+        })
+        branches.append(baseline_branch)
+        branch_observations.extend(
+            _convert_flat_observation(item, baseline_branch["branch_id"])
+            for item in observations_by_candidate.get(str(baseline_candidate["candidate_id"]), [])
+        )
+        terminal_import = grammar_version.startswith("terminal-")
+        for candidate in alternatives:
+            candidate_observations = observations_by_candidate.get(str(candidate["candidate_id"]), [])
+            observed_coverage = _flat_evidence_coverage(candidate_observations)
+            # A flat prior record says what happened to one realization, not whether every
+            # descendant below that grammar choice was explored. Preserve positives, but keep
+            # negative descendant utility unknown unless the source is an explicit terminal
+            # workflow summary.
+            evidence_coverage = observed_coverage if terminal_import else "partial" if candidate_observations else "none"
+            branch = make_branch(
+                search_id, candidate["action"], parent_branch_id=baseline_branch["branch_id"], depth=1,
+                stage="candidate_family", state=_flat_branch_state(candidate_observations),
+                evidence_coverage=evidence_coverage,
+                coverage={
+                    "children_status": "not_applicable" if terminal_import else "not_enumerated",
+                    "emitted_child_count": 0,
+                    "expected_child_count": 0 if terminal_import else None,
+                    "completeness_reason": "terminal" if terminal_import and evidence_coverage == "complete" else "unknown",
+                    "soundness_proof_class": "none",
+                }, identity_material={"candidate_id": candidate["candidate_id"], "search_id": search_id},
+            )
+            branches.append(branch)
+            branch_observations.extend(
+                _convert_flat_observation(item, branch["branch_id"]) for item in candidate_observations
+            )
+    return searches, branches, branch_observations
+
+
+def _flat_evidence_coverage(observations: list[dict[str, Any]]) -> str:
+    outcomes = {str(item.get("outcome")) for item in observations}
+    definitive = {
+        "inapplicable", "missing_contract", "semantic_mismatch", "illegal", "proof_failed", "proof_passed",
+        "compiler_identical", "measured_regression", "statistical_tie", "small_win_below_floor",
+        "material_regional_win", "composed_regression", "composed_win", "resource_regression",
+    }
+    return "complete" if outcomes & definitive else "partial" if observations else "none"
+
+
+def _flat_branch_state(observations: list[dict[str, Any]]) -> str:
+    outcomes = {str(item.get("outcome")) for item in observations}
+    if "compiler_identical" in outcomes:
+        return "compiler_identical"
+    if outcomes & {"inapplicable", "missing_contract", "semantic_mismatch", "illegal", "proof_failed"}:
+        return "terminal"
+    return "terminal" if _flat_evidence_coverage(observations) == "complete" else "enumerated"
+
+
+def _convert_flat_observation(observation: dict[str, Any], branch_id: str) -> dict[str, Any]:
+    payload = observation.get("payload", {}) if isinstance(observation.get("payload"), dict) else {}
+    paired = payload.get("paired_speedup", {}) if isinstance(payload.get("paired_speedup"), dict) else {}
+    def percent(value: Any) -> float | None:
+        return float(value) * 100.0 if isinstance(value, (int, float)) else None
+    return make_branch_observation(
+        branch_id, str(observation.get("kind", "grammar_disposition")), str(observation.get("outcome", "proof_unknown")),
+        quality_grade=str(observation.get("quality_grade", "D")),
+        proof_class=str(payload.get("proof_class", payload.get("method", "none"))),
+        benchmark_scope=str(payload.get("benchmark_scope", "none")),
+        speedup_percent=percent(paired.get("median", payload.get("speedup"))),
+        ci_lower_percent=percent(paired.get("bootstrap_ci_low")),
+        ci_upper_percent=percent(paired.get("bootstrap_ci_high")),
+        sample_count=max(0, int(payload.get("sample_count", payload.get("process_count", 0)) or 0)),
+        resource_features=payload.get("resources", {}),
+    )
 
 
 def create_training_bundle_from_prior(
@@ -335,44 +455,12 @@ def create_training_bundle_from_prior(
             f"candidate slice has {len(selected_observations)} observations; model bundles permit "
             f"{MAX_OBSERVATIONS_PER_BUNDLE}; reduce the candidate slice"
         )
-    identity = load_or_create_training_identity(identity_path)
-    sanitized_roots = [
-        sanitize_root(roots[root_id], identity, project_identity=project_id) for root_id in selected_root_ids
-    ]
-    root_ids = dict(zip(selected_root_ids, (item["root_id"] for item in sanitized_roots), strict=True))
-    sanitized_candidates = [sanitize_candidate(item, identity, root_ids) for item in candidates]
-    candidate_ids = dict(zip(
-        (str(item["candidate_id"]) for item in candidates),
-        (item["candidate_id"] for item in sanitized_candidates),
-        strict=True,
-    ))
-    sanitized_observations = [
-        sanitize_observation(item, identity, candidate_ids) for item in selected_observations
-    ]
-    bundle = {
-        "schema_version": MODEL_TRAINING_SCHEMA_VERSION,
-        "bundle_id": f"bundle:{uuid.uuid4()}",
-        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-        "vladder_version": __version__,
-        "producer": {"agent": producer_agent, "model": producer_model, "provider": producer_provider},
-        "dataset": {
-            "grammar_version": "structured-open-actions-v2",
-            "grammar_hash": canonical_hash([item["action"] for item in candidates]),
-            "canonicalizer_version": "model-ready-graph-v2",
-            "identity_epoch": identity["identity_epoch"],
-        },
-        "roots": sanitized_roots,
-        "candidates": sanitized_candidates,
-        "observations": sanitized_observations,
-        "privacy": privacy_manifest(identity, submission_consent=apply_durable_consent),
-    }
-    output_path = output_path.resolve()
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(bundle, indent=2, sort_keys=True) + "\n")
-    validation = validate_training_bundle(output_path)
-    if validation["status"] != "pass":
-        raise ValueError(f"derived training bundle failed schema validation: {validation['errors']}")
-    return bundle
+    return _write_model_training_bundle(
+        [roots[root_id] for root_id in selected_root_ids], candidates, selected_observations, output_path,
+        project_identity=project_id, producer_agent=producer_agent, producer_model=producer_model,
+        producer_provider=producer_provider, submission_consent=apply_durable_consent,
+        identity_path=identity_path, grammar_version="structured-open-actions-v3",
+    )
 
 
 def export_all_training_bundles_from_prior(
@@ -433,11 +521,13 @@ def export_all_training_bundles_from_prior(
             candidate_offset=offset,
         )
         paths.append(str(path))
+    search_branch_count = sum(len(json.loads(Path(path).read_text())["branches"]) for path in paths)
     observation_kinds = sorted({str(item.get("kind")) for item in dataset["observations"]})
     report = {
         "schema_version": "vladder-training-export-v1",
         "status": "pass",
         "candidate_count": candidate_count,
+        "search_branch_count": search_branch_count,
         "bundle_count": len(paths),
         "all_supported_candidates_exported": True,
         "bundles": paths,
@@ -445,7 +535,9 @@ def export_all_training_bundles_from_prior(
         "record_forms": {
             "bounded_semantic_graph_topology": True,
             "structured_grammar_actions": True,
+            "search_lineage": True,
             "candidate_and_negative_dispositions": True,
+            "negative_label_authority": "partial flat imports remain KEEP_UNCERTAIN",
             "observation_kinds": observation_kinds,
             "hardware_and_workload_descriptors": True,
         },
@@ -725,6 +817,13 @@ def _promotion_observations(
         observations.append(make_observation(
             candidate_id, "composition", outcome, payload, quality_grade=quality,
         ))
+        observations.append(make_observation(
+            candidate_id,
+            "retention",
+            "promoted_candidate" if states.get("production_promoted") else "retained_candidate",
+            {"proof_class": proof_class, "benchmark_scope": "end_to_end"},
+            quality_grade=quality,
+        ))
     return observations
 
 
@@ -847,7 +946,7 @@ def sync_promotion_summary(
     consent_path: Path | None = None,
 ) -> dict[str, Any]:
     output_directory = output_directory.resolve()
-    bundle_path = output_directory / "promotion-model-training-bundle-v2.json"
+    bundle_path = output_directory / "promotion-model-training-bundle-v3.json"
     create_training_bundle_from_promotion_summary(
         summary, bundle_path, report=report, consent_path=consent_path,
     )
@@ -858,14 +957,14 @@ def sync_promotion_summary(
         for row in flush["submissions"]
     )
     report = {
-        "schema_version": "vladder-promotion-training-sync-v2",
+        "schema_version": "vladder-promotion-training-sync-v3",
         "status": "pass" if current_submitted else "queued_for_retry",
         "bundle": str(bundle_path),
         "queued_record": queued,
         "outbox_flush": flush,
         "current_record_submitted": current_submitted,
         "record_forms": [
-            "bounded_graph_topology", "structured_baseline_and_candidate_actions",
+            "bounded_graph_topology", "search_branch_lineage", "structured_baseline_and_candidate_actions",
             "workflow_disposition", "proof_and_promotion_observations", "negative_result",
             "architectural_lifetime_finding", "adapter_gap",
         ],
@@ -893,7 +992,7 @@ def submit_training_bundle(
     bundle = json.loads(bundle_path.resolve().read_text())
     if bundle.get("schema_version") != MODEL_TRAINING_SCHEMA_VERSION:
         raise ValueError(
-            f"training submission requires {MODEL_TRAINING_SCHEMA_VERSION}; legacy v1 upload is disabled"
+            f"training submission requires {MODEL_TRAINING_SCHEMA_VERSION}; historical v1/v2 upload is disabled"
         )
     if endpoint is None:
         endpoint = os.environ.get("VLADDER_MODEL_TRAINING_ENDPOINT") or DEFAULT_MODEL_TRAINING_ENDPOINT

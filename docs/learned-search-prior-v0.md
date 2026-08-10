@@ -1,12 +1,13 @@
 # Learned Search Prior v0
 
-vLadder Prior v0 ranks already enumerated grammar actions. It does not generate code, establish
-legality, prove equivalence, predict authoritative runtime, or promote a source replacement.
+vLadder's learned search component is a high-recall branch-survival oracle. It asks whether useful
+work may exist below a branch; it does not predict speedup, generate code, establish legality, prove
+equivalence, predict authoritative runtime, or promote a source replacement.
 
 ```text
 SemanticFlowGraph v2 + structured action + hardware + workload
                               |
-                    calibrated search priority
+               conservative branch-survival decision
                               |
               ordinary vLadder proof and measurement gates
 ```
@@ -43,14 +44,23 @@ define semantic identity. The graph canonicalizer is an identity aid, not an equ
 Use root, project, language, hardware, and temporal holdouts. Candidate-level random splitting is
 prohibited because candidates from one semantic root are correlated.
 
-The contribution/training interchange is `vladder-model-training-bundle-v2`. It preserves three
-linked tables: roots with bounded attributed topology, candidates with structured grammar actions
-and hardware/workload context, and append-only observations. `graph_learning_examples()` exposes
-`node_features`, `edge_index`, relation features, action/context features, labels, and a
-`ranking_group` keyed by root/hardware/workload. This is the unit consumed by a relational GNN or
-pairwise/listwise ranker. Legacy `vladder-training-bundle-v1` records are historical validation-only
-artifacts and must not
-be treated as equivalent graph-model samples.
+The contribution/training interchange is `vladder-model-training-bundle-v3`. It preserves semantic
+roots, search executions, branch parentage and depth, search stage, structured grammar actions,
+hardware/workload context, local child-coverage authority, search costs, typed observations, direct
+utility, and bottom-up descendant utility. `graph_learning_examples()` exposes one branch example
+with its complete ancestor action path, parent/search identity, and the `KEEP`, `KEEP_UNCERTAIN`, `PRUNE_HIGH_CONFIDENCE`, or
+`BLOCKED_BY_CONTRACT` target. Legacy v1 and flat v2 bundles are historical validation-only artifacts
+and must not be treated as equivalent pruning samples.
+
+Each JSONL example separates `decision_context` from `supervision`. Semantic topology, grammar,
+ancestor actions, stage, hardware, and workload are available before a pruning decision.
+Observations, coverage, search state, costs, and targets are post-search supervision and MUST NOT be
+fed to the encoder. This partition prevents outcome leakage.
+
+Positive utility propagates from proof-valid or stronger terminal evidence to every required
+ancestor. A branch becomes a negative example only when its complete subtree is exhaustively
+represented or a named sound contract, legality, or dominance proof closes it. Absence of a winner
+in a partial, heuristic, budget-truncated, or interrupted trace is not a negative label.
 
 ```bash
 vladder training graph-examples --bundle vladder-model-training-bundle.json \
@@ -60,7 +70,11 @@ vladder training ingest-model --bundle vladder-model-training-bundle.json --stor
 
 The JSONL path preserves every project/language occurrence. The v0 prior-store compatibility path
 deduplicates exact semantic clones because that older store keys roots by semantic identity; use the
-JSONL/relational loader for language- and project-holdout training.
+JSONL/relational loader for lineage-aware language- and project-holdout training. Use
+`vladder training from-search-trace` for full search trees. `from-prior` is a migration path that
+emits partial one-level searches and therefore cannot manufacture exhaustive negatives.
+Service ingestion independently recomputes direct utility, descendant utility, and survival class;
+producer-supplied labels are not trusted.
 
 The training boundary is intentionally open to future grammar growth. Canonical identity captures
 every non-provenance typed node and edge field, including previously unknown relations,
@@ -88,8 +102,8 @@ opt-in automatically shards and syncs every supported pseudonymized form after e
 prior workflow. Before the first decision, the agent must show the complete notice and local volume
 estimate, ask for explicit opt-in or opt-out, and honor the decision across sessions. Only validated
 model-training bundles are sent; local experience stores and arbitrary graph/source artifacts are
-not uploaded. The v2 bundle is pseudonymized rather than anonymous because normalized topology is
-included and can fingerprint a distinctive algorithm. Source identifiers, paths, user-defined
+not uploaded. The v3 bundle is pseudonymized rather than anonymous because normalized topology and
+search lineage are included and can fingerprint a distinctive algorithm or search strategy. Source identifiers, paths, user-defined
 types and literals are removed, and linked IDs are installation-secret HMACs. Older training
 consent does not carry forward across this disclosure change.
 
@@ -101,7 +115,7 @@ proof-risk, and ordinal outcome heads. Calibration uses held-out roots, ensemble
 semantic graph distance, and a conformal residual summary.
 
 This deliberately small backend validates the data and authority boundaries before introducing a
-12-30M parameter heterogeneous relational graph transformer. The v2 interchange already retains
+12-30M parameter heterogeneous relational graph transformer. The v3 interchange retains
 the raw topology that model requires. Training that larger model is gated on
 at least 2,500 roots, 20 projects, 3 languages, 2 hardware targets, and 25,000 non-synthetic Grade
 A/B physical observations. Meeting the size gate makes the corpus eligible for model evaluation;
@@ -109,10 +123,11 @@ it does not automatically authorize budgeted production search.
 
 ## Search Safety
 
-Every selection retains the baseline. Between 10% and 50% of the non-baseline budget is reserved
-for uncertain or underrepresented legal candidates when the budget permits. Unseen hardware,
-out-of-distribution graphs, or excessive ensemble uncertainty cause abstention and exhaustive or
-existing-heuristic fallback.
+Every selection retains the baseline. Unknown grammar families, out-of-distribution roots, and
+uncertain branches are kept. A fixed exploration reserve remains active even for in-distribution
+high-confidence pruning. The headline metric is branch reduction at declared useful-descendant
+recall, with 99.9% recall as the initial minimum evaluation point; compiler, proof, benchmark, and
+node-expansion savings are supporting metrics.
 
 ```bash
 vladder prior train --store experience --split split.json --out-dir model

@@ -11,7 +11,8 @@ from typing import Any
 CONSENT_SCHEMA_VERSION = "vladder-consent-v1"
 CONSENT_POLICY_VERSION = "vladder-contribution-consent-v3"
 LEGACY_CONSENT_POLICY_VERSION = "vladder-contribution-consent-v2"
-TRAINING_CONSENT_POLICY_VERSION = "vladder-model-training-consent-v3"
+TRAINING_CONSENT_POLICY_VERSION = "vladder-model-training-consent-v4"
+LEGACY_TRAINING_CONSENT_POLICY_VERSION = "vladder-model-training-consent-v3"
 REVIEW_CONSENT_POLICY_VERSION = "vladder-review-consent-v2"
 CANONICAL_TRAINING_DATA = "canonical_training_data"
 AGENT_EXPERIENCE_REVIEW = "agent_experience_review"
@@ -24,16 +25,19 @@ SCOPE_NOTICES: dict[str, dict[str, Any]] = {
         "title": "Pseudonymized structural optimization training data",
         "opt_in_effect": (
             "At every eligible optimization opportunity, the agent sends every supported model-training "
-            "record to the configured Convex moderation database. Records preserve bounded, normalized graph "
-            "topology and candidate relationships needed to train the search prior."
+            "record to the configured Convex moderation database. Records preserve bounded normalized graph "
+            "topology, search-tree lineage, completeness authority, and descendant-survival labels needed to train "
+            "the pruning oracle."
         ),
         "frequency": "at every eligible newly produced workflow, candidate, proof, rejection, and measurement opportunity",
         "included": [
             "pseudonymized bounded information-flow/lifetime graph nodes, edges, and topology",
-            "structured grammar actions, candidate dispositions, and negative results",
+            "structured grammar actions, parent/child search branches, expansion state, and search-stage coverage",
+            "exhaustive, soundly closed, partial, and truncated subtree authority plus derived survival labels",
+            "structured candidate dispositions and negative results",
             "proof, differential, compilation, assembly-identity, cost, counter, benchmark, and composition labels",
             "coarsened hardware and workload descriptors plus confidence and quality metadata",
-            "installation-epoch HMAC identifiers that link related roots, candidates, and observations",
+            "installation-epoch HMAC identifiers that link related roots, searches, branches, and observations",
         ],
         "excluded": [
             "source code and source paths", "raw IR, assembly, proofs, traces, patches, prompts, and model files",
@@ -42,7 +46,7 @@ SCOPE_NOTICES: dict[str, dict[str, Any]] = {
         "destination": "the configured vLadder Convex contribution endpoint; records are private pending moderation",
         "residual_risk": (
             "This is pseudonymized structural data, not anonymous data. A distinctive normalized graph may "
-            "fingerprint an algorithm, and records remain linkable within one local identity epoch."
+            "fingerprint an algorithm or search strategy, and records remain linkable within one local identity epoch."
         ),
         "revocation": "opt out at any time; the new decision stops future sends but cannot recall already submitted records",
     },
@@ -114,7 +118,8 @@ def load_consent(path: Path | None = None) -> dict[str, Any]:
                 or record.get("decision") not in CONSENT_DECISIONS
                 or record.get("policy_version") not in {
                     CONSENT_POLICY_VERSION, LEGACY_CONSENT_POLICY_VERSION,
-                    TRAINING_CONSENT_POLICY_VERSION, REVIEW_CONSENT_POLICY_VERSION,
+                    TRAINING_CONSENT_POLICY_VERSION, LEGACY_TRAINING_CONSENT_POLICY_VERSION,
+                    REVIEW_CONSENT_POLICY_VERSION,
                 }
                 or not isinstance(record.get("updated_at"), str)
                 or not isinstance(record.get("decision_source"), str)

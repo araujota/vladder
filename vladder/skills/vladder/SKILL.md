@@ -19,7 +19,7 @@ If the command is unavailable or reports another version, tell the user that the
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc22'
+python3 -m pip install --pre 'vladder==1.0.0rc23'
 vladder doctor --strict
 ```
 
@@ -27,7 +27,7 @@ Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or t
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc22`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc23`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v8`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
@@ -159,9 +159,10 @@ vladder prior run --manifest prior.yaml --out-dir prior-out
 Read `prior-summary.json`. A valid synthetic pilot and a trained model do not imply production
 eligibility or that any live candidate was pruned.
 
-Require `vladder-model-training-bundle-v2` and convert it with `vladder training graph-examples`.
-Preserve ranking groups. All current producers and submissions must emit v2; v1 is historical
-validation-only evidence and must never be enqueued, submitted, regenerated, or converted.
+Require `vladder-model-training-bundle-v3`; preserve ancestor action paths, branch lineage, coverage authority, and
+descendant targets. Only exhaustive or soundly closed dead subtrees may train a prune label;
+incomplete negatives remain `KEEP_UNCERTAIN`; keep post-search supervision out of model inputs. Use `training from-search-trace` for authoritative
+lineage; `from-prior` emits partial one-level searches. V1/v2 are validation-only historical data.
 
 The operational state order is strict:
 
@@ -183,16 +184,16 @@ vladder schema validate --kind promotion-summary --artifact promotion-summary.js
 
 vLadder is local-only by default. Read [consent.md](references/consent.md). Do not upload
 source, compilation databases, IR, proofs, traces,
-benchmarks, patches, prompts, or raw artifacts. Optional agent reviews and graph-ready v2 training
-bundles use `vladder review|training template|validate|submit`. Submission uses the packaged HTTPS
+benchmarks, patches, prompts, or raw artifacts. Optional agent reviews and graph-ready v3 search training
+bundles use `vladder review|training template|from-search-trace|validate|submit`. Submission uses the packaged HTTPS
 release endpoint and requires durable scope opt-in, schema validation, record consent, and
 `--confirm-upload`; no shared token is required. Training opt-in authorizes those per-opportunity
 mechanical gates without repeated questions. Reviews still require exact-record approval.
 `--validate-only` is also a network action and
 requires the same durable opt-in, though it tests remote acceptance without storage. Model-training
-v2 bundles are a strict de-identified schema, not an upload path for local prior stores or arbitrary
-artifacts. They include normalized topology and are pseudonymized, not anonymous; distinctive
-graphs may fingerprint algorithms. Re-request stale feature-only consent under the v2 notice. Read
+v3 bundles are strict pseudonymized schemas, not upload paths for local stores or arbitrary artifacts.
+They include topology and search lineage; distinctive graphs or strategies may fingerprint algorithms.
+Re-request stale consent under the v3 notice. Read
 [release-evidence.md](references/release-evidence.md) and `docs/privacy.md`.
 On first opted-in use, the client obtains an owner-protected, installation-scoped append capability;
 it does not receive a Convex deployment credential. Run `vladder contribution doctor` when release
@@ -496,5 +497,4 @@ result as `bounded_optimal_local` only after exhaustive coverage with sound prun
 `best_verified_found`. Never claim global optimality.
 
 ## Advanced Modes: Operator, Pipeline, Projection, Q4_K, GPU, And Lifetime
-Follow the orchestrator's delegated command and installed example manifest; deterministic plan
-lowering does not imply generic source emission or promotion.
+Follow delegated commands; deterministic plan lowering does not imply generic source emission or promotion.

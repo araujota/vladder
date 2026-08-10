@@ -1,7 +1,7 @@
 # vLadder Review Backend
 
 This optional Convex service accepts `vladder-agent-review-v1` records and strict graph-ready
-`vladder-model-training-bundle-v2` records. New records are private until explicitly
+`vladder-model-training-bundle-v3` search-trace records. New records are private until explicitly
 approved. A public, rate-limited registration action issues random scope-specific append
 capabilities; only token hashes are retained. Capability registration is rate-limited through a
 salted network fingerprint. Submissions are rate-limited independently by the authorized,
@@ -20,21 +20,21 @@ moderation. `VLADDER_REVIEW_TOKEN` is an optional trusted-ingestion credential. 
 are never stored. `POST ...?validate_only=true` validates without retaining a submission.
 The local vLadder CLI remains fully functional when this service is absent.
 
-The historical `POST /api/training` v1 route returns `410 Gone` without reading or storing a
-payload. All current clients register and submit through `POST /api/training/v2`.
+The historical `POST /api/training` v1 and `POST /api/training/v2` routes return `410 Gone` without
+storing a payload. All current clients register and submit through `POST /api/training/v3`.
 
 The client enforces a durable informed-consent policy before this service is contacted. Canonical
 training opt-in continuously submits every registered source-free anonymized record form;
 agent-review opt-in only enables a request once per 30-day cadence and exact-review approval remains
 required. The service independently enforces the record-level consent literal, schema bounds,
-private moderation, and separate review/training rate limits. Training uses bounded shards so a
-complete canonical opportunity is not truncated merely because it contains many candidates. The
+private moderation, and separate review/training rate limits. Training uses bounded trace fragments;
+only complete subtrees or sound closures can provide negative pruning labels. The
 service never receives the local consent ledger.
 
 Contributor capabilities are not Convex deployment credentials. They are checked only inside the
 two HTTP append actions, cannot call internal mutations, cannot list pending data, and cannot reach
 moderation. Convex clients have no direct table access, so this registered-function boundary is the
-service's row-level access-control mechanism. `trainingSubmissions` has no public query;
+service's row-level access-control mechanism. `searchTrainingSubmissions` has no public query;
 `reviews.listApproved` returns only moderated records.
 
 The release candidate is deployed in Convex team `araujota97`, project `vladder-review`. Local

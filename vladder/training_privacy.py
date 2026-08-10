@@ -61,6 +61,28 @@ PUBLIC_OPERATIONS = frozenset({
     "publish", "invalidate", "transfer", "dispatch", "barrier", "fence", "commit",
     "rollback", "materialize", "reuse", "refresh", "retire", "other",
 })
+PUBLIC_OPERATION_ALIASES = {
+    "borrowed_region_inputs": "input",
+    "region_observables": "output",
+    "bounded_iteration": "loop",
+    "memory_read": "load",
+    "memory_write": "store",
+    "field_projection": "map",
+    "predicate": "compare",
+    "predicate_mask": "mask",
+    "bitvector_transform": "map",
+    "bounded_arithmetic": "map",
+    "ordered_reduction": "reduce",
+    "extent_scan": "prefix_scan",
+    "bounded_compaction": "compact",
+    "fixed_width_codec": "encode",
+    "state_snapshot": "load",
+    "state_transition": "commit",
+    "owned_realization": "materialize",
+    "atomic_transition": "commit",
+    "summarized_helper": "call",
+    "multi_exit_merge": "return",
+}
 PUBLIC_SCOPES = frozenset({
     "instruction", "expression", "iteration", "loop", "function", "fragment", "record",
     "sequence", "transaction", "frame", "generation", "connection", "process",
@@ -283,6 +305,19 @@ def sanitize_candidate(
     if source_root not in root_ids:
         raise ValueError("candidate references a root outside the bundle")
     action = candidate.get("action", {}) if isinstance(candidate.get("action"), dict) else {}
+    sanitized_action = sanitize_training_action(action)
+    return {
+        "candidate_id": private_identity(identity, "candidate", candidate.get("candidate_id")),
+        "root_id": root_ids[source_root],
+        "baseline": bool(candidate.get("baseline")),
+        "action": sanitized_action,
+        "hardware": sanitize_training_descriptor(candidate.get("hardware", {}), kind="hardware"),
+        "workload": sanitize_training_descriptor(candidate.get("workload", {}), kind="workload"),
+    }
+
+
+def sanitize_training_action(action: dict[str, Any]) -> dict[str, Any]:
+    """Return the public structured action shared by v2 candidates and v3 branches."""
     family = _safe_generated_token(action.get("family", "other"), fallback="custom_family")
     primitives = [
         _safe_generated_token(item, fallback="custom_primitive")
@@ -296,20 +331,23 @@ def sanitize_candidate(
     )
     extensions = action.get("extensions", {}) if isinstance(action.get("extensions"), dict) else {}
     return {
-        "candidate_id": private_identity(identity, "candidate", candidate.get("candidate_id")),
-        "root_id": root_ids[source_root],
-        "baseline": bool(candidate.get("baseline")),
-        "action": {
-            "family": family,
-            "family_version": _safe_generated_token(action.get("family_version", action.get("version", "unversioned")), fallback="unversioned"),
-            "primitives": primitives,
-            "numeric_parameters": _exact_numeric_parameters(parameters, explicit_features, extensions),
-            "categorical_parameters": _action_categories(parameters, explicit_features, extensions),
-            "extension_namespaces": _public_extension_namespaces(extensions),
-        },
-        "hardware": _sanitize_descriptor(candidate.get("hardware", {}), SAFE_HARDWARE_KEYS, prefix="hardware"),
-        "workload": _sanitize_descriptor(candidate.get("workload", {}), SAFE_WORKLOAD_KEYS, prefix="workload"),
+        "family": family,
+        "family_version": _safe_generated_token(action.get("family_version", action.get("version", "unversioned")), fallback="unversioned"),
+        "primitives": primitives,
+        "numeric_parameters": _exact_numeric_parameters(parameters, explicit_features, extensions),
+        "categorical_parameters": _action_categories(parameters, explicit_features, extensions),
+        "extension_namespaces": _public_extension_namespaces(extensions),
     }
+
+
+def sanitize_training_descriptor(value: Any, *, kind: str) -> dict[str, Any]:
+    if kind == "hardware":
+        return _sanitize_descriptor(value, SAFE_HARDWARE_KEYS, prefix="hardware")
+    if kind == "workload":
+        return _sanitize_descriptor(value, SAFE_WORKLOAD_KEYS, prefix="workload")
+    if kind == "resource":
+        return _sanitize_feature_mapping(value, prefix="resource", allowed=SAFE_RESOURCE_KEYS)
+    raise ValueError(f"unknown training descriptor kind: {kind}")
 
 
 def sanitize_observation(
@@ -362,11 +400,25 @@ def privacy_manifest(identity: dict[str, Any], *, submission_consent: bool) -> d
     }
 
 
+def search_privacy_manifest(identity: dict[str, Any], *, submission_consent: bool) -> dict[str, Any]:
+    value = privacy_manifest(identity, submission_consent=submission_consent)
+    value["search_lineage_included"] = True
+    value["residual_risks"].append("search_strategy_fingerprinting")
+    return value
+
+
 def _sanitize_node(index: int, node: dict[str, Any]) -> dict[str, Any]:
     kind = _public_value(node.get("kind", "Other"), PUBLIC_NODE_KINDS, preserve_case=True)
-    operation = _public_value(str(node.get("operation", kind)).lower(), PUBLIC_OPERATIONS)
+    raw_operation = str(node.get("operation", kind)).lower()
+    operation = _public_value(PUBLIC_OPERATION_ALIASES.get(raw_operation, raw_operation), PUBLIC_OPERATIONS)
     output_type = node.get("output_type", node.get("type"))
     type_class, bit_width, lanes = _type_shape(output_type)
+    public_features = dict(node)
+    attributes = node.get("attributes")
+    if isinstance(attributes, dict):
+        for name, value in attributes.items():
+            if name in SAFE_NUMERIC_KEYS or name in SAFE_CATEGORY_KEYS:
+                public_features.setdefault(name, value)
     return {
         "index": index,
         "kind": kind,
@@ -374,8 +426,8 @@ def _sanitize_node(index: int, node: dict[str, Any]) -> dict[str, Any]:
         "type_class": type_class,
         "bit_width": bit_width,
         "vector_lanes": lanes,
-        "numeric_features": _sanitize_numeric_mapping(node, SAFE_NUMERIC_KEYS),
-        "categorical_features": _sanitize_category_mapping(node, SAFE_CATEGORY_KEYS),
+        "numeric_features": _sanitize_numeric_mapping(public_features, SAFE_NUMERIC_KEYS),
+        "categorical_features": _sanitize_category_mapping(public_features, SAFE_CATEGORY_KEYS),
     }
 
 

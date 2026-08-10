@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/model-training-bundle-v3.schema.json",
+  "title": "vLadder Search-Pruner Training Bundle v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "bundle_id", "created_at", "vladder_version", "producer", "dataset", "roots", "searches", "branches", "observations", "privacy"],
+  "properties": {
+    "schema_version": {"const": "vladder-model-training-bundle-v3"},
+    "bundle_id": {"$ref": "#/$defs/id"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "vladder_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "producer": {
+      "type": "object", "additionalProperties": false, "required": ["agent", "model", "provider"],
+      "properties": {
+        "agent": {"type": "string", "minLength": 1, "maxLength": 120},
+        "model": {"type": "string", "minLength": 1, "maxLength": 120},
+        "provider": {"type": ["string", "null"], "maxLength": 120}
+      }
+    },
+    "dataset": {
+      "type": "object", "additionalProperties": false,
+      "required": ["grammar_version", "grammar_hash", "canonicalizer_version", "labeler_version", "target_definition", "identity_epoch"],
+      "properties": {
+        "grammar_version": {"type": "string", "minLength": 1, "maxLength": 120},
+        "grammar_hash": {"$ref": "#/$defs/hash"},
+        "canonicalizer_version": {"const": "search-pruner-graph-v3"},
+        "labeler_version": {"const": "useful-descendant-v1"},
+        "target_definition": {"const": "proof-valid-or-stronger-v1"},
+        "identity_epoch": {"type": "string", "pattern": "^epoch:[0-9a-f-]{36}$"}
+      }
+    },
+    "roots": {"type": "array", "minItems": 1, "maxItems": 16, "items": {"$ref": "#/$defs/root"}},
+    "searches": {"type": "array", "minItems": 1, "maxItems": 32, "items": {"$ref": "#/$defs/search"}},
+    "branches": {"type": "array", "minItems": 1, "maxItems": 1024, "items": {"$ref": "#/$defs/branch"}},
+    "observations": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/observation"}},
+    "privacy": {"$ref": "#/$defs/privacy"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$"},
+    "token": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:+/-]{0,95}$"},
+    "numericFeature": {
+      "type": "object", "additionalProperties": false, "required": ["name", "value"],
+      "properties": {"name": {"$ref": "#/$defs/token"}, "value": {"type": "number"}}
+    },
+    "categoricalFeature": {
+      "type": "object", "additionalProperties": false, "required": ["name", "value"],
+      "properties": {"name": {"$ref": "#/$defs/token"}, "value": {"$ref": "#/$defs/token"}}
+    },
+    "featureSet": {
+      "type": "object", "additionalProperties": false, "required": ["numeric", "categorical"],
+      "properties": {
+        "numeric": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/categoricalFeature"}}
+      }
+    },
+    "node": {
+      "type": "object", "additionalProperties": false,
+      "required": ["index", "kind", "operation", "type_class", "bit_width", "vector_lanes", "numeric_features", "categorical_features"],
+      "properties": {
+        "index": {"type": "integer", "minimum": 0, "maximum": 511},
+        "kind": {"$ref": "#/$defs/token"}, "operation": {"$ref": "#/$defs/token"},
+        "type_class": {"enum": ["boolean", "integer", "float", "pointer", "aggregate", "unknown", "other"]},
+        "bit_width": {"type": ["integer", "null"], "minimum": 1, "maximum": 1024},
+        "vector_lanes": {"type": ["integer", "null"], "minimum": 1, "maximum": 1024},
+        "numeric_features": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical_features": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/categoricalFeature"}}
+      }
+    },
+    "edge": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source", "destination", "relation", "ordering", "numeric_features", "categorical_features"],
+      "properties": {
+        "source": {"type": "integer", "minimum": 0, "maximum": 511},
+        "destination": {"type": "integer", "minimum": 0, "maximum": 511},
+        "relation": {"$ref": "#/$defs/token"}, "ordering": {"$ref": "#/$defs/token"},
+        "numeric_features": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical_features": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/categoricalFeature"}}
+      }
+    },
+    "graph": {
+      "type": "object", "additionalProperties": false, "required": ["nodes", "edges", "obligations", "effects", "protocols", "claims"],
+      "properties": {
+        "nodes": {"type": "array", "minItems": 1, "maxItems": 512, "items": {"$ref": "#/$defs/node"}},
+        "edges": {"type": "array", "maxItems": 2048, "items": {"$ref": "#/$defs/edge"}},
+        "obligations": {"type": "array", "maxItems": 128, "items": {"type": "object", "additionalProperties": false, "required": ["category", "scope", "proof_method"], "properties": {"category": {"$ref": "#/$defs/token"}, "scope": {"$ref": "#/$defs/token"}, "proof_method": {"$ref": "#/$defs/token"}}}},
+        "effects": {"type": "array", "maxItems": 128, "items": {"type": "object", "additionalProperties": false, "required": ["kind", "phase", "ordering"], "properties": {"kind": {"$ref": "#/$defs/token"}, "phase": {"$ref": "#/$defs/token"}, "ordering": {"$ref": "#/$defs/token"}}}},
+        "protocols": {"type": "array", "maxItems": 64, "items": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"$ref": "#/$defs/token"}}}},
+        "claims": {"type": "array", "maxItems": 128, "items": {"type": "object", "additionalProperties": false, "required": ["status", "scope"], "properties": {"status": {"$ref": "#/$defs/token"}, "scope": {"$ref": "#/$defs/token"}}}}
+      }
+    },
+    "root": {
+      "type": "object", "additionalProperties": false,
+      "required": ["root_id", "project_id", "graph_version", "languages", "graph", "contract_features"],
+      "properties": {
+        "root_id": {"$ref": "#/$defs/hash"}, "project_id": {"$ref": "#/$defs/hash"},
+        "graph_version": {"type": "string", "minLength": 1, "maxLength": 64},
+        "languages": {"type": "array", "minItems": 1, "maxItems": 8, "uniqueItems": true, "items": {"enum": ["c", "cpp", "rust", "zig", "julia", "cuda", "spirv", "other"]}},
+        "graph": {"$ref": "#/$defs/graph"}, "contract_features": {"$ref": "#/$defs/featureSet"}
+      }
+    },
+    "action": {
+      "type": "object", "additionalProperties": false,
+      "required": ["family", "family_version", "primitives", "numeric_parameters", "categorical_parameters", "extension_namespaces"],
+      "properties": {
+        "family": {"$ref": "#/$defs/token"}, "family_version": {"$ref": "#/$defs/token"},
+        "primitives": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/token"}},
+        "numeric_parameters": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/numericFeature"}},
+        "categorical_parameters": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/categoricalFeature"}},
+        "extension_namespaces": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/token"}}
+      }
+    },
+    "stageCoverage": {"enum": ["not_attempted", "partial", "complete", "soundly_closed"]},
+    "search": {
+      "type": "object", "additionalProperties": false,
+      "required": ["search_id", "root_id", "root_branch_id", "grammar_version", "grammar_hash", "selection_policy", "coverage", "stage_coverage", "fragment", "exploration_reserve_fraction", "hardware", "workload"],
+      "properties": {
+        "search_id": {"$ref": "#/$defs/hash"}, "root_id": {"$ref": "#/$defs/hash"}, "root_branch_id": {"$ref": "#/$defs/hash"},
+        "grammar_version": {"$ref": "#/$defs/token"}, "grammar_hash": {"$ref": "#/$defs/hash"},
+        "selection_policy": {"enum": ["exhaustive", "bounded_exhaustive", "heuristic", "model_guided", "manual", "terminal_workflow_import", "flat_prior_import"]},
+        "coverage": {"enum": ["complete", "soundly_pruned", "partial", "truncated", "interrupted", "not_started"]},
+        "stage_coverage": {
+          "type": "object", "additionalProperties": false, "required": ["grammar_family", "candidate_family", "composition", "cross_tu"],
+          "properties": {"grammar_family": {"$ref": "#/$defs/stageCoverage"}, "candidate_family": {"$ref": "#/$defs/stageCoverage"}, "composition": {"$ref": "#/$defs/stageCoverage"}, "cross_tu": {"$ref": "#/$defs/stageCoverage"}}
+        },
+        "fragment": {
+          "type": "object", "additionalProperties": false, "required": ["kind", "external_parent_branch_id"],
+          "properties": {"kind": {"enum": ["full_trace", "complete_subtree", "partial_snapshot"]}, "external_parent_branch_id": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}}
+        },
+        "exploration_reserve_fraction": {"type": "number", "minimum": 0, "maximum": 1},
+        "hardware": {"$ref": "#/$defs/featureSet"}, "workload": {"$ref": "#/$defs/featureSet"}
+      }
+    },
+    "coverage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["children_status", "emitted_child_count", "expected_child_count", "completeness_reason", "soundness_proof_class"],
+      "properties": {
+        "children_status": {"enum": ["not_applicable", "not_enumerated", "partially_enumerated", "exhaustive", "soundly_closed"]},
+        "emitted_child_count": {"type": "integer", "minimum": 0, "maximum": 1024},
+        "expected_child_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000000},
+        "completeness_reason": {"enum": ["terminal", "exhaustive_grammar", "sound_contract", "sound_legality", "sound_dominance", "budget", "time", "interrupted", "not_applicable", "unknown"]},
+        "soundness_proof_class": {"$ref": "#/$defs/token"}
+      }
+    },
+    "utility": {
+      "type": "object", "additionalProperties": false,
+      "required": ["proof_valid", "distinct_realization", "physically_material", "retained", "promoted"],
+      "properties": {"proof_valid": {"type": "boolean"}, "distinct_realization": {"type": "boolean"}, "physically_material": {"type": "boolean"}, "retained": {"type": "boolean"}, "promoted": {"type": "boolean"}}
+    },
+    "descendantUtility": {
+      "type": "object", "additionalProperties": false,
+      "required": ["proof_valid", "distinct_realization", "physically_material", "retained", "promoted", "useful", "target_definition"],
+      "properties": {
+        "proof_valid": {"type": ["boolean", "null"]}, "distinct_realization": {"type": ["boolean", "null"]},
+        "physically_material": {"type": ["boolean", "null"]}, "retained": {"type": ["boolean", "null"]},
+        "promoted": {"type": ["boolean", "null"]}, "useful": {"type": ["boolean", "null"]},
+        "target_definition": {"const": "proof-valid-or-stronger-v1"}
+      }
+    },
+    "searchCost": {
+      "type": "object", "additionalProperties": false,
+      "required": ["node_expansions", "compiler_invocations", "proof_calls", "benchmark_runs", "elapsed_ms"],
+      "properties": {
+        "node_expansions": {"type": ["integer", "null"], "minimum": 0},
+        "compiler_invocations": {"type": ["integer", "null"], "minimum": 0},
+        "proof_calls": {"type": ["integer", "null"], "minimum": 0},
+        "benchmark_runs": {"type": ["integer", "null"], "minimum": 0},
+        "elapsed_ms": {"type": ["number", "null"], "minimum": 0}
+      }
+    },
+    "branch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["branch_id", "search_id", "parent_branch_id", "depth", "stage", "baseline", "action", "state", "evidence_coverage", "coverage", "search_cost", "direct_utility", "descendant_utility", "survival"],
+      "properties": {
+        "branch_id": {"$ref": "#/$defs/hash"}, "search_id": {"$ref": "#/$defs/hash"},
+        "parent_branch_id": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "depth": {"type": "integer", "minimum": 0, "maximum": 64},
+        "stage": {"enum": ["baseline", "grammar_family", "candidate_family", "composition", "cross_tu"]},
+        "baseline": {"type": "boolean"}, "action": {"$ref": "#/$defs/action"},
+        "state": {"enum": ["enumerated", "expanded", "terminal", "blocked", "pruned_sound", "pruned_heuristic", "duplicate", "compiler_identical", "interrupted"]},
+        "evidence_coverage": {"enum": ["none", "partial", "complete", "soundly_blocked"]},
+        "coverage": {"$ref": "#/$defs/coverage"}, "search_cost": {"$ref": "#/$defs/searchCost"},
+        "direct_utility": {"$ref": "#/$defs/utility"}, "descendant_utility": {"$ref": "#/$defs/descendantUtility"},
+        "survival": {
+          "type": "object", "additionalProperties": false, "required": ["class", "authority", "positive_descendant_count", "label_version"],
+          "properties": {
+            "class": {"enum": ["KEEP", "KEEP_UNCERTAIN", "PRUNE_HIGH_CONFIDENCE", "BLOCKED_BY_CONTRACT"]},
+            "authority": {"enum": ["baseline_guard", "observed_positive_path", "derived_complete_tree", "sound_contract", "incomplete_tree"]},
+            "positive_descendant_count": {"type": "integer", "minimum": 0, "maximum": 1000000000},
+            "label_version": {"const": "useful-descendant-v1"}
+          }
+        }
+      }
+    },
+    "observation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["observation_id", "branch_id", "kind", "outcome", "quality_grade", "proof_class", "benchmark_scope", "speedup_percent", "ci_lower_percent", "ci_upper_percent", "sample_count", "resource_features"],
+      "properties": {
+        "observation_id": {"$ref": "#/$defs/hash"}, "branch_id": {"$ref": "#/$defs/hash"},
+        "kind": {"enum": ["grammar_disposition", "proof", "differential", "compilation", "assembly", "static_cost", "benchmark", "hardware_counter", "composition", "retention", "search"]},
+        "outcome": {"enum": ["inapplicable", "missing_contract", "semantic_mismatch", "illegal", "proof_failed", "proof_unknown", "proof_passed", "distinct_realization", "duplicate", "compiler_identical", "dominated_sound", "exhausted_no_useful_descendant", "measured_regression", "statistical_tie", "small_win_below_floor", "material_regional_win", "composed_regression", "composed_win", "retained_candidate", "promoted_candidate", "resource_regression", "search_truncated", "search_interrupted"]},
+        "quality_grade": {"enum": ["A", "B", "C", "D"]}, "proof_class": {"$ref": "#/$defs/token"},
+        "benchmark_scope": {"enum": ["none", "micro", "regional", "composed", "end_to_end"]},
+        "speedup_percent": {"type": ["number", "null"]}, "ci_lower_percent": {"type": ["number", "null"]}, "ci_upper_percent": {"type": ["number", "null"]},
+        "sample_count": {"type": "integer", "minimum": 0, "maximum": 1000000000}, "resource_features": {"$ref": "#/$defs/featureSet"}
+      }
+    },
+    "privacy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["profile_version", "risk_classification", "identity_scheme", "identity_epoch", "topology_included", "search_lineage_included", "source_included", "source_identifiers_included", "raw_literals_included", "raw_artifacts_included", "prompts_included", "personal_data_included", "submission_consent", "residual_risks"],
+      "properties": {
+        "profile_version": {"const": "enterprise-graph-deidentification-v1"},
+        "risk_classification": {"const": "pseudonymized_structural_data"},
+        "identity_scheme": {"const": "hmac-sha256-consent-epoch"},
+        "identity_epoch": {"type": "string", "pattern": "^epoch:[0-9a-f-]{36}$"},
+        "topology_included": {"const": true}, "search_lineage_included": {"const": true},
+        "source_included": {"const": false}, "source_identifiers_included": {"const": false},
+        "raw_literals_included": {"const": false}, "raw_artifacts_included": {"const": false},
+        "prompts_included": {"const": false}, "personal_data_included": {"const": false},
+        "submission_consent": {"type": "boolean"},
+        "residual_risks": {"type": "array", "minItems": 1, "maxItems": 8, "items": {"enum": ["algorithm_topology_fingerprinting", "within_epoch_record_linkability", "search_strategy_fingerprinting"]}}
+      }
+    }
+  }
+}

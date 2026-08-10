@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { agentReviewValidator } from "./reviewValidators";
 import { trainingBundleValidator } from "./trainingValidators";
 import { modelTrainingBundleValidator } from "./modelTrainingValidators";
+import { searchTrainingBundleValidator } from "./searchTrainingValidators";
 
 export default defineSchema({
   reviews: defineTable({
@@ -54,6 +55,20 @@ export default defineSchema({
     submittedAt: v.number(),
     payloadHash: v.string(),
     bundle: modelTrainingBundleValidator,
+  })
+    .index("by_bundle_id", ["bundleId"])
+    .index("by_approved_and_submitted_at", ["approved", "submittedAt"])
+    .index("by_identity_epoch_and_submitted_at", ["identityEpoch", "submittedAt"]),
+  searchTrainingSubmissions: defineTable({
+    bundleId: v.string(),
+    releaseVersion: v.string(),
+    identityEpoch: v.string(),
+    rootIds: v.array(v.string()),
+    searchIds: v.array(v.string()),
+    approved: v.boolean(),
+    submittedAt: v.number(),
+    payloadHash: v.string(),
+    bundle: searchTrainingBundleValidator,
   })
     .index("by_bundle_id", ["bundleId"])
     .index("by_approved_and_submitted_at", ["approved", "submittedAt"])

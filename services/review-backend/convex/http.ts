@@ -3,10 +3,10 @@ import type { Infer } from "convex/values";
 import { httpAction } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { agentReviewValidator } from "./reviewValidators";
-import { modelTrainingBundleValidator } from "./modelTrainingValidators";
+import { searchTrainingBundleValidator } from "./searchTrainingValidators";
 
 type AgentReview = Infer<typeof agentReviewValidator>;
-type ModelTrainingBundle = Infer<typeof modelTrainingBundleValidator>;
+type SearchTrainingBundle = Infer<typeof searchTrainingBundleValidator>;
 type SubmissionKind = "review" | "training" | "credential";
 type CapabilityScope = "review:write" | "training:write";
 
@@ -122,10 +122,11 @@ function reviewBounds(review: AgentReview): string | null {
   return null;
 }
 
-function modelTrainingBounds(bundle: ModelTrainingBundle): string | null {
+function searchTrainingBounds(bundle: SearchTrainingBundle): string | null {
   if (bundle.roots.length < 1 || bundle.roots.length > 16) return "roots must contain 1 to 16 records";
-  if (bundle.candidates.length < 1 || bundle.candidates.length > 128) return "candidates must contain 1 to 128 records";
-  if (bundle.observations.length > 512) return "observations exceed 512 records";
+  if (bundle.searches.length < 1 || bundle.searches.length > 32) return "searches must contain 1 to 32 records";
+  if (bundle.branches.length < 1 || bundle.branches.length > 1024) return "branches must contain 1 to 1024 records";
+  if (bundle.observations.length > 4096) return "observations exceed 4096 records";
   if (bundle.dataset.identity_epoch !== bundle.privacy.identity_epoch) return "identity epoch mismatch";
   if (!HASH_PATTERN.test(bundle.dataset.grammar_hash)) return "invalid grammar hash";
   const featuresValid = (features: { numeric: Array<{ name: string }>; categorical: Array<{ name: string; value: string }> }) =>
@@ -133,7 +134,8 @@ function modelTrainingBounds(bundle: ModelTrainingBundle): string | null {
     && features.numeric.every((item) => TOKEN_PATTERN.test(item.name))
     && features.categorical.every((item) => TOKEN_PATTERN.test(item.name) && TOKEN_PATTERN.test(item.value));
   const roots = new Set(bundle.roots.map((root) => root.root_id));
-  const candidates = new Set<string>();
+  const searches = new Map(bundle.searches.map((search) => [search.search_id, search]));
+  const branches = new Map(bundle.branches.map((branch) => [branch.branch_id, branch]));
   for (const root of bundle.roots) {
     if (!HASH_PATTERN.test(root.root_id) || !HASH_PATTERN.test(root.project_id)) return "invalid root identity";
     if (root.graph.nodes.length < 1 || root.graph.nodes.length > 512) return "graph node count outside bounds";
@@ -151,23 +153,179 @@ function modelTrainingBounds(bundle: ModelTrainingBundle): string | null {
       return "graph edge references an unknown node";
     }
   }
-  for (const candidate of bundle.candidates) {
-    if (!HASH_PATTERN.test(candidate.candidate_id) || !roots.has(candidate.root_id)) return "invalid candidate linkage";
-    if (!TOKEN_PATTERN.test(candidate.action.family) || !TOKEN_PATTERN.test(candidate.action.family_version)
-      || candidate.action.primitives.length > 64 || candidate.action.numeric_parameters.length > 64
-      || candidate.action.categorical_parameters.length > 64 || candidate.action.extension_namespaces.length > 8) {
-      return "candidate action outside bounds";
+  if (searches.size !== bundle.searches.length || branches.size !== bundle.branches.length) return "duplicate search or branch identity";
+  for (const search of bundle.searches) {
+    if (!HASH_PATTERN.test(search.search_id) || !roots.has(search.root_id)) return "invalid search linkage";
+    if (!HASH_PATTERN.test(search.grammar_hash) || !featuresValid(search.hardware) || !featuresValid(search.workload)) {
+      return "search context outside bounds";
     }
-    if (!featuresValid(candidate.hardware) || !featuresValid(candidate.workload)) return "candidate context outside bounds";
-    if (candidates.has(candidate.candidate_id)) return "duplicate candidate identity";
-    candidates.add(candidate.candidate_id);
+    const rootBranch = branches.get(search.root_branch_id);
+    if (!rootBranch || rootBranch.search_id !== search.search_id || rootBranch.parent_branch_id !== null
+      || rootBranch.depth !== 0 || !rootBranch.baseline) return "invalid search root branch";
+  }
+  const childCounts = new Map<string, number>();
+  for (const branch of bundle.branches) {
+    if (!HASH_PATTERN.test(branch.branch_id) || !searches.has(branch.search_id)) return "invalid branch linkage";
+    if (!TOKEN_PATTERN.test(branch.action.family) || !TOKEN_PATTERN.test(branch.action.family_version)
+      || branch.action.primitives.length > 64 || branch.action.numeric_parameters.length > 64
+      || branch.action.categorical_parameters.length > 64 || branch.action.extension_namespaces.length > 8) {
+      return "branch action outside bounds";
+    }
+    if (branch.parent_branch_id !== null) {
+      const parent = branches.get(branch.parent_branch_id);
+      if (!parent || parent.search_id !== branch.search_id || parent.depth + 1 !== branch.depth) return "invalid branch parent";
+      childCounts.set(parent.branch_id, (childCounts.get(parent.branch_id) ?? 0) + 1);
+    }
+    if (branch.baseline && (branch.survival.class !== "KEEP" || branch.survival.authority !== "baseline_guard")) {
+      return "baseline branch is not protected";
+    }
+    if (branch.survival.class === "PRUNE_HIGH_CONFIDENCE"
+      && (branch.survival.authority !== "derived_complete_tree" || branch.descendant_utility.useful !== false)) {
+      return "unsafe high-confidence prune label";
+    }
+    if (branch.survival.class === "BLOCKED_BY_CONTRACT"
+      && (branch.survival.authority !== "sound_contract" || branch.evidence_coverage !== "soundly_blocked"
+        || branch.coverage.children_status !== "soundly_closed")) return "unsafe contract-blocked label";
+  }
+  for (const branch of bundle.branches) {
+    const actual = childCounts.get(branch.branch_id) ?? 0;
+    if (branch.coverage.emitted_child_count !== actual) return "emitted child count mismatch";
+    if (branch.coverage.children_status === "exhaustive" && branch.coverage.expected_child_count !== actual) {
+      return "exhaustive branch child count mismatch";
+    }
   }
   for (const observation of bundle.observations) {
-    if (!HASH_PATTERN.test(observation.observation_id) || !candidates.has(observation.candidate_id)) {
+    if (!HASH_PATTERN.test(observation.observation_id) || !branches.has(observation.branch_id)) {
       return "invalid observation linkage";
     }
     if (!Number.isInteger(observation.sample_count) || observation.sample_count < 0) return "invalid sample count";
     if (!featuresValid(observation.resource_features)) return "observation resources outside bounds";
+  }
+  const utilityKeys = [
+    "proof_valid", "distinct_realization", "physically_material", "retained", "promoted",
+  ] as const;
+  type UtilityKey = typeof utilityKeys[number];
+  type DerivedUtility = Record<UtilityKey, boolean | null>;
+  const positiveOutcomes: Record<UtilityKey, Set<string>> = {
+    proof_valid: new Set(["proof_passed", "material_regional_win", "composed_win", "retained_candidate", "promoted_candidate"]),
+    distinct_realization: new Set([
+      "distinct_realization", "measured_regression", "statistical_tie", "small_win_below_floor",
+      "material_regional_win", "composed_regression", "composed_win", "resource_regression",
+      "retained_candidate", "promoted_candidate",
+    ]),
+    physically_material: new Set(["material_regional_win", "composed_win", "retained_candidate", "promoted_candidate"]),
+    retained: new Set(["retained_candidate", "promoted_candidate", "composed_win"]),
+    promoted: new Set(["promoted_candidate"]),
+  };
+  const soundReasons = new Set(["sound_contract", "sound_legality", "sound_dominance"]);
+  const observationOutcomes = new Map<string, Set<string>>();
+  for (const observation of bundle.observations) {
+    const outcomes = observationOutcomes.get(observation.branch_id) ?? new Set<string>();
+    outcomes.add(observation.outcome);
+    observationOutcomes.set(observation.branch_id, outcomes);
+  }
+  const children = new Map<string, string[]>();
+  for (const branch of bundle.branches) {
+    if (branch.parent_branch_id === null) continue;
+    const childIds = children.get(branch.parent_branch_id) ?? [];
+    childIds.push(branch.branch_id);
+    children.set(branch.parent_branch_id, childIds);
+  }
+  const direct = new Map<string, Record<UtilityKey, boolean>>();
+  for (const branch of bundle.branches) {
+    const outcomes = observationOutcomes.get(branch.branch_id) ?? new Set<string>();
+    direct.set(branch.branch_id, Object.fromEntries(
+      utilityKeys.map((key) => [key, [...outcomes].some((outcome) => positiveOutcomes[key].has(outcome))]),
+    ) as Record<UtilityKey, boolean>);
+  }
+  const isSoundClosure = (branch: SearchTrainingBundle["branches"][number]) =>
+    (branch.state === "blocked" || branch.state === "pruned_sound")
+    && branch.evidence_coverage === "soundly_blocked"
+    && branch.coverage.children_status === "soundly_closed"
+    && soundReasons.has(branch.coverage.completeness_reason)
+    && !["", "none", "other"].includes(branch.coverage.soundness_proof_class);
+  type Derived = { utility: DerivedUtility; complete: boolean; positiveCount: number };
+  const memo = new Map<string, Derived>();
+  const visiting = new Set<string>();
+  const visit = (branchId: string): Derived => {
+    const prior = memo.get(branchId);
+    if (prior) return prior;
+    if (visiting.has(branchId)) throw new Error("branch lineage contains a cycle");
+    visiting.add(branchId);
+    const branch = branches.get(branchId);
+    if (!branch) throw new Error("branch lineage references an unknown branch");
+    const childIds = children.get(branchId) ?? [];
+    const childResults = childIds.map(visit);
+    const coverage = branch.coverage;
+    const complete = isSoundClosure(branch) || (childIds.length > 0
+      ? coverage.children_status === "exhaustive"
+        && coverage.emitted_child_count === childIds.length
+        && coverage.expected_child_count === childIds.length
+        && childResults.every((child) => child.complete)
+      : (coverage.children_status === "not_applicable" || coverage.children_status === "exhaustive")
+        && coverage.emitted_child_count === 0
+        && (coverage.expected_child_count === null || coverage.expected_child_count === 0)
+        && (branch.evidence_coverage === "complete" || branch.evidence_coverage === "soundly_blocked")
+        && (coverage.completeness_reason === "terminal" || coverage.completeness_reason === "not_applicable"
+          || soundReasons.has(coverage.completeness_reason)));
+    const directUtility = direct.get(branchId)!;
+    const utility = Object.fromEntries(utilityKeys.map((key) => {
+      const positive = directUtility[key] || childResults.some((child) => child.utility[key] === true);
+      return [key, positive ? true : complete ? false : null];
+    })) as DerivedUtility;
+    const directlyUseful = directUtility.proof_valid || directUtility.physically_material
+      || directUtility.retained || directUtility.promoted;
+    const positiveCount = Number(directlyUseful) + childResults.reduce((sum, child) => sum + child.positiveCount, 0);
+    const result = { utility, complete, positiveCount };
+    visiting.delete(branchId);
+    memo.set(branchId, result);
+    return result;
+  };
+  for (const search of bundle.searches) {
+    let rootResult: Derived;
+    try {
+      rootResult = visit(search.root_branch_id);
+    } catch (error) {
+      return error instanceof Error ? error.message : "invalid branch lineage";
+    }
+    const reachable = new Set<string>();
+    const pending = [search.root_branch_id];
+    while (pending.length > 0) {
+      const branchId = pending.pop()!;
+      if (reachable.has(branchId)) continue;
+      reachable.add(branchId);
+      pending.push(...(children.get(branchId) ?? []));
+    }
+    const owned = bundle.branches.filter((branch) => branch.search_id === search.search_id).map((branch) => branch.branch_id);
+    if (owned.some((branchId) => !reachable.has(branchId)) || reachable.size !== owned.length) return "search contains disconnected branches";
+    if ((search.coverage === "complete" || search.coverage === "soundly_pruned")
+      && rootResult.utility.proof_valid === null) return "complete search has unknown descendant utility";
+    if (search.fragment.kind === "full_trace" && search.fragment.external_parent_branch_id !== null) {
+      return "full search trace cannot have an external parent";
+    }
+  }
+  for (const branch of bundle.branches) {
+    const directUtility = direct.get(branch.branch_id)!;
+    const derived = memo.get(branch.branch_id)!;
+    const useful = derived.positiveCount > 0 ? true : derived.complete ? false : null;
+    for (const key of utilityKeys) {
+      if (branch.direct_utility[key] !== directUtility[key]) return "noncanonical direct utility label";
+      if (branch.descendant_utility[key] !== derived.utility[key]) return "noncanonical descendant utility label";
+    }
+    if (branch.descendant_utility.useful !== useful) return "noncanonical useful-descendant label";
+    let expectedClass: typeof branch.survival.class = "KEEP_UNCERTAIN";
+    let expectedAuthority: typeof branch.survival.authority = "incomplete_tree";
+    if (branch.baseline) {
+      expectedClass = "KEEP"; expectedAuthority = "baseline_guard";
+    } else if (useful === true) {
+      expectedClass = "KEEP"; expectedAuthority = "observed_positive_path";
+    } else if (isSoundClosure(branch)) {
+      expectedClass = "BLOCKED_BY_CONTRACT"; expectedAuthority = "sound_contract";
+    } else if (derived.complete) {
+      expectedClass = "PRUNE_HIGH_CONFIDENCE"; expectedAuthority = "derived_complete_tree";
+    }
+    if (branch.survival.class !== expectedClass || branch.survival.authority !== expectedAuthority
+      || branch.survival.positive_descendant_count !== derived.positiveCount) return "noncanonical survival label";
   }
   return null;
 }
@@ -179,8 +337,8 @@ http.route({
     status: "ok",
     service: "vladder-contributions-v1",
     review_schema: "vladder-agent-review-v1",
-    training_schema: "vladder-model-training-bundle-v2",
-    model_training_schema: "vladder-model-training-bundle-v2",
+    training_schema: "vladder-model-training-bundle-v3",
+    model_training_schema: "vladder-model-training-bundle-v3",
     legacy_training_submission: "retired_410",
     public_submission: false,
     capability_submission: true,
@@ -264,14 +422,24 @@ http.route({
   path: "/api/training",
   method: "POST",
   handler: httpAction(async () => jsonResponse({
-    error: "legacy training submission is retired; upgrade vLadder and submit vladder-model-training-bundle-v2 to /api/training/v2",
-    required_schema: "vladder-model-training-bundle-v2",
-    endpoint: "/api/training/v2",
+    error: "legacy training submission is retired; upgrade vLadder and submit vladder-model-training-bundle-v3 to /api/training/v3",
+    required_schema: "vladder-model-training-bundle-v3",
+    endpoint: "/api/training/v3",
   }, 410)),
 });
 
 http.route({
   path: "/api/training/v2",
+  method: "POST",
+  handler: httpAction(async () => jsonResponse({
+    error: "flat v2 training submission is retired; submit lineage-aware v3 data",
+    required_schema: "vladder-model-training-bundle-v3",
+    endpoint: "/api/training/v3",
+  }, 410)),
+});
+
+http.route({
+  path: "/api/training/v3",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
     const credential = await authorizeSubmission(ctx, request, "training:write");
@@ -280,19 +448,19 @@ http.route({
     }
     const input = await readBoundedJson(request);
     if (input instanceof Response) return input;
-    const bundle = input.value as ModelTrainingBundle;
+    const bundle = input.value as SearchTrainingBundle;
     const validateOnly = new URL(request.url).searchParams.get("validate_only") === "true";
     const payloadHash = await sha256(input.text);
     try {
-      await ctx.runMutation(internal.modelTraining.storeBundle, { bundle, payloadHash, validateOnly: true });
-      const boundsError = modelTrainingBounds(bundle);
+      await ctx.runMutation(internal.searchTraining.storeBundle, { bundle, payloadHash, validateOnly: true });
+      const boundsError = searchTrainingBounds(bundle);
       if (boundsError) return jsonResponse({ error: boundsError }, 400);
-      if (validateOnly) return jsonResponse({ status: "valid", stored: false, schema_version: "vladder-model-training-bundle-v2" });
+      if (validateOnly) return jsonResponse({ status: "valid", stored: false, schema_version: "vladder-model-training-bundle-v3" });
       if (!credential.trusted) {
         const limit = await consumePublicLimit(ctx, request, "training", credential.rateLimitIdentity);
         if (!limit.allowed) return jsonResponse({ error: "daily capability training limit exceeded" }, 429);
       }
-      const result = await ctx.runMutation(internal.modelTraining.storeBundle, { bundle, payloadHash, validateOnly: false });
+      const result = await ctx.runMutation(internal.searchTraining.storeBundle, { bundle, payloadHash, validateOnly: false });
       return jsonResponse({ status: "accepted_for_moderation", ...result }, result.duplicate ? 200 : 202);
     } catch (error) {
       const message = error instanceof Error ? error.message : "invalid model-training bundle";
@@ -348,6 +516,26 @@ http.route({
       return jsonResponse({ error: "submissionId and approved are required" }, 400);
     }
     await ctx.runMutation(internal.modelTraining.setApproval, {
+      submissionId: body.submissionId,
+      approved: body.approved,
+    });
+    return jsonResponse({ status: "updated" });
+  }),
+});
+
+http.route({
+  path: "/api/training/v3/approval",
+  method: "PATCH",
+  handler: httpAction(async (ctx, request) => {
+    const expected = process.env.VLADDER_REVIEW_ADMIN_TOKEN;
+    if (!expected || request.headers.get("authorization") !== `Bearer ${expected}`) {
+      return jsonResponse({ error: "unauthorized" }, 401);
+    }
+    const body = await request.json();
+    if (typeof body !== "object" || body === null || typeof body.submissionId !== "string" || typeof body.approved !== "boolean") {
+      return jsonResponse({ error: "submissionId and approved are required" }, 400);
+    }
+    await ctx.runMutation(internal.searchTraining.setApproval, {
       submissionId: body.submissionId,
       approved: body.approved,
     });

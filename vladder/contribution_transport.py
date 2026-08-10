@@ -16,7 +16,7 @@ from . import __version__
 
 DEFAULT_CONTRIBUTION_BASE = "https://ceaseless-manatee-888.convex.site"
 DEFAULT_REVIEW_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/reviews"
-DEFAULT_MODEL_TRAINING_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/training/v2"
+DEFAULT_MODEL_TRAINING_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/training/v3"
 MAX_CONTRIBUTION_BYTES = 768 * 1024
 CAPABILITY_SCHEMA_VERSION = "vladder-contributor-capability-v1"
 CAPABILITY_FILE_VERSION = "vladder-contributor-credentials-v1"
@@ -159,7 +159,7 @@ def probe_contribution_service(
                 value = body
             return exc.code, value
 
-    training_endpoint = base_url + "/api/training/v2"
+    training_endpoint = base_url + "/api/training/v3"
     review_endpoint = base_url + "/api/reviews"
     training_token = load_or_register_capability(
         training_endpoint, "training:write", timeout_seconds=timeout_seconds, credential_path=credential_path,
@@ -175,8 +175,12 @@ def probe_contribution_service(
             "observed": request_status("/api/training?validate_only=true", "POST", empty, training_token)[0],
             "expected": [410],
         },
-        "model_training_scope_reaches_schema": {
+        "flat_v2_training_submission_retired": {
             "observed": request_status("/api/training/v2?validate_only=true", "POST", empty, training_token)[0],
+            "expected": [410],
+        },
+        "model_training_scope_reaches_schema": {
+            "observed": request_status("/api/training/v3?validate_only=true", "POST", empty, training_token)[0],
             "expected": [400],
         },
         "review_scope_reaches_schema": {
@@ -188,7 +192,7 @@ def probe_contribution_service(
             "expected": [403],
         },
         "review_scope_cannot_write_training": {
-            "observed": request_status("/api/training/v2?validate_only=true", "POST", empty, review_token)[0],
+            "observed": request_status("/api/training/v3?validate_only=true", "POST", empty, review_token)[0],
             "expected": [403],
         },
         "contributor_cannot_moderate": {
@@ -199,7 +203,7 @@ def probe_contribution_service(
         },
         "contributor_cannot_moderate_model_training": {
             "observed": request_status(
-                "/api/training/v2/approval", "PATCH", b'{"submissionId":"untrusted","approved":true}', training_token,
+                "/api/training/v3/approval", "PATCH", b'{"submissionId":"untrusted","approved":true}', training_token,
             )[0],
             "expected": [401],
         },
@@ -208,7 +212,7 @@ def probe_contribution_service(
             "expected": [404, 405],
         },
         "private_model_training_read_absent": {
-            "observed": request_status("/api/training/v2", "GET", None, training_token)[0],
+            "observed": request_status("/api/training/v3", "GET", None, training_token)[0],
             "expected": [404, 405],
         },
     }

@@ -26,9 +26,15 @@ and must not be presented as stable API unless registered.
 outbox enqueue, and submission APIs do not emit or accept it for transport. This preserves access
 to old local evidence without allowing flattened telemetry to enter the graph-learning corpus.
 
-`vladder-model-training-bundle-v2` is the candidate graph-model interchange. It stores linked,
-bounded roots, candidates, and observations, including sanitized graph topology and structured
-action/hardware/workload descriptors. It is classified as pseudonymized structural data rather
-than anonymous data. It is the exclusive output of current training producers and the only training
-schema accepted by the public append service. Legacy v1 bundles cannot substitute for v2 graph
-samples in relational or listwise training.
+`vladder-model-training-bundle-v3` is the search-pruner interchange. It stores linked bounded roots,
+search executions, parented branches, branch coverage authority, search costs, observations, direct
+utility, descendant utility, and fail-open survival labels. A negative branch is trainable as
+`PRUNE_HIGH_CONFIDENCE` only when its subtree is exhaustive or soundly closed; partial and truncated
+evidence remains `KEEP_UNCERTAIN`. It is classified as pseudonymized structural data rather than
+anonymous data and is the exclusive output of current training producers and append service.
+Both local validation and service ingestion recompute labels from observations and complete
+lineage. Standalone learning examples include the accumulated ancestor action path.
+
+`vladder-model-training-bundle-v2` remains locally valid for historical flat candidate evidence but
+cannot be enqueued or submitted. It lacks search lineage and negative-label authority and therefore
+must not be used as primary supervision for a live pruning oracle.

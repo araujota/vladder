@@ -16,7 +16,8 @@ The choices mean:
 
 - `canonical_training_data=opt_in`: at every eligible opportunity, contribute all supported,
   pseudonymized training forms the installed release can encode: bounded normalized graph nodes,
-  edges and topology; structured grammar actions; proof, differential, compile, assembly, cost, counter, benchmark, and
+  edges and topology; structured grammar actions; parent/child search lineage; completeness authority;
+  direct and descendant utility; proof, differential, compile, assembly, cost, counter, benchmark, and
   composition outcomes; rejections; and coarsened hardware/workload descriptors. Do not ask again
   for each send. Never send source, paths, raw artifacts, prompts, personal data, or the local prior
   store. Report any eligible form that lacks an anonymizer/export adapter instead of silently
@@ -38,10 +39,10 @@ authorizes the agent to apply record consent and `--confirm-upload` without aski
 local anonymization and schema validation. For reviews, exact-record approval remains required.
 `--validate-only` also sends bytes and therefore requires the corresponding opt-in.
 
-The model-training v2 disclosure is structural and must be described accurately. It removes
+The model-training v3 disclosure is structural and must be described accurately. It removes
 source, paths, symbols, user-defined type names and literals; remaps local node IDs; and links
 records using installation-secret HMAC identifiers. It is **pseudonymized, not anonymous** because
-a distinctive normalized graph may fingerprint an algorithm and records are linkable within one
+a distinctive normalized graph or search strategy may fingerprint an algorithm and records are linkable within one
 identity epoch. A saved training decision under an older, feature-only policy becomes `unknown`;
 ask again using the new complete notice. Review consent remains independent and need not be reset.
 
@@ -67,7 +68,9 @@ vladder training sync-prior --store EXPERIENCE --project-id PROJECT \
   --agent AGENT --model MODEL --out-dir vladder-training-sync
 ```
 
-The command privately pseudonymizes identity, shards linked roots/candidates/observations into bounded v2 bundles,
+The command privately pseudonymizes identity and maps flat prior evidence into bounded partial v3
+searches. Use `training from-search-trace` when an authoritative engine can preserve full branch
+lineage. Incomplete negative branches remain `KEEP_UNCERTAIN`. The command
 applies durable record consent, validates locally, and submits to Convex. Run equivalent registered
 exporters for non-prior evidence; name any missing exporter in the workflow disposition.
 

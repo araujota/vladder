@@ -124,6 +124,7 @@ class PublicReleaseContractTests(unittest.TestCase):
                 "spirv-semantics",
                 "system-closure",
                 "model-training-bundle",
+                "model-training-bundle-v2",
                 "training-bundle",
                 "whole-build-index",
             },
@@ -133,7 +134,7 @@ class PublicReleaseContractTests(unittest.TestCase):
             item["stability"] == "stable"
             for name, item in report["artifacts"].items()
             if name not in {
-                "model-training-bundle", "agent-disposition", "optimization-campaign",
+                "model-training-bundle", "model-training-bundle-v2", "agent-disposition", "optimization-campaign",
                 "optimization-plan", "physical-runner", "project-evidence", "remote-result",
             }
         ))
@@ -240,9 +241,10 @@ class PublicReleaseContractTests(unittest.TestCase):
             bundle_path = Path(directory) / "training.json"
             consent_path = Path(directory) / "consent.json"
             bundle = create_training_template(bundle_path)
-            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v2")
+            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v3")
             self.assertTrue(bundle["roots"][0]["graph"]["nodes"])
-            self.assertTrue(bundle["candidates"][0]["baseline"])
+            self.assertTrue(bundle["branches"][0]["baseline"])
+            self.assertEqual(bundle["branches"][0]["survival"]["class"], "KEEP")
             self.assertEqual(validate_training_bundle(bundle_path)["status"], "pass")
             with self.assertRaisesRegex(ConsentRequiredError, "must ask the user"):
                 submit_training_bundle(
@@ -283,8 +285,9 @@ class PublicReleaseContractTests(unittest.TestCase):
                 maximum_examples=8,
             )
             self.assertEqual(validate_training_bundle(bundle_path)["status"], "pass")
-            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v2")
-            self.assertGreater(len(bundle["candidates"]), 0)
+            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v3")
+            self.assertGreater(len(bundle["branches"]), 0)
+            self.assertTrue(bundle["searches"])
             self.assertGreater(len(bundle["roots"]), 0)
             self.assertFalse(bundle["privacy"]["submission_consent"])
             serialized = bundle_path.read_text()
@@ -313,8 +316,8 @@ class PublicReleaseContractTests(unittest.TestCase):
             )
             self.assertTrue(exported["all_supported_candidates_exported"])
             self.assertEqual(
-                sum(len(json.loads(Path(path).read_text())["candidates"]) for path in exported["bundles"]),
-                exported["candidate_count"],
+                sum(len(json.loads(Path(path).read_text())["branches"]) for path in exported["bundles"]),
+                exported["search_branch_count"],
             )
             first_export = json.loads(Path(exported["bundles"][0]).read_text())
             self.assertNotEqual(first_export["roots"][0]["project_id"], "private-project-name")
@@ -339,7 +342,7 @@ class PublicReleaseContractTests(unittest.TestCase):
                     self.assertEqual(urlopen.call_count, synced["export"]["bundle_count"])
                     self.assertTrue(synced["continuous_opt_in_applied"])
 
-    def test_model_training_v2_preserves_topology_and_round_trips_without_source_identity(self) -> None:
+    def test_model_training_v3_preserves_topology_lineage_and_round_trips_without_source_identity(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             generate_synthetic_prior_corpus(root / "corpus", root_count=3)
@@ -357,8 +360,11 @@ class PublicReleaseContractTests(unittest.TestCase):
             self.assertNotIn("SecretEnterpriseRepository", serialized)
             self.assertNotIn("source_path", serialized)
             examples = graph_learning_examples(bundle_path)
-            self.assertEqual(len(examples), len(bundle["candidates"]))
-            self.assertTrue(any(example["graph"]["edge_index"][0] for example in examples))
+            self.assertEqual(len(examples), len(bundle["branches"]))
+            self.assertTrue(any(example["decision_context"]["graph"]["edge_index"][0] for example in examples))
+            self.assertTrue(all("survival" in example["supervision"]["targets"] for example in examples))
+            self.assertTrue(all(example["feature_partition"] == "pre-decision-v1" for example in examples))
+            self.assertTrue(all("observations" not in example["decision_context"] for example in examples))
             groups = {example["ranking_group"] for example in examples}
             self.assertLessEqual(len(groups), len(bundle["roots"]))
             report = ingest_model_training_bundle(bundle_path, root / "ingested")
@@ -367,9 +373,9 @@ class PublicReleaseContractTests(unittest.TestCase):
                 root / "ingested",
             ).load()
             self.assertGreater(len(ingested["candidates"]), 0)
-            self.assertLessEqual(len(ingested["candidates"]), len(bundle["candidates"]))
+            self.assertLessEqual(len(ingested["candidates"]), len(bundle["branches"]))
             self.assertGreater(len(ingested["observations"]), 0)
-            self.assertIn("collapses exact semantic clones", report["compatibility_note"])
+            self.assertIn("authoritative for lineage-aware training", report["compatibility_note"])
             consent_path = root / "consent.json"
             set_consent(
                 CANONICAL_TRAINING_DATA, "opt_in", path=consent_path, confirmed_user_choice=True,
@@ -453,6 +459,20 @@ class PublicReleaseContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "1 to 512"):
                 sanitize_graph({"nodes": [{"id": f"n{index}"} for index in range(513)], "edges": []})
 
+    def test_structural_deidentification_preserves_safe_nested_counts_and_operation_aliases(self) -> None:
+        graph = {
+            "nodes": [{
+                "id": "loop", "kind": "Loop", "operation": "bounded_iteration",
+                "output_type": "i32", "attributes": {"count": 17, "private_name": "secret"},
+            }],
+            "edges": [],
+        }
+        sanitized = sanitize_graph(graph)
+        node = sanitized["nodes"][0]
+        self.assertEqual(node["operation"], "loop")
+        self.assertEqual(node["numeric_features"], [{"name": "count", "value": 16.0}])
+        self.assertNotIn("secret", json.dumps(sanitized))
+
     def test_review_schema_rejects_source_or_raw_artifact_inclusion(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -482,10 +502,10 @@ class PublicReleaseContractTests(unittest.TestCase):
             bundle = create_training_bundle_from_promotion_summary(
                 summary, root / "bundle.json", consent_path=consent_path,
             )
-            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v2")
+            self.assertEqual(bundle["schema_version"], "vladder-model-training-bundle-v3")
             self.assertGreaterEqual(len(bundle["roots"][0]["graph"]["nodes"]), 7)
-            self.assertEqual(len(bundle["candidates"]), 2)
-            self.assertTrue(bundle["candidates"][0]["baseline"])
+            self.assertEqual(len(bundle["branches"]), 2)
+            self.assertTrue(bundle["branches"][0]["baseline"])
             self.assertTrue(bundle["observations"])
             self.assertEqual(validate_training_bundle(root / "bundle.json")["status"], "pass")
             self.assertNotIn("private/project/path.cpp", json.dumps(bundle))
@@ -542,9 +562,9 @@ class PublicReleaseContractTests(unittest.TestCase):
             legacy_path = root / "legacy.json"
             legacy_path.write_text(json.dumps(self._legacy_training_bundle()))
             self.assertEqual(validate_training_bundle(legacy_path)["status"], "pass")
-            with self.assertRaisesRegex(ValueError, "historical only"):
+            with self.assertRaisesRegex(ValueError, "validation-only"):
                 enqueue_training_bundle(legacy_path, outbox_directory=outbox)
-            with self.assertRaisesRegex(ValueError, "legacy v1 upload is disabled"):
+            with self.assertRaisesRegex(ValueError, "historical v1/v2 upload is disabled"):
                 submit_training_bundle(
                     legacy_path, endpoint=None, token=None, confirm_upload=True,
                     consent_path=consent_path,

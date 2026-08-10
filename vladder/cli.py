@@ -57,7 +57,7 @@ from .report import write_csv, write_html, write_json
 from .replacement import verify_applied_replacement
 from .review_workflow import create_campaign_review_template, create_review_template, submit_review, validate_review
 from .training_workflow import (
-    create_training_bundle_from_prior, create_training_template, export_all_training_bundles_from_prior,
+    create_training_bundle_from_prior, create_training_bundle_from_search_trace, create_training_template, export_all_training_bundles_from_prior,
     submit_training_bundle, sync_all_training_bundles_from_prior, validate_training_bundle,
 )
 from .model_training_data import ingest_model_training_bundle, write_graph_learning_jsonl
@@ -1620,6 +1620,15 @@ def training_command(args: argparse.Namespace) -> int:
             apply_durable_consent=args.apply_durable_consent,
             consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
         )
+    elif args.training_command == "from-search-trace":
+        trace_path = Path(args.trace).resolve()
+        trace = json.loads(trace_path.read_text()) if trace_path.suffix == ".json" else yaml.safe_load(trace_path.read_text())
+        report = create_training_bundle_from_search_trace(
+            trace, Path(args.out), project_id=args.project_id,
+            producer_agent=args.agent, producer_model=args.model, producer_provider=args.provider,
+            apply_durable_consent=args.apply_durable_consent,
+            consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
+        )
     elif args.training_command == "export-prior":
         report = export_all_training_bundles_from_prior(
             Path(args.store), Path(args.out_dir), project_id=args.project_id,
@@ -1651,7 +1660,7 @@ def training_command(args: argparse.Namespace) -> int:
         )
     print(json.dumps(report, indent=2, sort_keys=True))
     accepted = {"pass", "submitted", "validated_remotely"}
-    return 0 if report.get("status") in accepted or args.training_command in {"template", "from-prior", "export-prior"} else 2
+    return 0 if report.get("status") in accepted or args.training_command in {"template", "from-prior", "from-search-trace", "export-prior"} else 2
 
 
 def lifetime_command(args: argparse.Namespace) -> int:
@@ -2286,13 +2295,13 @@ def build_parser() -> argparse.ArgumentParser:
     review_submit.add_argument("--consent-file", help=argparse.SUPPRESS)
     review_submit.set_defaults(func=review_command)
     training = sub.add_parser(
-        "training", help="create, validate, or explicitly submit graph-ready v2 training data",
+        "training", help="create, validate, or explicitly submit lineage-aware v3 search training data",
     )
     training_sub = training.add_subparsers(dest="training_command", required=True)
     training_template = training_sub.add_parser(
-        "template", help="create a strict graph-ready v2 training bundle",
+        "template", help="create a strict search-pruner v3 training bundle",
     )
-    training_template.add_argument("--out", default="vladder-model-training-bundle-v2.json")
+    training_template.add_argument("--out", default="vladder-model-training-bundle-v3.json")
     training_template.set_defaults(func=training_command)
     training_prior = training_sub.add_parser("from-prior", help="derive a source-free bundle from a local canonical prior store")
     training_prior.add_argument("--store", required=True)
@@ -2306,8 +2315,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="set record consent from the saved training opt-in for continuous contribution",
     )
     training_prior.add_argument("--consent-file", help=argparse.SUPPRESS)
-    training_prior.add_argument("--out", default="vladder-model-training-bundle-v2.json")
+    training_prior.add_argument("--out", default="vladder-model-training-bundle-v3.json")
     training_prior.set_defaults(func=training_command)
+    training_trace = training_sub.add_parser(
+        "from-search-trace", help="emit v3 from an authoritative branch-lineage search trace",
+    )
+    training_trace.add_argument("--trace", required=True)
+    training_trace.add_argument("--project-id", required=True, help="identifier is hashed before export")
+    training_trace.add_argument("--agent", required=True)
+    training_trace.add_argument("--model", required=True)
+    training_trace.add_argument("--provider")
+    training_trace.add_argument("--apply-durable-consent", action="store_true")
+    training_trace.add_argument("--consent-file", help=argparse.SUPPRESS)
+    training_trace.add_argument("--out", default="vladder-model-training-bundle-v3.json")
+    training_trace.set_defaults(func=training_command)
     training_export = training_sub.add_parser(
         "export-prior", help="export every supported anonymized prior record into bounded bundles",
     )
@@ -2340,23 +2361,23 @@ def build_parser() -> argparse.ArgumentParser:
     training_validate.add_argument("--bundle", required=True)
     training_validate.set_defaults(func=training_command)
     training_ingest = training_sub.add_parser(
-        "ingest-model", help="ingest a validated v2 graph/action/outcome bundle into a local prior store",
+        "ingest-model", help="ingest a validated v3 search trace (or historical v2 bundle) into a local prior store",
     )
     training_ingest.add_argument("--bundle", required=True)
     training_ingest.add_argument("--store", required=True)
     training_ingest.set_defaults(func=training_command)
     training_graph = training_sub.add_parser(
-        "graph-examples", help="emit topology-preserving candidate/ranking examples as JSONL",
+        "graph-examples", help="emit lineage-aware branch survival examples as JSONL",
     )
     training_graph.add_argument("--bundle", required=True)
     training_graph.add_argument("--out", default="vladder-graph-learning-examples.jsonl")
     training_graph.set_defaults(func=training_command)
     training_submit = training_sub.add_parser(
-        "submit", help="submit only a validated graph-ready v2 bundle after explicit consent",
+        "submit", help="submit only a validated search-pruner v3 bundle after explicit consent",
     )
     training_submit.add_argument("--bundle", required=True)
     training_submit.add_argument(
-        "--endpoint", help="override the public v2 endpoint or VLADDER_MODEL_TRAINING_ENDPOINT",
+        "--endpoint", help="override the private v3 endpoint or VLADDER_MODEL_TRAINING_ENDPOINT",
     )
     training_submit.add_argument("--confirm-upload", action="store_true", help="required explicit consent gate")
     training_submit.add_argument("--validate-only", action="store_true", help="validate through the service without storing")

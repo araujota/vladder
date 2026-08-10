@@ -93,10 +93,16 @@
       "producer": "historical validation only; current emission is retired"
     },
     "model-training-bundle": {
-      "artifact_schema_version": "vladder-model-training-bundle-v2",
-      "file": "model-training-bundle-v2.schema.json",
+      "artifact_schema_version": "vladder-model-training-bundle-v3",
+      "file": "model-training-bundle-v3.schema.json",
       "stability": "candidate",
       "producer": "all current vladder training and terminal agent-workflow producers"
+    },
+    "model-training-bundle-v2": {
+      "artifact_schema_version": "vladder-model-training-bundle-v2",
+      "file": "model-training-bundle-v2.schema.json",
+      "stability": "historical",
+      "producer": "historical validation only; current emission is retired"
     },
     "whole-build-index": {
       "artifact_schema_version": "vladder-whole-build-index-v1",
