@@ -4,6 +4,7 @@ import argparse
 import difflib
 import json
 import math
+import os
 from pathlib import Path
 import re
 import shlex
@@ -50,11 +51,11 @@ from .q4k_model_verify import verify_regenerated_q4k_model
 from .q4k_v8 import run_q4k_v8
 from .weight_traversal_v9 import run_weight_traversal_v9
 from .portfolio_v6 import rank_portfolio
-from .paired_benchmark import compose_benchmark_effects, run_paired_benchmark
+from .paired_benchmark import compose_application_cost, compose_benchmark_effects, run_paired_benchmark
 from .proofs import proof_to_dict, prove_candidate, write_smt2_stub
 from .report import write_csv, write_html, write_json
 from .replacement import verify_applied_replacement
-from .review_workflow import create_review_template, submit_review, validate_review
+from .review_workflow import create_campaign_review_template, create_review_template, submit_review, validate_review
 from .training_workflow import (
     create_training_bundle_from_prior, create_training_template, export_all_training_bundles_from_prior,
     submit_training_bundle, sync_all_training_bundles_from_prior, validate_training_bundle,
@@ -96,6 +97,16 @@ from .state_protocol import verify_state_protocol
 from .resource_protocol import protocol_template
 from .system_closure import run_system_closure
 from .whole_build import WholeBuildIndex, run_cross_tu_closure
+from .orchestrator import (
+    OptimizationRequest as OrchestratorRequest,
+    execute_remote_adapter,
+    format_terminal,
+    run_optimization,
+    run_portfolio,
+    resume_optimization,
+    verify_remote_result,
+    write_plan,
+)
 from .rust_adapter import (
     RustRegionRequest,
     audit_rust_regions,
@@ -468,7 +479,7 @@ def _static_prune(rows: list[dict[str, object]], binaries: dict[str, Path], grap
             binaries.pop(name, None)
 
 
-def optimize(args: argparse.Namespace) -> int:
+def optimize_c_kernel(args: argparse.Namespace) -> int:
     policy = VerificationPolicy(args.verification_policy)
     if policy is VerificationPolicy.STRICT:
         args.alive2 = True
@@ -1037,7 +1048,7 @@ def automatic_region_command(args: argparse.Namespace) -> int:
     args.verification_policy = VerificationPolicy.STRICT.value
     args.llm_lift = False
     args.llm_rounds = 0
-    result = optimize(args)
+    result = optimize_c_kernel(args)
     report_path = out_dir / "perf.json"
     report = json.loads(report_path.read_text())
     report["automatic_region"] = support.to_dict()
@@ -1207,12 +1218,142 @@ def workflow_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _orchestrator_request(args: argparse.Namespace, *, plan_only: bool | None = None) -> OrchestratorRequest:
+    project = Path(getattr(args, "project", ".")).resolve()
+    source_value = getattr(args, "source", None)
+    source = Path(source_value).resolve() if source_value else None
+    compile_value = getattr(args, "compile_commands", None)
+    compile_commands = Path(compile_value).resolve() if compile_value else None
+    if compile_commands is None:
+        for candidate in (project / "build/compile_commands.json", project / "compile_commands.json"):
+            if candidate.exists():
+                compile_commands = candidate
+                break
+    contract_value = getattr(args, "contract", None)
+    workload_value = getattr(args, "workload", None)
+    profile_value = getattr(args, "profile", None)
+    return OrchestratorRequest(
+        project=project,
+        source=source,
+        symbol=getattr(args, "function", None) or getattr(args, "symbol", None),
+        compile_commands=compile_commands,
+        contract=Path(contract_value).resolve() if contract_value else None,
+        workload=Path(workload_value).resolve() if workload_value else None,
+        profile=Path(profile_value).resolve() if profile_value else None,
+        output_directory=Path(args.out_dir).resolve(),
+        minimum_effect_percent=float(getattr(args, "min_speedup_pct", 1.0)),
+        plan_only=bool(getattr(args, "plan_only", False) if plan_only is None else plan_only),
+        force=bool(getattr(args, "force", False)),
+        verbose=bool(getattr(args, "verbose", False)),
+    )
+
+
+def can_optimize_command(args: argparse.Namespace) -> int:
+    request = _orchestrator_request(args, plan_only=True)
+    if request.source is None or request.symbol is None:
+        raise ValueError("can-optimize requires --source and a symbol")
+    plan = write_plan(request, emit_progress=not args.quiet)
+    forecast = plan["forecast"]
+    print(
+        "vLadder feasibility: "
+        f"kind={plan['classification']['kind']} "
+        f"first-unreachable={forecast['first_unreachable_state'] or 'none'} "
+        f"cost={forecast['estimated_runtime_seconds']['low']}-{forecast['estimated_runtime_seconds']['high']}s "
+        f"decision={plan['economic_decision']['recommendation']}"
+    )
+    print(f"vLadder feasibility: plan={request.output_directory / 'optimization-plan.json'}")
+    if args.json:
+        print(json.dumps(plan, indent=2, sort_keys=True))
+    return 0
+
+
+def orchestrated_optimize_command(args: argparse.Namespace) -> int:
+    if args.portfolio:
+        report = run_portfolio(
+            Path(args.project), Path(args.out_dir), max_regions=args.max_regions,
+            execute=args.execute_portfolio,
+            compile_commands=Path(args.compile_commands) if args.compile_commands else None,
+            workers=args.workers,
+        )
+        print(
+            "vLadder portfolio: "
+            f"regions={report['region_count']} unique={report['unique_semantic_roots']} "
+            f"continue={report['summary']['continue']} stop={report['summary']['stop']} "
+            f"escalate={report['summary']['escalate']}"
+        )
+        print(f"vLadder portfolio: report={Path(args.out_dir).resolve() / 'portfolio-summary.json'}")
+        return 0
+    request = _orchestrator_request(args)
+    if request.source is None or request.symbol is None:
+        raise ValueError("optimize requires a source path and --function/--symbol, or --portfolio")
+    is_legacy_c = request.source.suffix.lower() == ".c"
+    report = run_optimization(
+        request,
+        c_executor=(lambda: optimize_c_kernel(args)) if is_legacy_c else None,
+        emit_progress=not args.quiet,
+    )
+    if request.plan_only:
+        plan = report["plan"]
+        print(
+            "vLadder plan: "
+            f"kind={plan['classification']['kind']} "
+            f"first-unreachable={plan['forecast']['first_unreachable_state'] or 'none'} "
+            f"decision={plan['economic_decision']['recommendation']}"
+        )
+        print(f"vLadder plan: wrote {request.output_directory / 'optimization-plan.json'}")
+        if args.json:
+            print(json.dumps(plan, indent=2, sort_keys=True))
+        return 0
+    disposition = report["disposition"]
+    print(format_terminal(disposition))
+    if args.json:
+        print(json.dumps(disposition, indent=2, sort_keys=True))
+    if not args.strict_progress_exit:
+        return 0
+    return {
+        "PROMOTABLE": 0,
+        "VERIFIED_REJECTION": 10,
+        "INTEGRATION_REQUIRED": 11,
+        "NO_BENCHMARK": 12,
+        "NO_PROOF": 13,
+        "NO_CANDIDATE": 14,
+        "NO_COVERAGE": 15,
+    }[disposition["terminal_status"]]
+
+
+def resume_command(args: argparse.Namespace) -> int:
+    report = resume_optimization(Path(args.out_dir), force=args.force, emit_progress=not args.quiet)
+    disposition = report.get("disposition")
+    if disposition:
+        print(format_terminal(disposition))
+    return 0
+
+
+def runner_command(args: argparse.Namespace) -> int:
+    if args.runner_command == "execute":
+        report = execute_remote_adapter(Path(args.manifest), Path(args.out_dir))
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0 if report["status"] == "pass" else 2
+    result = json.loads(Path(args.result).read_text())
+    request = json.loads(Path(args.request).read_text()) if Path(args.request).suffix == ".json" else yaml.safe_load(Path(args.request).read_text())
+    key = os.environ.get(args.key_environment) if args.key_environment else None
+    report = verify_remote_result(result, request, key)
+    print(json.dumps(report, indent=2, sort_keys=True))
+    if args.out:
+        Path(args.out).resolve().write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    return 0 if report["status"] == "pass" else 2
+
+
 def benchmark_command(args: argparse.Namespace) -> int:
     if args.benchmark_command == "paired":
         report = run_paired_benchmark(Path(args.manifest), Path(args.out_dir))
         print(json.dumps(report, indent=2, sort_keys=True))
         return 0 if report.get("status") == "pass" else 2
-    report = compose_benchmark_effects(Path(args.manifest), Path(args.out))
+    report = (
+        compose_application_cost(Path(args.manifest), Path(args.out))
+        if args.benchmark_command == "compose-application" else
+        compose_benchmark_effects(Path(args.manifest), Path(args.out))
+    )
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if report.get("status") == "pass" else 2
 
@@ -1450,6 +1591,11 @@ def review_command(args: argparse.Namespace) -> int:
             Path(args.promotion_summary), Path(args.out), project_name=args.project,
             project_revision=args.revision, repository=args.repository,
         )
+    elif args.review_command == "campaign-template":
+        report = create_campaign_review_template(
+            [Path(item) for item in args.promotion_summary], Path(args.out),
+            project_name=args.project, project_revision=args.revision, repository=args.repository,
+        )
     elif args.review_command == "validate":
         report = validate_review(Path(args.review))
     else:
@@ -1460,7 +1606,7 @@ def review_command(args: argparse.Namespace) -> int:
             consent_path=Path(args.consent_file).expanduser() if args.consent_file else None,
         )
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0 if report.get("status") in {"pass", "submitted", "validated_remotely"} or args.review_command == "template" else 2
+    return 0 if report.get("status") in {"pass", "submitted", "validated_remotely"} or args.review_command in {"template", "campaign-template"} else 2
 
 
 def training_command(args: argparse.Namespace) -> int:
@@ -1902,6 +2048,10 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark_compose.add_argument("--manifest", required=True)
     benchmark_compose.add_argument("--out", default="vladder-composition.json")
     benchmark_compose.set_defaults(func=benchmark_command)
+    benchmark_application = benchmark_sub.add_parser("compose-application", help="forecast end-to-end effect from runtime share, invocation, overlap, and amortization")
+    benchmark_application.add_argument("--manifest", required=True)
+    benchmark_application.add_argument("--out", default="vladder-application-composition.json")
+    benchmark_application.set_defaults(func=benchmark_command)
     protocol = sub.add_parser("protocol", help="verify bounded retained-state protocol projections")
     protocol_sub = protocol.add_subparsers(dest="protocol_command", required=True)
     protocol_verify = protocol_sub.add_parser("verify", help="prove cache, publication, or finite-resource protocol obligations")
@@ -2117,6 +2267,13 @@ def build_parser() -> argparse.ArgumentParser:
     review_template.add_argument("--repository")
     review_template.add_argument("--out", default="vladder-agent-review.json")
     review_template.set_defaults(func=review_command)
+    review_campaign = review_sub.add_parser("campaign-template", help="create one prepopulated review across multiple terminal workflows")
+    review_campaign.add_argument("--promotion-summary", action="append", required=True)
+    review_campaign.add_argument("--project", required=True)
+    review_campaign.add_argument("--revision", required=True)
+    review_campaign.add_argument("--repository")
+    review_campaign.add_argument("--out", default="vladder-agent-campaign-review.json")
+    review_campaign.set_defaults(func=review_command)
     review_validate = review_sub.add_parser("validate", help="validate a review without network access")
     review_validate.add_argument("--review", required=True)
     review_validate.set_defaults(func=review_command)
@@ -2227,9 +2384,55 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--trace", required=True)
         command.add_argument("--out-dir", default=default_out)
         command.set_defaults(func=lifetime_command)
-    opt = sub.add_parser("optimize", help="generate, verify, benchmark, and rank candidates")
-    opt.add_argument("source", help="C99 source file")
-    opt.add_argument("--function", required=True, help="function name to optimize")
+    can_optimize = sub.add_parser("can-optimize", help="forecast routing, semantic reachability, cost, and grammar coverage before execution")
+    can_optimize.add_argument("symbol", help="source-level symbol or function name")
+    can_optimize.add_argument("--source", required=True, help="production source containing the selected symbol")
+    can_optimize.add_argument("--project", default=".", help="project root used for evidence discovery")
+    can_optimize.add_argument("--compile-commands", help="compilation database file or directory")
+    can_optimize.add_argument("--contract", help="existing contract manifest")
+    can_optimize.add_argument("--workload", help="existing workload manifest")
+    can_optimize.add_argument("--profile", help="profile containing regional runtime share")
+    can_optimize.add_argument("--out-dir", default="vladder-plan", help="plan and scaffold directory")
+    can_optimize.add_argument("--min-speedup-pct", type=float, default=1.0)
+    can_optimize.add_argument("--json", action="store_true", help="also print the complete plan")
+    can_optimize.add_argument("--quiet", action="store_true", help="suppress progress events on stdout")
+    can_optimize.add_argument("--force", action="store_true", help="recompute content-addressed planning stages")
+    can_optimize.set_defaults(func=can_optimize_command)
+    resume = sub.add_parser("resume", help="resume an optimization campaign from the first invalid content-addressed stage")
+    resume.add_argument("--out-dir", required=True, help="existing orchestration output directory")
+    resume.add_argument("--force", action="store_true", help="recompute matching stages")
+    resume.add_argument("--quiet", action="store_true", help="suppress progress events on stdout")
+    resume.set_defaults(func=resume_command)
+    runner = sub.add_parser("runner", help="validate physical or remote runner evidence envelopes")
+    runner_sub = runner.add_subparsers(dest="runner_command", required=True)
+    runner_verify = runner_sub.add_parser("verify", help="verify remote result identity and optional HMAC integrity")
+    runner_verify.add_argument("--request", required=True, help="immutable JSON/YAML request manifest")
+    runner_verify.add_argument("--result", required=True, help="remote result JSON")
+    runner_verify.add_argument("--key-environment", default="VLADDER_REMOTE_RESULT_KEY")
+    runner_verify.add_argument("--out")
+    runner_verify.set_defaults(func=runner_command)
+    runner_execute = runner_sub.add_parser("execute", help="invoke an argv-form remote executor and verify its immutable result bundle")
+    runner_execute.add_argument("--manifest", required=True)
+    runner_execute.add_argument("--out-dir", default="vladder-remote-run")
+    runner_execute.set_defaults(func=runner_command)
+    opt = sub.add_parser("optimize", help="classify, plan, execute, prove, benchmark, and disposition one region or repository portfolio")
+    opt.add_argument("source", nargs="?", help="production source file; existing C99 invocation remains supported")
+    opt.add_argument("--function", "--symbol", dest="function", help="function or symbol to optimize")
+    opt.add_argument("--project", default=".", help="project root used for evidence and portfolio discovery")
+    opt.add_argument("--compile-commands", help="compilation database file or directory")
+    opt.add_argument("--contract", help="semantic contract manifest")
+    opt.add_argument("--workload", help="project workload manifest")
+    opt.add_argument("--profile", help="profile containing regional runtime share")
+    opt.add_argument("--plan-only", action="store_true", help="emit plan and scaffolds without extraction, proof, benchmark, contribution, or source changes")
+    opt.add_argument("--portfolio", action="store_true", help="inventory and disposition a repository-wide region portfolio")
+    opt.add_argument("--execute-portfolio", action="store_true", help="execute portfolio regions instead of planning only")
+    opt.add_argument("--max-regions", type=int, default=20, help="maximum portfolio regions")
+    opt.add_argument("--workers", type=int, default=4, help="parallel portfolio planning and execution workers")
+    opt.add_argument("--strict-progress-exit", action="store_true", help="return evidence-state-specific nonzero exit codes")
+    opt.add_argument("--json", action="store_true", help="also print the complete terminal plan or disposition")
+    opt.add_argument("--verbose", action="store_true", help="retain verbose planning context in output")
+    opt.add_argument("--quiet", action="store_true", help="suppress progress events on stdout")
+    opt.add_argument("--force", action="store_true", help="recompute matching content-addressed stages")
     opt.add_argument("--out-dir", default="vladder-out", help="artifact directory")
     opt.add_argument("--n", type=int, default=1 << 20, help="benchmark element count")
     opt.add_argument("--reps", type=int, default=25, help="timed repetitions")
@@ -2247,7 +2450,7 @@ def build_parser() -> argparse.ArgumentParser:
     opt.add_argument("--search-ms", type=int, default=1000, help="grammar search time budget in milliseconds")
     opt.add_argument("--llm-lift", action="store_true", help="ask DeepSeek to propose C through the zero-trust verifier loop")
     opt.add_argument("--llm-rounds", type=int, default=3, help="maximum DeepSeek verifier-feedback rounds")
-    opt.set_defaults(func=optimize)
+    opt.set_defaults(func=orchestrated_optimize_command)
     analyze = sub.add_parser("analyze", help="emit target-only IR and information-flow graph artifacts")
     analyze.add_argument("source", help="C99 source file")
     analyze.add_argument("--function", required=True, help="function name to analyze")
@@ -2771,7 +2974,7 @@ def run_corpus(args: argparse.Namespace) -> int:
             llm_rounds=args.llm_rounds,
         )
         print(f"vLadder corpus: {source.name}")
-        rc = optimize(opt_args)
+        rc = optimize_c_kernel(opt_args)
         report_path = kernel_out / "perf.json"
         if rc == 0 and report_path.exists():
             data = json.loads(report_path.read_text())

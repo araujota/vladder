@@ -2,10 +2,20 @@
 
 ## One Entry Point
 
-Create a manifest with `vladder workflow init --kind c|cpp|rust|zig|julia|system|lifetime|shader|gpu|protocol`. Record source,
-compiler configuration, semantic contract, attribution report, workload identity, held-out policy,
-and minimum effect. Run `vladder workflow run` and read `promotion-summary.json` before any detailed
-artifact.
+Run `vladder can-optimize SYMBOL --source SOURCE --project . --out-dir OUT` first. It classifies the
+region, discovers candidate project oracles, maps external authorities, infers only code-supported
+contract facts, accounts for grammar coverage and proof-unit representativeness, forecasts the
+first unreachable evidence state and cost, and emits all missing scaffolds. Then run `vladder
+optimize SOURCE --function SYMBOL --project . --out-dir OUT`. Read `disposition.json` before any
+detailed artifact.
+
+The default terminal report has five facts: coverage, candidate, proof, measurement, and
+integration. `terminal_status` distinguishes `NO_COVERAGE`, `NO_CANDIDATE`, `NO_PROOF`,
+`NO_BENCHMARK`, `INTEGRATION_REQUIRED`, `VERIFIED_REJECTION`, and `PROMOTABLE`. Follow the argv-form
+`next_action.command`; after editing a named scaffold, use `vladder resume --out-dir OUT`.
+
+Use `workflow init|run` directly only for specialist manifest authoring or imported evidence. It
+remains a supported delegated executor, not the preferred agent entry.
 
 ## Mandatory Optional-Contribution Decision
 

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/physical-runner-v1.schema.json",
+  "title": "vLadder Physical Runner v1",
+  "type": "object",
+  "required": ["schema_version", "backend", "timing_domain", "hardware_manifest", "workload_manifest", "command", "observable", "metrics", "integrity"],
+  "properties": {
+    "schema_version": {"const": "vladder-physical-runner-v1"},
+    "backend": {"enum": ["local_command", "cpu", "cuda", "vulkan", "device", "network", "rdma", "presentation", "remote"]},
+    "timing_domain": {"type": "string"},
+    "hardware_manifest": {"type": "string"},
+    "workload_manifest": {"type": "string"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "observable": {"type": "object"},
+    "metrics": {"type": "array", "items": {"type": "object"}},
+    "counters": {"type": "array"},
+    "integrity": {"type": "object"}
+  },
+  "additionalProperties": true
+}

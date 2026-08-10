@@ -85,9 +85,11 @@ def run_paired_benchmark(manifest_path: Path, output_directory: Path) -> dict[st
         raise ValueError(f"benchmark executable does not exist: {executable}")
     baseline_args = [str(item) for item in raw.get("baseline_args", [])]
     candidate_args = [str(item) for item in raw.get("candidate_args", [])]
-    processes = int(raw.get("processes", 10))
+    processes = int(raw.get("processes", raw.get("maximum_processes", 10)))
+    minimum_processes = int(raw.get("minimum_processes", processes))
+    maximum_processes = int(raw.get("maximum_processes", processes))
     repetitions = int(raw.get("repetitions_per_process", 1))
-    if processes < 2 or repetitions < 1:
+    if minimum_processes < 2 or maximum_processes < minimum_processes or repetitions < 1:
         raise ValueError("paired benchmarking requires at least two processes and one repetition")
     direction = str(raw.get("direction", "lower"))
     if direction not in {"lower", "higher"}:
@@ -108,7 +110,11 @@ def run_paired_benchmark(manifest_path: Path, output_directory: Path) -> dict[st
     rng = random.Random(seed)
     pairs: list[dict[str, Any]] = []
     observable_failures: list[dict[str, Any]] = []
-    for process_index in range(processes):
+    stopping = raw.get("stopping_rule") if isinstance(raw.get("stopping_rule"), dict) else {}
+    target_width = float(stopping.get("target_ci_width_percent", 0.0))
+    stopped_early = False
+    stopping_reason = "maximum_processes_reached"
+    for process_index in range(maximum_processes):
         order = ["baseline", "candidate"]
         rng.shuffle(order)
         samples = {"baseline": [], "candidate": []}
@@ -145,6 +151,16 @@ def run_paired_benchmark(manifest_path: Path, output_directory: Path) -> dict[st
             "effect_percent": effect,
             "observables": observables,
         })
+        if len(pairs) < minimum_processes:
+            continue
+        interim_effects = [item["effect_percent"] for item in pairs]
+        interim_interval = _bootstrap_paired(interim_effects, max(250, min(bootstrap_rounds, 1000)), seed + 1000 + process_index)
+        decisive = interim_interval[0] >= minimum_effect or interim_interval[1] < minimum_effect
+        narrow_enough = target_width <= 0.0 or interim_interval[1] - interim_interval[0] <= target_width
+        if decisive and narrow_enough:
+            stopped_early = len(pairs) < maximum_processes
+            stopping_reason = "confidence_interval_decisive"
+            break
 
     effects = [item["effect_percent"] for item in pairs]
     interval = _bootstrap_paired(effects, bootstrap_rounds, seed + 1)
@@ -169,7 +185,14 @@ def run_paired_benchmark(manifest_path: Path, output_directory: Path) -> dict[st
         "same_executable": True,
         "metric_key": metric_key,
         "direction": direction,
-        "process_count": processes,
+        "process_count": len(pairs),
+        "experiment_design": {
+            "minimum_processes": minimum_processes,
+            "maximum_processes": maximum_processes,
+            "stopped_early": stopped_early,
+            "stopping_reason": stopping_reason,
+            "target_ci_width_percent": target_width or None,
+        },
         "repetitions_per_process": repetitions,
         "randomized_order": True,
         "seed": seed,
@@ -231,6 +254,83 @@ def compose_benchmark_effects(manifest_path: Path, output_path: Path) -> dict[st
             "combined_effect_percent": (combined - 1.0) * 100.0,
             "classification": "measured_interaction" if overlaps else "disjoint_regions",
             "interaction_run": interaction,
+        }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
+    return result
+
+
+def compose_application_cost(manifest_path: Path, output_path: Path) -> dict[str, Any]:
+    raw = yaml.safe_load(manifest_path.read_text())
+    if not isinstance(raw, dict) or not isinstance(raw.get("regions"), list):
+        raise ValueError("application composition manifest requires a regions list")
+    regions = raw["regions"]
+    covered: dict[str, str] = {}
+    overlaps: list[dict[str, str]] = []
+    total_share = 0.0
+    optimized_share = 0.0
+    overhead_percent = 0.0
+    rows = []
+    for item in regions:
+        if not isinstance(item, dict) or not item.get("id"):
+            raise ValueError("every composed region requires an id")
+        region_id = str(item["id"])
+        coverage = {str(value) for value in item.get("covers", [region_id])}
+        for owner in coverage:
+            if owner in covered:
+                overlaps.append({"region": owner, "first": covered[owner], "second": region_id})
+            else:
+                covered[owner] = region_id
+        share = float(item.get("baseline_runtime_share_percent", 0.0)) / 100.0
+        speedup = float(item.get("regional_speedup_percent", 0.0)) / 100.0
+        invocation_scale = float(item.get("invocation_frequency_scale", 1.0))
+        amortized_overhead = float(item.get("amortized_overhead_percent", 0.0)) / 100.0
+        queue_overlap = min(1.0, max(0.0, float(item.get("queue_overlap_fraction", 0.0))))
+        effective_share = share * invocation_scale * (1.0 - queue_overlap)
+        new_share = effective_share / (1.0 + speedup) if speedup > -1.0 else float("inf")
+        total_share += effective_share
+        optimized_share += new_share
+        overhead_percent += amortized_overhead
+        rows.append({
+            "id": region_id,
+            "effective_runtime_share_percent": effective_share * 100.0,
+            "regional_speedup_percent": speedup * 100.0,
+            "queue_overlap_fraction": queue_overlap,
+            "predicted_total_time_reduction_percent": (effective_share - new_share) * 100.0,
+        })
+    interaction = raw.get("interaction_run")
+    if overlaps and not interaction:
+        result = {
+            "schema_version": "vladder-application-composition-v1",
+            "status": "rejected_overlap",
+            "composable": False,
+            "overlaps": overlaps,
+            "regions": rows,
+            "reason": "overlapping regional effects require a measured interaction run",
+        }
+    elif total_share > 1.000001:
+        result = {
+            "schema_version": "vladder-application-composition-v1",
+            "status": "invalid_runtime_share",
+            "composable": False,
+            "overlaps": overlaps,
+            "regions": rows,
+            "reason": "effective regional runtime shares exceed 100%",
+        }
+    else:
+        predicted_new_time = (1.0 - total_share) + optimized_share + overhead_percent
+        predicted_speedup = (1.0 / predicted_new_time - 1.0) * 100.0
+        result = {
+            "schema_version": "vladder-application-composition-v1",
+            "status": "pass",
+            "composable": True,
+            "overlaps": overlaps,
+            "regions": rows,
+            "predicted_end_to_end_speedup_percent": predicted_speedup,
+            "amortized_overhead_percent": overhead_percent * 100.0,
+            "interaction_run": interaction,
+            "confirmation_required": True,
+            "claim_boundary": "Amdahl-style forecast only; a measured end-to-end run is required for promotion",
         }
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")

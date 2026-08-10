@@ -7,6 +7,11 @@ vladder schema list
 vladder schema validate --kind promotion-summary --artifact promotion-summary.json
 ```
 
+The registered set also includes optimization plans, portfolio campaign summaries, concise agent
+dispositions, discovered project-evidence manifests, physical-runner envelopes, and signed remote
+result bundles. These orchestration artifacts describe routing and evidence state; they do not
+widen the semantic claim of any proof artifact.
+
 The initial stable set covers `SemanticFlowGraph v2`, promotion summaries, paired benchmark
 results, agent reviews, and source-free training bundles. Within one schema major version, producers may add optional fields but
 may not remove required fields, change required field types, or reinterpret enums. Incompatible

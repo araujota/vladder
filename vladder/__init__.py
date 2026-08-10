@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc21"
+__version__ = "1.0.0rc22"
 
 from .api import (
     AgentWorkflowRequest,
@@ -64,6 +64,19 @@ from .whole_build import (
     WholeBuildIndex,
     run_cross_tu_closure,
 )
+from .orchestrator import (
+    OptimizationRequest as OrchestrationRequest,
+    build_plan,
+    discover_project_evidence,
+    execute_remote_adapter,
+    inventory_external_authorities,
+    inventory_repository,
+    resume_optimization,
+    run_optimization,
+    run_portfolio,
+    terminal_status,
+    verify_remote_result,
+)
 
 __all__ = [
     "BenchmarkPolicy",
@@ -111,6 +124,7 @@ __all__ = [
     "LifetimeRequest",
     "OptimizationRequest",
     "OptimizationResult",
+    "OrchestrationRequest",
     "PairedBenchmarkRequest",
     "StateProtocolRequest",
     "RustRegionRequest",
@@ -159,6 +173,16 @@ __all__ = [
     "run_cross_tu_closure",
     "protocol_template",
     "verify_resource_protocol",
+    "build_plan",
+    "discover_project_evidence",
+    "execute_remote_adapter",
+    "inventory_external_authorities",
+    "inventory_repository",
+    "resume_optimization",
+    "run_optimization",
+    "run_portfolio",
+    "terminal_status",
+    "verify_remote_result",
     "analyze_spirv_semantics",
     "parse_spirv_instructions",
     "classify_structured_dataflow",

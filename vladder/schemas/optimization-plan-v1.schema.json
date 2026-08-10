@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/optimization-plan-v1.schema.json",
+  "title": "vLadder Optimization Plan v1",
+  "type": "object",
+  "required": ["schema_version", "plan_id", "request", "classification", "contract_candidate", "external_authority_inventory", "project_evidence", "grammar_coverage", "representativeness", "forecast", "steps", "economic_decision", "authority"],
+  "properties": {
+    "schema_version": {"const": "vladder-optimization-plan-v1"},
+    "plan_id": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "request": {"type": "object"},
+    "classification": {"type": "object", "required": ["kind", "language", "confidence"]},
+    "contract_candidate": {"type": "object", "required": ["facts", "unresolved_assumptions", "suggested_patch", "authority"]},
+    "external_authority_inventory": {"type": "array", "items": {"type": "object"}},
+    "project_evidence": {"type": "object"},
+    "grammar_coverage": {"type": "object", "required": ["coverage_classification", "negative_result_authority"]},
+    "representativeness": {"type": "object", "required": ["dimensions", "aggregate", "status"]},
+    "forecast": {"type": "object", "required": ["evidence_states", "first_unreachable_state", "dependencies", "estimated_runtime_seconds", "estimated_artifact_count", "authority"]},
+    "steps": {"type": "array", "items": {"type": "object", "required": ["id", "status", "command"]}},
+    "economic_decision": {"type": "object", "required": ["recommendation", "reason"]},
+    "authority": {"type": "string"}
+  },
+  "additionalProperties": true
+}

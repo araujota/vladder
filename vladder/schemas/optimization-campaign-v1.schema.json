@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/optimization-campaign-v1.schema.json",
+  "title": "vLadder Optimization Campaign v1",
+  "type": "object",
+  "required": ["schema_version", "project", "region_count", "unique_semantic_roots", "duplicate_count", "execution_requested", "workers", "regions", "summary"],
+  "properties": {
+    "schema_version": {"const": "vladder-optimization-campaign-v1"},
+    "project": {"type": "string"},
+    "region_count": {"type": "integer", "minimum": 0},
+    "unique_semantic_roots": {"type": "integer", "minimum": 0},
+    "duplicate_count": {"type": "integer", "minimum": 0},
+    "execution_requested": {"type": "boolean"},
+    "workers": {"type": "integer", "minimum": 1},
+    "regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "source", "symbol", "semantic_root", "forecast", "economic_decision", "plan"],
+        "properties": {
+          "id": {"type": "string"},
+          "source": {"type": "string"},
+          "symbol": {"type": "string"},
+          "semantic_root": {"type": "string"},
+          "duplicate_of": {"type": ["string", "null"]},
+          "terminal_status": {"type": ["string", "null"]},
+          "forecast": {"type": "object"},
+          "economic_decision": {"type": "object"},
+          "plan": {"type": "string"}
+        },
+        "additionalProperties": true
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["continue", "stop", "escalate"],
+      "properties": {
+        "continue": {"type": "integer", "minimum": 0},
+        "stop": {"type": "integer", "minimum": 0},
+        "escalate": {"type": "integer", "minimum": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true
+}

@@ -110,8 +110,14 @@ class PublicReleaseContractTests(unittest.TestCase):
             set(report["artifacts"]),
             {
                 "agent-review",
+                "agent-disposition",
                 "benchmark-result",
                 "cross-tu-closure",
+                "optimization-campaign",
+                "optimization-plan",
+                "physical-runner",
+                "project-evidence",
+                "remote-result",
                 "promotion-summary",
                 "resource-protocol",
                 "semantic-flow",
@@ -125,7 +131,11 @@ class PublicReleaseContractTests(unittest.TestCase):
         self.assertEqual(report["artifacts"]["model-training-bundle"]["stability"], "candidate")
         self.assertTrue(all(
             item["stability"] == "stable"
-            for name, item in report["artifacts"].items() if name != "model-training-bundle"
+            for name, item in report["artifacts"].items()
+            if name not in {
+                "model-training-bundle", "agent-disposition", "optimization-campaign",
+                "optimization-plan", "physical-runner", "project-evidence", "remote-result",
+            }
         ))
 
     def test_promotion_summary_validation_accepts_contract_and_rejects_missing_state(self) -> None:

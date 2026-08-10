@@ -14,6 +14,42 @@
       "stability": "stable",
       "producer": "vladder review template"
     },
+    "agent-disposition": {
+      "artifact_schema_version": "vladder-agent-disposition-v1",
+      "file": "agent-disposition-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder optimize or vladder resume"
+    },
+    "optimization-plan": {
+      "artifact_schema_version": "vladder-optimization-plan-v1",
+      "file": "optimization-plan-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder can-optimize or vladder optimize"
+    },
+    "optimization-campaign": {
+      "artifact_schema_version": "vladder-optimization-campaign-v1",
+      "file": "optimization-campaign-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder optimize --portfolio"
+    },
+    "physical-runner": {
+      "artifact_schema_version": "vladder-physical-runner-v1",
+      "file": "physical-runner-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder can-optimize or vladder optimize"
+    },
+    "project-evidence": {
+      "artifact_schema_version": "vladder-project-evidence-v1",
+      "file": "project-evidence-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder can-optimize or vladder optimize"
+    },
+    "remote-result": {
+      "artifact_schema_version": "vladder-remote-result-v1",
+      "file": "remote-result-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder runner execute or an approved remote executor"
+    },
     "benchmark-result": {
       "artifact_schema_version": "vladder-paired-benchmark-v1",
       "file": "benchmark-result-v1.schema.json",

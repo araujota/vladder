@@ -1,6 +1,25 @@
 # Agent Workflow Examples
 
-Create a release-candidate workflow manifest with:
+Start new work through the evidence orchestrator:
+
+```bash
+vladder can-optimize transform --source src/transform.cpp --project . --out-dir vladder-transform
+vladder optimize src/transform.cpp --function transform --project . --out-dir vladder-transform
+```
+
+The first command predicts the reachable evidence states, expected cost, external authorities,
+grammar coverage, and first blocker. The second delegates to the applicable specialist workflow
+and writes one `disposition.json`. Edit only the scaffold named by `next_action`, then continue with
+`vladder resume --out-dir vladder-transform`.
+
+For a repository inventory with semantic-root deduplication and parallel planning:
+
+```bash
+vladder optimize --portfolio --project . --max-regions 50 --workers 4 --out-dir vladder-portfolio
+```
+
+The older explicit workflow interface remains available for controlled or scripted investigations.
+Create its manifest with:
 
 ```bash
 vladder workflow init --kind cpp --out workflow.yaml

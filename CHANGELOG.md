@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.0rc22 - 2026-08-10
+
+### Added
+
+- Make `vladder optimize` the authoritative routed entry point across supported source languages,
+  shaders, and repository portfolios while preserving the bounded-C CLI and identifying lifetime
+  or protocol boundaries that require their specialist workflows.
+- Add `vladder can-optimize`, early evidence reachability and cost forecasts, contract inference,
+  external-authority inventories, project-oracle discovery, grammar-coverage qualification, and
+  proof-unit representativeness scoring.
+- Add concise terminal evidence statuses, stable proof badges, normalized failure/remediation
+  records, executable next actions, and `CONTINUE`/`STOP`/`ESCALATE` economics.
+- Add content-addressed orchestration stages, `vladder resume`, structured progress JSONL,
+  repository inventory/deduplication, project-evidence and adapter scaffolds, adaptive paired
+  experiments, application composition forecasts, physical-runner envelopes, and integrity-checked
+  remote executor adapters.
+- Add prepopulated multi-workflow campaign reviews and context-sensitive agent guidance.
+
+### Compatibility
+
+- Preserve every specialist executor and proof/promotion gate. Planning and discovered project
+  evidence remain advisory, generated adapters remain non-promotable, and contribution behavior
+  remains durable-consent-gated and v2-only.
+
 ## 1.0.0rc21 - 2026-08-09
 
 ### Fixed

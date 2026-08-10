@@ -19,7 +19,7 @@ If the command is unavailable or reports another version, tell the user that the
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc21'
+python3 -m pip install --pre 'vladder==1.0.0rc22'
 vladder doctor --strict
 ```
 
@@ -27,7 +27,7 @@ Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or t
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc21`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc22`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v8`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
@@ -109,15 +109,21 @@ ordinary proof and physical gate.
 
 ### Canonical Agent Entry
 
-Read [agent-workflow.md](references/agent-workflow.md) and
-[release-evidence.md](references/release-evidence.md), then begin with one manifest rather than
-assembling subcommands from memory:
+Do not select a specialist command family from memory. Begin with the production region and let
+the authoritative planner route it:
 
 ```bash
 vladder consent show
-vladder workflow init --kind cpp --out vladder-workflow.yaml
-vladder workflow run --manifest vladder-workflow.yaml --out-dir vladder-workflow-out
+vladder can-optimize SYMBOL --source SOURCE --project . --out-dir vladder-out
+vladder optimize SOURCE --function SYMBOL --project . --out-dir vladder-out
 ```
+
+Add `--compile-commands build/compile_commands.json` for C++ when it is not auto-discovered. Read
+`disposition.json`, not the full artifact tree. Report its five facts, `terminal_status`,
+`economic_decision`, and argv-form `next_action`. Use `vladder resume --out-dir vladder-out` after
+supplying a named scaffold. Inspect specialist references only when the generated plan routes to
+them. Read [agent-workflow.md](references/agent-workflow.md) and
+[release-evidence.md](references/release-evidence.md) only for the current blocker.
 
 Before the first canonical workflow run, show the user the complete machine-readable notice for
 each `unknown` contribution scope and ask for an explicit opt-in or opt-out. This is a required
@@ -489,12 +495,6 @@ proof class, assumptions, code change, regional runtime share, and end-to-end de
 result as `bounded_optimal_local` only after exhaustive coverage with sound pruning; otherwise use
 `best_verified_found`. Never claim global optimality.
 
-## Advanced Modes
-- Streaming operators and stateful pipelines: `vladder operator analyze|optimize`, `vladder pipeline optimize`
-- Hierarchical pipelines and projections: `vladder pipeline analyze-v4|optimize-v4`, `vladder projection ...`
-- Attribution-gated and Q4_K kernels: `vladder sksf validate-attribution|synthesize`, `vladder q4k ...`
-- GPU and lifetime workflows: `vladder gpu support|capture|synthesize|verify|rank`, `vladder lifetime ...`
-
-These modes are contract-specific. Read their example manifests in the installed package before
-use and preserve their stated proof classification. They are not implied to have generic source
-emission merely because their grammar rules have deterministic plan lowerers.
+## Advanced Modes: Operator, Pipeline, Projection, Q4_K, GPU, And Lifetime
+Follow the orchestrator's delegated command and installed example manifest; deterministic plan
+lowering does not imply generic source emission or promotion.

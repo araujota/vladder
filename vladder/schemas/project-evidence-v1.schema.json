@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/project-evidence-v1.schema.json",
+  "title": "vLadder Project Evidence v1",
+  "type": "object",
+  "required": ["schema_version", "project", "candidates", "selected", "unresolved", "claim_boundary"],
+  "properties": {
+    "schema_version": {"const": "vladder-project-evidence-v1"},
+    "project": {"type": "string"},
+    "compile_commands": {"type": ["string", "null"]},
+    "candidates": {"type": "array", "items": {"type": "object", "required": ["id", "kind", "command", "source", "confidence", "binding_status"]}},
+    "selected": {"type": "object"},
+    "unresolved": {"type": "array", "items": {"type": "string"}},
+    "claim_boundary": {"type": "string"}
+  },
+  "additionalProperties": true
+}

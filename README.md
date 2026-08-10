@@ -28,9 +28,48 @@ semantically equivalent implementation graph should be supplied, then works back
 developer-readable source replacement. Architectural lifetime changes emit a realization
 contract for an attending code agent; they do not claim generic repository source generation.
 
+## One Agent Entry Point
+
+Start with the production source region. vLadder now performs a cheap feasibility pass before any
+candidate compilation and routes the complete reachable workflow internally:
+
+```bash
+vladder can-optimize transform \
+  --source src/transform.cpp \
+  --project . \
+  --compile-commands build/compile_commands.json \
+  --out-dir vladder-transform
+
+vladder optimize src/transform.cpp \
+  --function transform \
+  --project . \
+  --compile-commands build/compile_commands.json \
+  --out-dir vladder-transform
+```
+
+The preflight produces one `optimization-plan.json` containing language and region routing,
+code-derived contract candidates, unresolved assumptions with a mechanical patch, an upfront
+external-authority map, project test/benchmark candidates, grammar coverage, proof-unit
+representativeness, dependencies, expected runtime and artifact volume, the first unreachable
+evidence state, and an economic `CONTINUE`, `STOP`, or `ESCALATE` recommendation. Discovered tests
+and contracts remain candidates until explicitly bound; planning has no proof or promotion
+authority.
+
+The terminal `disposition.json` defaults to the five facts an agent needs: semantic coverage,
+candidate generation, proof badge, physical measurement, and application integration. Its terminal
+status is one of `NO_COVERAGE`, `NO_CANDIDATE`, `NO_PROOF`, `NO_BENCHMARK`,
+`INTEGRATION_REQUIRED`, `VERIFIED_REJECTION`, or `PROMOTABLE`, with a directly executable next
+command. Full artifact lineage remains available on demand. `vladder resume --out-dir ...` reuses
+matching content-addressed stages and restarts at the first invalid input; `vladder optimize
+--portfolio --project ...` inventories, prioritizes, and deduplicates repository regions.
+
+Existing specialist commands remain stable and are the delegated expert surface. The historical
+`vladder optimize source.c --function transform` arguments still invoke the same bounded-C search,
+proof, benchmark, and patch engine, with the new disposition layered on top.
+
 ## Release Status
 
-The package version is `1.0.0rc21`, the C++ closure matrix is
+The package version is `1.0.0rc22`, the C++ closure matrix is
 `bounded-cpp-regions-v8`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
 `bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
@@ -396,10 +435,10 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc21` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc22` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc21'
+python3 -m pip install --pre 'vladder==1.0.0rc22'
 vladder doctor
 ```
 
@@ -459,26 +498,33 @@ is `vladder` only.
 
 ## CLI Workflow
 
-Start an agent investigation from one manifest:
+Start an agent investigation from the production region:
 
 ```bash
-vladder workflow init --kind cpp --out vladder-workflow.yaml
-# Fill every TODO and record attribution, contract, and workload identity.
-vladder workflow run --manifest vladder-workflow.yaml --out-dir vladder-workflow-out
+vladder can-optimize transform --source src/transform.cpp --project . \
+  --compile-commands build/compile_commands.json --out-dir vladder-transform
+vladder optimize src/transform.cpp --function transform --project . \
+  --compile-commands build/compile_commands.json --out-dir vladder-transform
 ```
 
-Read `promotion-summary.json` first. It contains the proof class, meaningful-coverage state,
-candidate/proof/benchmark/integration states, blockers, one next action, five decisive artifacts,
-and a queryable artifact lineage. Matching source, compiler, grammar, contract, workload, and tool
-inputs resume deterministically and are classified as revalidation rather than a new discovery.
+Read `disposition.json` first. It contains five evidence facts, the terminal status, a bounded proof
+badge, grammar and representativeness qualifications, normalized failures, an economic stopping
+decision, one argv-form next command, and at most five decisive artifacts. Use `vladder resume
+--out-dir vladder-transform` after supplying a missing contract, oracle, runner, or adapter.
+Matching source, compiler, grammar, contract, workload, and tool inputs reuse content-addressed
+stages and are classified as revalidation rather than new discovery.
 
 The operational decision tree is:
 
-1. Choose `c`, `cpp`, `rust`, `zig`, `julia`, `system`, `lifetime`, `gpu`, `shader`, or `protocol` from the region's actual semantic boundary.
-2. Run inspection and read `meaningful_semantic_coverage`.
-3. If an adapter remains, generate or complete it; do not relabel local proof as wrapper proof.
+1. Let `can-optimize` classify the region and read its first unreachable state.
+2. Honor `STOP`; resolve generated scaffolds before continuing from `ESCALATE`.
+3. Run `optimize` only when the plan says `CONTINUE`.
 4. Require candidate proof and randomized paired physical evidence.
 5. Require project integration and composed-system confirmation before retention.
+
+Use `workflow`, `cpp`, `region`, `dataflow`, `shader`, `gpu`, and other specialist commands when the
+generated plan delegates to them or when authoring an expert manifest directly. They remain stable
+interfaces but are no longer the default agent routing decision.
 
 ### Learned Search Prior
 

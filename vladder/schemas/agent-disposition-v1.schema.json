@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/agent-disposition-v1.schema.json",
+  "title": "vLadder Agent Disposition v1",
+  "type": "object",
+  "required": ["schema_version", "terminal_status", "facts", "proof_badge", "promotion_permitted", "economic_decision", "grammar_coverage", "representativeness", "failures", "next_action", "decisive_artifacts"],
+  "properties": {
+    "schema_version": {"const": "vladder-agent-disposition-v1"},
+    "terminal_status": {"enum": ["NO_COVERAGE", "NO_CANDIDATE", "NO_PROOF", "NO_BENCHMARK", "INTEGRATION_REQUIRED", "VERIFIED_REJECTION", "PROMOTABLE"]},
+    "facts": {
+      "type": "object",
+      "required": ["coverage", "candidate", "proof", "measurement", "integration"],
+      "additionalProperties": {"type": "string"}
+    },
+    "proof_badge": {"type": "object", "required": ["badge", "claim"]},
+    "promotion_permitted": {"type": "boolean"},
+    "economic_decision": {"type": "object", "required": ["recommendation", "reason"]},
+    "grammar_coverage": {"type": "object"},
+    "representativeness": {"type": "object"},
+    "failures": {"type": "array", "items": {"type": "object"}},
+    "next_action": {"type": "object", "required": ["description", "command"]},
+    "decisive_artifacts": {"type": "array", "maxItems": 5}
+  },
+  "additionalProperties": true
+}

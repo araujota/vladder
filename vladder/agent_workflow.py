@@ -29,6 +29,35 @@ WORKFLOW_SCHEMA = "vladder-agent-workflow-v1"
 SUMMARY_SCHEMA = "vladder-promotion-summary-v1"
 
 
+def _terminal_status(states: dict[str, bool]) -> str:
+    if states.get("production_promoted") and states.get("application_integrated"):
+        return "PROMOTABLE"
+    if states.get("production_promoted") and not states.get("application_integrated"):
+        return "INTEGRATION_REQUIRED"
+    if states.get("physically_benchmarked") and states.get("candidate_proved"):
+        return "VERIFIED_REJECTION"
+    if states.get("physically_benchmarked"):
+        return "INTEGRATION_REQUIRED"
+    if states.get("candidate_proved"):
+        return "NO_BENCHMARK"
+    if states.get("candidate_generated"):
+        return "NO_PROOF"
+    if states.get("meaningful_semantic_coverage"):
+        return "NO_CANDIDATE"
+    return "NO_COVERAGE"
+
+
+def _economic_recommendation(states: dict[str, bool]) -> dict[str, str]:
+    status = _terminal_status(states)
+    if status == "PROMOTABLE":
+        return {"recommendation": "STOP", "reason": "declared promotion objective reached"}
+    if status == "VERIFIED_REJECTION":
+        return {"recommendation": "STOP", "reason": "verified physical evidence did not promote the candidate"}
+    if status in {"NO_BENCHMARK", "INTEGRATION_REQUIRED"}:
+        return {"recommendation": "CONTINUE", "reason": "the next ordinary evidence gate is reachable"}
+    return {"recommendation": "ESCALATE", "reason": "resolve the named semantic or proof boundary before more search"}
+
+
 def _hash_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
@@ -359,7 +388,9 @@ def build_promotion_summary(
 
     if kind == "c":
         support = report.get("automatic_region", {})
-        states["meaningful_semantic_coverage"] = bool(support.get("supported") or report.get("analysis"))
+        states["meaningful_semantic_coverage"] = bool(
+            support.get("supported") or report.get("analysis") or report.get("flow_shape")
+        )
         candidates = report.get("candidates", [])
         states["candidate_generated"] = bool(candidates)
         winner = report.get("winner") if isinstance(report.get("winner"), dict) else None
@@ -525,6 +556,7 @@ def build_promotion_summary(
     )
     artifacts = _decisive_artifacts(report, report_path, adapter)
     lineage = _lineage(report, report_path, artifacts)
+    terminal = _terminal_status(states)
     return {
         "schema_version": SUMMARY_SCHEMA,
         "workflow_kind": kind,
@@ -545,6 +577,15 @@ def build_promotion_summary(
         "manifest_identity": _hash_json(manifest) if manifest else None,
         "claim_boundary": "promotion requires every state through application integration; local proof never implies external protocol equivalence",
         "optional_contributions": _optional_contributions(),
+        "terminal_status": terminal,
+        "evidence_badges": {
+            "coverage": "PASS" if states["meaningful_semantic_coverage"] else "MISSING",
+            "candidate": "GENERATED" if states["candidate_generated"] else "NONE",
+            "proof": "PASS" if states["candidate_proved"] else "NOT_ESTABLISHED",
+            "measurement": "MEASURED" if states["physically_benchmarked"] else "NOT_RUN",
+            "integration": "PASS" if states["application_integrated"] else "NOT_ESTABLISHED",
+        },
+        "economic_recommendation": _economic_recommendation(states),
     }
 
 
@@ -657,6 +698,8 @@ def _infer_kind(report: dict[str, Any]) -> str:
     if "system-closure" in schema or "system_graph" in report:
         return "system"
     if schema.startswith("vladder-c-") or "automatic_region" in report:
+        return "c"
+    if "flow_shape" in report and isinstance(report.get("candidates"), list) and "winner" in report:
         return "c"
     if "lifetime" in schema:
         return "lifetime"

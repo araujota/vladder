@@ -20,3 +20,8 @@ Use the exact claim language in `promotion-summary.json`. `workflow_completed`,
 `meaningful_semantic_coverage`, `candidate_generated`, `candidate_proved`,
 `physically_benchmarked`, `application_integrated`, and `production_promoted` are independent
 states.
+
+For orchestrated runs, read `disposition.json` first. Its proof badge is a concise view over the
+same evidence, not a stronger proof. `PROMOTABLE` requires application integration; a locally
+proved and benchmarked source candidate is `INTEGRATION_REQUIRED` until the project oracle binds
+the production implementation and composed workload.

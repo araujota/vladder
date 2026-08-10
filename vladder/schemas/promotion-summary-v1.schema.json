@@ -18,6 +18,9 @@
     "promotion_permitted": {"type": "boolean"},
     "blockers": {"type": "array", "items": {"type": "string"}},
     "next_action": {"type": "string"},
+    "terminal_status": {"enum": ["NO_COVERAGE", "NO_CANDIDATE", "NO_PROOF", "NO_BENCHMARK", "INTEGRATION_REQUIRED", "VERIFIED_REJECTION", "PROMOTABLE"]},
+    "evidence_badges": {"type": "object"},
+    "economic_recommendation": {"type": "object"},
     "claim_boundary": {"type": "string"}
   },
   "additionalProperties": true
