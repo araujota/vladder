@@ -20,6 +20,7 @@ import yaml
 from . import __version__
 from .agent_workflow import run_agent_workflow, summarize_report
 from .capabilities import GrammarRegistry, load_registry
+from .executable_search import ExecutableSearchEngine, ExecutableSearchRequest
 
 
 PLAN_SCHEMA = "vladder-optimization-plan-v1"
@@ -1234,6 +1235,90 @@ def _workflow_manifest(plan: dict[str, Any], output: Path) -> Path:
     return path
 
 
+def _load_optional_contract(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.is_file():
+        return None
+    raw = json.loads(path.read_text()) if path.suffix.lower() == ".json" else yaml.safe_load(path.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError("optimization contract must be a mapping")
+    value = raw.get("contract", raw)
+    return dict(value) if isinstance(value, dict) else None
+
+
+def _run_executable_source_search(request: OptimizationRequest, output: Path, kind: str) -> dict[str, Any]:
+    if request.source is None or request.symbol is None:
+        return {"status": "not_attempted"}
+    search_output = output / "executable-search"
+    result = ExecutableSearchEngine(output / ".evidence-cache/executable-search").search(
+        ExecutableSearchRequest(
+            identifier=request.symbol,
+            output_directory=search_output,
+            source=request.source,
+            function=request.symbol,
+            language=kind,
+            family="auto",
+            contract=_load_optional_contract(request.contract),
+            project_id=request.project.name,
+            workload={"manifest": _path_identity(request.workload)} if request.workload else None,
+            hardware={"architecture": "local"},
+        )
+    )
+    if result.get("status") != "pass":
+        return result
+    terminals = list(result.get("terminals", []))
+    proved = [item for item in terminals if item.get("proof_status") == "PASS"]
+    distinct = [item for item in proved if item.get("physical_outcome") == "distinct_realization"]
+    winner = distinct[0] if distinct else proved[0] if proved else None
+    proof_complete = winner is not None
+    report = {
+        "schema_version": f"vladder-{kind}-executable-source-search-v1",
+        "status": "pass",
+        "language": "c++" if kind == "cpp" else "c",
+        "source_sha256": hashlib.sha256(request.source.read_bytes()).hexdigest(),
+        "closure": {
+            "disposition": "automatic_with_benchmark_adapter",
+            "capabilities": {
+                "semantic_capture": {"actual": True},
+                "candidate_generation": {"actual": bool(terminals)},
+                "local_proof": {"actual": proof_complete},
+                "benchmark": {"actual": False},
+            },
+        },
+        "proof_classification": "bounded_lazy_source_search",
+        "candidates": terminals,
+        "candidate_proof_summary": {
+            "proved": len(proved),
+            "unresolved_or_failed": len(terminals) - len(proved),
+            "selected_candidate_proved": proof_complete,
+        },
+        "winner": {"candidate_sha256": winner.get("candidate_id")} if winner else None,
+        "adapters": [{
+            "kind": "physical-benchmark",
+            "reason": "proved and assembly-distinct candidates require paired workload timing before promotion",
+        }],
+        "artifacts": {
+            "proof_envelope": str(search_output / "executable-closure.json"),
+            "provenance": str(search_output / "executable-search-trace.json"),
+        },
+        "executable_search": result,
+        "claim_boundary": "bounded source candidate proof and physical identity only; no runtime or owning-wrapper promotion claim",
+    }
+    if kind == "c":
+        report["automatic_region"] = {"supported": True}
+        report["winner"] = ({
+            "candidate": winner.get("candidate_id"),
+            "candidate_sha256": winner.get("candidate_id"),
+            "proof": {"status": "PROVED" if proof_complete else "UNPROVED"},
+            "memory_proof": {"status": "proved" if proof_complete else "unknown"},
+            "alive2": {"status": "correct" if proof_complete else "unavailable"},
+            "status": "NOT_BENCHMARKED",
+        } if winner else None)
+        report["verification_tier"] = "bounded_lazy_source_search"
+    report_path = output / "executable-source-search-report.json"
+    _write_json(report_path, report)
+    return {"status": "pass", "report": report, "report_path": report_path}
+
+
 def execute_plan(
     request: OptimizationRequest,
     plan: dict[str, Any],
@@ -1285,6 +1370,14 @@ def execute_plan(
         if not report_path.exists():
             raise RuntimeError(f"bounded C executor returned {rc} without perf.json")
         summary = summarize_report(report_path, output / "promotion-summary.json")
+    elif kind in {"c", "cpp"}:
+        executable = _run_executable_source_search(request, output, kind)
+        if executable.get("status") == "pass" and executable.get("report_path"):
+            summary = summarize_report(Path(executable["report_path"]), output / "promotion-summary.json")
+        else:
+            workflow = _workflow_manifest(plan, output)
+            summary = run_agent_workflow(workflow, output / "workflow-out", force=request.force)
+            _write_json(output / "promotion-summary.json", summary)
     else:
         workflow = _workflow_manifest(plan, output)
         summary = run_agent_workflow(workflow, output / "workflow-out", force=request.force)

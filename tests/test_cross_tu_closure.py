@@ -12,6 +12,8 @@ from vladder.whole_build import (
     WholeBuildIndex,
     run_cross_tu_closure,
 )
+from vladder.executable_search import ExecutableSearchEngine, ExecutableSearchRequest
+from vladder.training_workflow import create_training_bundle_from_search_trace
 from vladder.toolchain import discover_toolchain
 
 
@@ -23,6 +25,8 @@ def _fixture(tmp_path: Path) -> Path:
         "caller.cpp": 'extern "C" int root(int);\nextern "C" int caller(int x) { return root(x) * 2; }\n',
         "callback.cpp": 'extern "C" int invoke_cb(int (*cb)(int), int x) { return cb(x); }\n',
         "owner.cpp": '#include <cstdlib>\nvolatile void *owner_sink;\nextern "C" int own() { void *p = std::malloc(4); owner_sink = p; if (!p) return 0; std::free(p); return 1; }\n',
+        "loop_helper.cpp": 'extern "C" void loop_helper(float *dst, const float *src, unsigned n) { for (unsigned i = 0; i < n; ++i) { dst[i] = src[i] * 2.0f; } }\n',
+        "loop_root.cpp": 'extern "C" void loop_helper(float *, const float *, unsigned);\nextern "C" void loop_root(float *dst, const float *src, unsigned n) { loop_helper(dst, src, n); for (unsigned i = 0; i < n; ++i) { dst[i] += 1.0f; } }\n',
     }
     entries = []
     for name, source in sources.items():
@@ -112,3 +116,77 @@ def test_ambiguous_weak_definitions_fail_closed(tmp_path: Path) -> None:
     assert index.resolve_definition("shared_weak")["status"] == "ambiguous_odr"
     summaries = CrossTUSummaryDatabase(index, tmp_path / "ambiguous-db")
     assert summaries.summary("shared_weak") is None
+
+
+def test_cross_tu_compositions_are_lazy_memoized_and_boundary_explicit(tmp_path: Path) -> None:
+    database = _fixture(tmp_path)
+    result = ExecutableSearchEngine(tmp_path / "cache").search(ExecutableSearchRequest(
+        "cross-tu-root",
+        tmp_path / "out",
+        family="cross-tu-composition",
+        language="cpp",
+        project_id="fixture",
+        compile_commands=database,
+        cross_tu_seeds=("root",),
+        max_upstream=1,
+        max_downstream=2,
+    ))
+    assert result["status"] == "pass"
+    assert result["closure"]["exhaustive_within_domain"] is True
+    assert result["closure"]["source_executable"] is False
+    assert result["closure"]["stages"]["proof"]["status"] == "complete"
+    assert len(result["terminals"]) == 1
+    assert result["terminals"][0]["proof_status"] == "PASS"
+    nodes = result["lazy_search"]["nodes"]
+    assert any(item["action"].get("op") == "add_definition_edge" for item in nodes)
+    assert any(item["action"].get("op") == "preserve_protocol_boundary" for item in nodes)
+    assert result["lazy_search"]["canonicalized"] > 0
+    bundle = create_training_bundle_from_search_trace(
+        result["trace"],
+        tmp_path / "cross-tu-training.json",
+        project_id="fixture",
+        producer_agent="test",
+        producer_model="test",
+        identity_path=tmp_path / "identity.json",
+    )
+    labels = {
+        item["survival"]["class"]
+        for item in bundle["branches"]
+        if not item["baseline"]
+    }
+    assert labels <= {
+        "KEEP_UNCERTAIN", "PRUNE_HIGH_CONFIDENCE", "BLOCKED_BY_CONTRACT",
+    }
+    assert "KEEP_UNCERTAIN" in labels
+
+
+def test_cross_tu_search_regenerates_and_proves_selected_build_regions(tmp_path: Path) -> None:
+    database = _fixture(tmp_path)
+    result = ExecutableSearchEngine(tmp_path / "cache").search(ExecutableSearchRequest(
+        "cross-tu-loop",
+        tmp_path / "loop-out",
+        family="cross-tu-composition",
+        language="cpp",
+        project_id="fixture",
+        compile_commands=database,
+        cross_tu_seeds=("loop_root",),
+        max_upstream=0,
+        max_downstream=1,
+        node_budget=5_000,
+    ))
+    assert result["status"] == "pass"
+    regional = [
+        item for item in result["terminals"]
+        if "selection" in item.get("parameters", {})
+    ]
+    assert len(regional) > 1
+    assert all(item["compile_status"] == "PASS" for item in regional)
+    assert all(item["proof_status"] == "PASS" for item in regional)
+    assert any(item["realization"] == "cross-tu-composed-schedules" for item in regional)
+    assert result["closure"]["stages"]["source_reconstruction"]["status"] == "complete"
+    assert result["closure"]["stages"]["physical_identity"]["status"] == "complete"
+    assert any(
+        node["decision_context"]["quality"] == "region_projected"
+        for node in result["lazy_search"]["nodes"]
+        if node["action"].get("op") == "select_schedule"
+    )

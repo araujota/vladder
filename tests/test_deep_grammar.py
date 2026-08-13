@@ -47,12 +47,20 @@ class DeepGrammarTests(unittest.TestCase):
             empty.write_text("unrelated:\n  retq\n")
             alias_ir = root / "alias.ll"
             alias_ir.write_text(
-                "@deep_candidate = alias i64 (ptr), ptr @paired.deep_baseline\n"
+                "@deep_candidate = unnamed_addr alias i64 (ptr), ptr @paired.deep_baseline\n"
                 "define internal i64 @paired.deep_baseline(ptr %p) {\n  ret i64 0\n}\n"
+            )
+            constructor = root / "constructor.s"
+            constructor.write_text(
+                "_ZN4ItemC2Ei:\n  movl %esi, (%rdi)\n  retq\n"
+                ".set _ZN4ItemC1Ei, _ZN4ItemC2Ei\n"
             )
             self.assertEqual(_hot_assembly_identity(zig, "deep_candidate")["status"], "resolved")
             self.assertEqual(_hot_assembly_identity(julia, "deep_candidate")["status"], "resolved")
             self.assertEqual(_hot_assembly_identity(empty, "deep_candidate", alias_ir)["status"], "resolved")
+            constructor_identity = _hot_assembly_identity(constructor, "_ZN4ItemC1Ei")
+            self.assertEqual(constructor_identity["status"], "resolved")
+            self.assertEqual(constructor_identity["resolved_symbol"], "_ZN4ItemC2Ei")
             unresolved = _hot_assembly_identity(empty, "deep_candidate")
             self.assertEqual(unresolved["status"], "unresolved")
             self.assertIsNone(unresolved["normalized_sha256"])

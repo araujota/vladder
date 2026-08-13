@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`bounded-cpp-regions-v8` expands C++ coverage without claiming arbitrary C++ equivalence. It
+`bounded-cpp-regions-v11` expands C++ coverage without claiming arbitrary C++ equivalence. It
 distinguishes three jobs that were previously conflated:
 
 1. capture the production translation unit, concrete definition, ABI, and compiled effects;
@@ -12,6 +12,27 @@ distinguishes three jobs that were previously conflated:
 
 The frontend therefore may accept a function for automatic decomposition while correctly refusing
 to optimize or rewrite it.
+
+Version v11 resolves bounded LLVM global-alias chains after Clang AST selection. This covers the
+ordinary Itanium constructor/destructor ABI case where the source-selected `C1`/`D1` symbol aliases
+one emitted `C2`/`D2` definition. Reports retain both identities and the complete chain; alias
+resolution does not change the selected source definition or close its ownership protocol. The
+typed ABI also uses Clang's desugared type for proof classification while retaining typedef source
+spelling for reconstruction and review.
+
+Version v9 separates two notions that must not be conflated. `eligible` means a loop is a closed
+local semantic capsule. `schedule_eligible` means the selected owning source can receive an
+ordinary, non-assumptive Clang schedule request while Clang still enforces dependencies, calls,
+exceptions, atomics, and alias legality. A callback or allocating wrapper may therefore expose
+real compiled schedule candidates while remaining `adapter_required` for generic whole-function
+equivalence. The proof envelope names this narrower compiler-legality claim.
+
+The automatic source search also exposes `llvm-function-v1`. It uses `llvm-extract` to retain the
+selected function together with named aggregate types, globals, declarations, and personality
+context, lazily runs a finite pass-pipeline grammar, validates source and target modules through
+Alive2's two-module selected-function interface, lowers with `llc`, and deduplicates normalized
+selected-symbol assembly. It emits verified LLVM replacement artifacts, not reconstructed owning
+C++ source. Alive2-unsupported `invoke` or interprocedural behavior remains explicit uncertainty.
 
 Direct project calls outside the selected translation unit use the separate
 `vladder build closure` workflow. It combines compilation commands, object definition/reference
@@ -52,8 +73,9 @@ vladder cpp optimize --source target.cpp --function transform --compile-commands
 vladder cpp audit --manifest cpp-regions.yaml --materialize-isolation --out-dir audit
 ```
 
-Use `--symbol` for an exact overload or concrete template specialization and `--command-index`
-for one exact compilation-database entry. Materialized audit compiles and proves local units but
+Use `--symbol` for an exact overload or concrete template specialization, or `--source-line` for a
+line inside exactly one Clang-emitted definition. Use `--command-index` for one exact
+compilation-database entry. Materialized audit compiles and proves local units but
 still records `optimization_performed: false` and `source_changes_performed: false`.
 
 ## Typed Boundaries

@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/production-canonical-search-v1.schema.json",
+  "title": "vLadder Production Canonical Search Evidence",
+  "type": "object",
+  "required": [
+    "schema_version", "engine_version", "requested_mode", "effective_mode", "identity",
+    "complete", "production_defaults", "disabled_experimental_authorities",
+    "canonical_state_dag", "reduction_waterfall", "reduction_decisions", "footprint_audit",
+    "analysis_caches", "cost_model", "resource_policy", "checkpoint"
+  ],
+  "properties": {
+    "schema_version": {"const": "vladder-production-canonical-search-v1"},
+    "engine_version": {"const": "production-canonical-search-v1"},
+    "requested_mode": {
+      "enum": ["fast", "guided", "exhaustive", "exhaustive_canonical", "exhaustive_reduced", "guided_reduced"]
+    },
+    "effective_mode": {
+      "enum": ["fast", "exhaustive_canonical", "exhaustive_reduced", "guided_reduced"]
+    },
+    "identity": {
+      "type": "object",
+      "required": [
+        "canonical_schema", "canonical_identity_schema", "search_engine", "production_engine",
+        "source_identity", "grammar_identity", "target_identity"
+      ],
+      "additionalProperties": {"type": "string"}
+    },
+    "complete": {"type": "boolean"},
+    "production_defaults": {"type": "object"},
+    "disabled_experimental_authorities": {"type": "array", "items": {"type": "string"}},
+    "canonical_state_dag": {"type": "object"},
+    "reduction_waterfall": {"type": "object"},
+    "reduction_decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "state_family", "depth", "frontier_size", "footprint_complete_ratio",
+          "selected_level", "expected_saved_cost_ms", "expected_reduction_cost_ms", "reason"
+        ]
+      }
+    },
+    "footprint_audit": {
+      "type": "object",
+      "required": ["families"],
+      "properties": {"families": {"type": "array", "items": {"type": "object"}}}
+    },
+    "analysis_caches": {"type": "object"},
+    "cost_model": {"type": "object"},
+    "resource_policy": {
+      "type": "object",
+      "required": [
+        "node_budget", "work_budget", "time_budget_seconds", "memory_ceiling_bytes",
+        "memory_ceiling_stop", "identity_preserved_on_resource_stop"
+      ]
+    },
+    "checkpoint": {"type": "object"}
+  },
+  "additionalProperties": false
+}

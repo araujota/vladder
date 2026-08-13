@@ -318,6 +318,21 @@ def _execution_checks(root: Path, work: Path) -> tuple[list[ReadinessCheck], lis
             remediation="Complete or repair every active OpenSpec workflow.", timeout=300,
         ),
         _command_check(
+            "validation.production-canonical-search-smoke",
+            "functionality",
+            "Production canonical identity, POR, resume, concurrency, cost, and scaling smoke battery",
+            [
+                sys.executable,
+                "scripts/run_production_canonical_smoke.py",
+                "--out",
+                str(work / "production-canonical-search-smoke.json"),
+            ],
+            root,
+            evidence=("scripts/run_production_canonical_smoke.py",),
+            remediation="Resolve every production canonical-search smoke failure before release.",
+            timeout=300,
+        ),
+        _command_check(
             "validation.release-demos", "functionality", "Reproducible public frontend demonstrations",
             [sys.executable, "scripts/run_release_demos.py", "--out-dir", str(work / "demos")], root,
             evidence=("demos/README.md",), remediation="Fix all documented release demonstrations.", timeout=900,
@@ -573,6 +588,12 @@ def evaluate_release_readiness(
             ("validation.full-tests", "functionality", "Complete supported-language and workflow test suite", "python -m pytest -q"),
             ("validation.quality", "quality", "Static and security analysis", "python -m ruff; python -m bandit"),
             ("validation.openspec", "governance", "Strict OpenSpec validation", "openspec validate --all --strict"),
+            (
+                "validation.production-canonical-search-smoke",
+                "functionality",
+                "Production canonical-search smoke battery",
+                "vladder release smoke-canonical-search",
+            ),
             ("artifacts.build", "artifacts", "Build, audit, and clean-install wheel and sdist", "python -m build"),
         ):
             checks.append(_not_run(*item))

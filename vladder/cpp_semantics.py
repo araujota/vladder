@@ -151,21 +151,25 @@ def describe_abi(
     source_text: str | None = None,
 ) -> dict[str, Any]:
     result = describe_cpp_type(function_return_type(function_type), "return")
-    arguments = [describe_cpp_type(item["type"], "parameter") for item in parameters]
+    arguments = []
+    for item in parameters:
+        descriptor = describe_cpp_type(item.get("canonical_type") or item["type"], "parameter").to_dict()
+        descriptor["source_spelling"] = item["type"]
+        arguments.append(descriptor)
     lowered_sret = bool(re.search(r"\bsret(?:\(|\b)", lowered_signature))
     lowered_return = re.match(r"^define\s+(?:[-A-Za-z0-9_]+\s+)*([^@]+?)\s+@", lowered_signature)
     lowered_return_type = normalize_type(lowered_return.group(1)) if lowered_return else "unknown"
     lowered_register_result = result.category == "aggregate_value" and lowered_return_type != "void" and not lowered_sret
     source_fields = _source_aggregate_fields(result, documents, source_text)
     accepted_categories = {"scalar", "pointer", "span", "borrowed_vector", "aggregate_reference"}
-    parameters_modeled = all(item.category in accepted_categories for item in arguments)
+    parameters_modeled = all(item["category"] in accepted_categories for item in arguments)
     result_modeled = result.category in {"void", "scalar"} or (
         result.category == "aggregate_value" and (lowered_sret or lowered_register_result)
     )
     return {
         "schema_version": CPP_SEMANTIC_SCHEMA,
         "return": result.to_dict(),
-        "parameters": [item.to_dict() for item in arguments],
+        "parameters": arguments,
         "lowered_signature": lowered_signature,
         "lowered_sret": lowered_sret,
         "lowered_return_type": lowered_return_type,
@@ -510,6 +514,15 @@ def discover_subregions(
         if not isinstance(begin, int) or not isinstance(end, int):
             continue
         end += int(token_length)
+        # Clang's statement range ends at the final expression token for an
+        # unbraced loop body, excluding its syntactic semicolon. The capsule
+        # must preserve that token to remain valid C++.
+        if item.get("kind") in loop_kinds:
+            cursor = end
+            while cursor < len(source_text) and source_text[cursor].isspace():
+                cursor += 1
+            if cursor < len(source_text) and source_text[cursor] == ";":
+                end = cursor + 1
         macro_origin = "expansionLoc" in begin_location or "spellingLoc" in begin_location or "expansionLoc" in end_location or "spellingLoc" in end_location
         outside_function = (
             isinstance(function_begin, int) and begin < function_begin
@@ -578,11 +591,28 @@ def discover_subregions(
             str(child.get("referencedDecl", {}).get("name")) for child in walk_ast(item)
             if isinstance(child.get("referencedDecl"), dict) and child["referencedDecl"].get("name")
         }
-        structured_return_exit = bool(escaping_control) and set(escaping_control) == {"ReturnStmt"} and not hard_hazards
+        # Clang's unroll/vector/interleave pragmas used by the selected-build
+        # grammar are non-assumptive schedule hints: unlike ivdep or
+        # vectorize(assume_safety), they do not waive dependency, exception,
+        # atomic, alias, or call-order legality.  Therefore an owning/effectful
+        # loop may still be a source-preserving schedule candidate even when it
+        # is not a lambda-isolatable functional proof unit.
+        schedule_hint_eligible = not (
+            macro_origin
+            or outside_function
+            or semantics["runtime_control"]
+            or any(kind in {"GotoStmt", "IndirectGotoStmt", "CoreturnStmt"} for kind in escaping_control)
+        )
+        structured_return_exit = (
+            bool(escaping_control)
+            and set(escaping_control) == {"ReturnStmt"}
+            and schedule_hint_eligible
+        )
         closure_mode = (
             "whole_function_cfg" if structured_return_exit else
             "no_growth_container" if bounded_no_growth else
-            "lambda_capsule"
+            "lambda_capsule" if not hard_hazards else
+            "effect_preserving_schedule"
         )
         regions.append({
             "id": f"region-{index:03d}",
@@ -607,6 +637,7 @@ def discover_subregions(
                 "ownership_change_permitted": False,
             },
             "hard_hazards": hard_hazards,
+            "schedule_hint_eligible": schedule_hint_eligible,
             "escaping_control": escaping_control,
             "closure_mode": closure_mode,
             "boundary": {
@@ -615,6 +646,7 @@ def discover_subregions(
                 "candidate_live_ins": sorted(references - declarations),
             },
             "classification": (
+                "effect_preserving_schedule" if hard_hazards and schedule_hint_eligible else
                 "blocked" if hard_hazards else
                 "bounded_no_growth_container" if bounded_no_growth else
                 "structured_multi_exit_candidate" if structured_return_exit else
@@ -623,7 +655,14 @@ def discover_subregions(
                 "helper_closure_candidate" if unmodeled else
                 "extractable_local_candidate"
             ),
-            "extractable_candidate": not hard_hazards and (not escaping_control or structured_return_exit),
+            # Local extraction and source-preserving scheduling are different
+            # closure claims.  A callback, atomic, allocation, or owning loop
+            # can safely receive an ordinary Clang schedule request while it
+            # is still not a closed lambda/proof capsule.
+            "extractable_candidate": (
+                not hard_hazards
+                and (not escaping_control or structured_return_exit)
+            ),
         })
     return regions
 

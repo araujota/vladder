@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import re
 import shlex
+import subprocess
 import sys
 from typing import Any, Iterable
 
@@ -28,7 +29,7 @@ from .report import write_json
 from .toolchain import compiler_version, discover_toolchain, run
 
 
-CPP_SUPPORT_VERSION = "bounded-cpp-regions-v8"
+CPP_SUPPORT_VERSION = "bounded-cpp-regions-v11"
 
 
 @dataclass(frozen=True)
@@ -187,6 +188,23 @@ def load_compilation_command(
     )
 
 
+def matching_compilation_command_indices(source: Path, compilation_database: Path) -> tuple[int, ...]:
+    """Return every production build configuration that compiles one source file."""
+    source = source.resolve()
+    database = compilation_database.resolve()
+    if database.is_dir():
+        database = database / "compile_commands.json"
+    if not database.exists():
+        return ()
+    raw = json.loads(database.read_text())
+    if not isinstance(raw, list):
+        return ()
+    return tuple(
+        index for index, entry in enumerate(raw)
+        if isinstance(entry, dict) and _resolve_entry_file(entry) == source
+    )
+
+
 def _walk(node: dict[str, Any]) -> Iterable[dict[str, Any]]:
     yield node
     for child in node.get("inner", []):
@@ -204,7 +222,10 @@ def _function_candidates(documents: list[dict[str, Any]], name: str) -> list[dic
     seen: set[tuple[Any, ...]] = set()
     for document in documents:
         for node in _walk(document):
-            if node.get("kind") not in {"FunctionDecl", "CXXMethodDecl"}:
+            if node.get("kind") not in {
+                "FunctionDecl", "CXXMethodDecl", "CXXConstructorDecl",
+                "CXXDestructorDecl", "CXXConversionDecl",
+            }:
                 continue
             if node.get("name") != short_name or not _has_body(node):
                 continue
@@ -219,8 +240,27 @@ def _function_candidates(documents: list[dict[str, Any]], name: str) -> list[dic
     return concrete or candidates
 
 
+def _source_line_matches_definition(
+    source_text: str, source_line: int, start: int, end: int,
+) -> bool:
+    first_line = source_text.count("\n", 0, start) + 1
+    last_line = source_text.count("\n", 0, end) + 1
+    if first_line <= source_line <= last_line:
+        return True
+    if not (source_line < first_line <= source_line + 4):
+        return False
+    line_start = 0
+    for _ in range(1, source_line):
+        line_start = source_text.find("\n", line_start) + 1
+        if line_start == 0:
+            return False
+    prefix = source_text[line_start:start].strip()
+    return bool(re.fullmatch(r"(?:template\s*<[^;{}]*>\s*)+(?:requires\s+[^;{}]+\s*)?", prefix, re.DOTALL))
+
+
 def _select_function(
-    documents: list[dict[str, Any]], function: str, symbol: str | None
+    documents: list[dict[str, Any]], function: str, symbol: str | None,
+    *, source_line: int | None = None, source_text: str | None = None,
 ) -> tuple[dict[str, Any] | None, list[CppAdapterRequirement]]:
     candidates = _function_candidates(documents, function)
     if symbol:
@@ -232,6 +272,35 @@ def _select_function(
             f"symbol {symbol!r} did not identify exactly one concrete definition",
             "one Clang-emitted mangled definition",
             "inspect candidate_symbols and select the production symbol",
+        )]
+    if source_line is not None:
+        if source_line < 1 or source_text is None:
+            return None, [CppAdapterRequirement(
+                "source-location-selection-adapter",
+                "source-line selection requires a positive line and authoritative source text",
+                "one source line inside the selected definition",
+                "repair the source-location selector",
+            )]
+        selected = []
+        for item in candidates:
+            start, end = _source_range(item, source_text)
+            if _source_line_matches_definition(source_text, source_line, start, end):
+                selected.append(item)
+        if len(selected) == 1:
+            return selected[0], []
+        distinct_ranges = {_source_range(item, source_text) for item in selected}
+        if len(selected) > 1 and len(distinct_ranges) == 1:
+            return None, [CppAdapterRequirement(
+                "multi-symbol-definition-adapter",
+                f"source line {source_line} identifies one definition with {len(selected)} emitted symbol realizations",
+                "one concrete mangled specialization or exhaustive instantiation set",
+                "select --symbol or enumerate every candidate symbol as a separate semantic root",
+            )]
+        return None, [CppAdapterRequirement(
+            "source-location-selection-adapter",
+            f"source line {source_line} identified {len(selected)} concrete definitions",
+            "one source line inside exactly one Clang-emitted definition",
+            "inspect candidate_symbols and correct --source-line or select --symbol",
         )]
     if len(candidates) != 1:
         symbols = sorted(str(item.get("mangledName") or item.get("type", {}).get("qualType")) for item in candidates)
@@ -270,7 +339,13 @@ def _parameters(node: dict[str, Any]) -> list[dict[str, str]]:
     result: list[dict[str, str]] = []
     for child in node.get("inner", []):
         if isinstance(child, dict) and child.get("kind") == "ParmVarDecl":
-            result.append({"name": str(child.get("name", "")), "type": str(child.get("type", {}).get("qualType", ""))})
+            type_info = child.get("type", {})
+            source_type = str(type_info.get("qualType", ""))
+            result.append({
+                "name": str(child.get("name", "")),
+                "type": source_type,
+                "canonical_type": str(type_info.get("desugaredQualType") or source_type),
+            })
     return result
 
 
@@ -368,6 +443,79 @@ def _normalize_ir_function(text: str, symbol: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+_LLVM_GLOBAL = r'(?:"(?:\\.|[^"\\])*"|[-A-Za-z$._0-9]+)'
+
+
+def _llvm_global_name(token: str) -> str:
+    return token[1:-1] if token.startswith('"') and token.endswith('"') else token
+
+
+def _ir_has_definition(text: str, symbol: str) -> bool:
+    escaped = re.escape(symbol)
+    return bool(re.search(rf'^define\s+.*@(?:"{escaped}"|{escaped})\(', text, re.MULTILINE))
+
+
+def _resolve_ir_definition_symbol(text: str, requested_symbol: str) -> tuple[str, list[str]]:
+    """Resolve a Clang-emitted LLVM alias chain to its concrete definition.
+
+    The C++ AST remains authoritative for source selection. This only bridges an
+    ABI-level alias (notably constructor/destructor C1/D1 aliases) to the body
+    that LLVM actually emitted for effect analysis and local proof.
+    """
+    aliases: dict[str, str] = {}
+    alias_pattern = re.compile(
+        rf'^\s*@(?P<source>{_LLVM_GLOBAL})\s*=\s*[^\n]*\balias\b(?P<body>[^\n]*)$',
+        re.MULTILINE,
+    )
+    target_pattern = re.compile(rf'@(?P<target>{_LLVM_GLOBAL})')
+    for match in alias_pattern.finditer(text):
+        targets = list(target_pattern.finditer(match.group("body")))
+        if not targets:
+            continue
+        source = _llvm_global_name(match.group("source"))
+        target = _llvm_global_name(targets[-1].group("target"))
+        previous = aliases.get(source)
+        if previous is not None and previous != target:
+            raise CppFrontendError(
+                "ir-symbol-adapter",
+                f"LLVM symbol {source!r} has ambiguous alias targets {previous!r} and {target!r}",
+                "one deterministic alias-to-definition chain",
+                "compiler ABI alias adapter",
+            )
+        aliases[source] = target
+
+    chain = [requested_symbol]
+    current = requested_symbol
+    visited: set[str] = set()
+    while not _ir_has_definition(text, current):
+        if current in visited:
+            raise CppFrontendError(
+                "ir-symbol-adapter",
+                f"LLVM alias cycle while resolving {requested_symbol!r}: {' -> '.join(chain)}",
+                "an acyclic alias-to-definition chain",
+                "compiler ABI alias adapter",
+            )
+        visited.add(current)
+        target = aliases.get(current)
+        if target is None:
+            raise CppFrontendError(
+                "ir-symbol-adapter",
+                f"selected symbol {requested_symbol!r} has no emitted definition or resolvable LLVM alias",
+                "an emitted concrete definition",
+                "force concrete template instantiation or preserve the selected symbol",
+            )
+        current = target
+        chain.append(current)
+        if len(chain) > 32:
+            raise CppFrontendError(
+                "ir-symbol-adapter",
+                f"LLVM alias chain for {requested_symbol!r} exceeds the bounded resolution depth",
+                "an alias chain no deeper than 32 symbols",
+                "compiler ABI alias adapter",
+            )
+    return current, chain
+
+
 def _emit_cpp_ir(command: CompilationCommand, source: Path, symbol: str, out_dir: Path) -> dict[str, Any]:
     tc = discover_toolchain()
     raw = out_dir / "target.production.ll"
@@ -404,12 +552,28 @@ def _emit_cpp_ir(command: CompilationCommand, source: Path, symbol: str, out_dir
             "compiler-adapter", f"effect-analysis C++ LLVM IR emission failed: {(effect_result.stdout + effect_result.stderr)[-2000:]}",
             "optimized Clang LLVM IR for effect closure", "compiler flag adapter",
         )
+    raw_text = raw.read_text(errors="replace")
+    analysis_text = analysis_raw.read_text(errors="replace")
+    effects_text = effects_raw.read_text(errors="replace")
+    resolved_symbols: dict[str, str | None] = {}
+    alias_chains: dict[str, list[str]] = {}
+    for kind, text in (("production", raw_text), ("analysis", analysis_text), ("effects", effects_text)):
+        try:
+            resolved_symbols[kind], alias_chains[kind] = _resolve_ir_definition_symbol(text, symbol)
+        except CppFrontendError:
+            resolved_symbols[kind] = None
+            alias_chains[kind] = [symbol]
+
     retention_mode = "production-ir"
     try:
-        normalized_text = _normalize_ir_function(raw.read_text(errors="replace"), symbol)
+        if resolved_symbols["production"] is None:
+            raise CppFrontendError("ir-symbol-adapter", "production symbol unavailable", "definition", "symbol retention")
+        normalized_text = _normalize_ir_function(raw_text, str(resolved_symbols["production"]))
     except CppFrontendError:
         try:
-            normalized_text = _normalize_ir_function(analysis_raw.read_text(errors="replace"), symbol)
+            if resolved_symbols["analysis"] is None:
+                raise CppFrontendError("ir-symbol-adapter", "analysis symbol unavailable", "definition", "symbol retention")
+            normalized_text = _normalize_ir_function(analysis_text, str(resolved_symbols["analysis"]))
             retention_mode = "analysis-ir-symbol-retention"
         except CppFrontendError:
             retention_flags = [*analysis_flags, "-fno-inline"]
@@ -419,7 +583,9 @@ def _emit_cpp_ir(command: CompilationCommand, source: Path, symbol: str, out_dir
             )
             if retention_result.returncode != 0:
                 raise
-            normalized_text = _normalize_ir_function(analysis_raw.read_text(errors="replace"), symbol)
+            analysis_text = analysis_raw.read_text(errors="replace")
+            resolved_symbols["analysis"], alias_chains["analysis"] = _resolve_ir_definition_symbol(analysis_text, symbol)
+            normalized_text = _normalize_ir_function(analysis_text, str(resolved_symbols["analysis"]))
             retention_mode = "no-inline-analysis-symbol-retention"
     normalized.write_text(normalized_text)
     return {
@@ -437,6 +603,9 @@ def _emit_cpp_ir(command: CompilationCommand, source: Path, symbol: str, out_dir
         "normalized_ir": str(normalized),
         "normalized_ir_sha256": _sha256(normalized.read_bytes()),
         "symbol_retention_mode": retention_mode,
+        "requested_symbol": symbol,
+        "resolved_symbols": resolved_symbols,
+        "alias_chains": alias_chains,
     }
 
 
@@ -686,6 +855,7 @@ def inspect_cpp_region(
     out_dir: Path,
     *,
     symbol: str | None = None,
+    source_line: int | None = None,
     command_index: int | None = None,
 ) -> dict[str, Any]:
     source = source.resolve()
@@ -703,6 +873,7 @@ def inspect_cpp_region(
         "source_sha256": _sha256(source_text),
         "function": function,
         "requested_symbol": symbol,
+        "requested_source_line": source_line,
         "proof_classification": "unclassified",
         "adapters": [],
         "artifacts": {},
@@ -713,11 +884,19 @@ def inspect_cpp_region(
         documents, ast_path = _emit_ast(command, source, function, out_dir)
         report["artifacts"]["ast"] = str(ast_path)
         candidates = _function_candidates(documents, function)
-        report["candidate_symbols"] = [
-            {"symbol": item.get("mangledName"), "type": item.get("type", {}).get("qualType"), "kind": item.get("kind")}
-            for item in candidates
-        ]
-        node, selection_adapters = _select_function(documents, function, symbol)
+        report["candidate_symbols"] = []
+        for item in candidates:
+            start, end = _source_range(item, source_text)
+            report["candidate_symbols"].append({
+                "symbol": item.get("mangledName"),
+                "type": item.get("type", {}).get("qualType"),
+                "kind": item.get("kind"),
+                "source_range": [start, end],
+                "source_lines": [source_text.count("\n", 0, start) + 1, source_text.count("\n", 0, end) + 1],
+            })
+        node, selection_adapters = _select_function(
+            documents, function, symbol, source_line=source_line, source_text=source_text,
+        )
         if selection_adapters:
             report["adapters"] = [asdict(item) for item in selection_adapters]
             report["closure"] = classify_cpp_closure(report)
@@ -735,6 +914,7 @@ def inspect_cpp_region(
             "kind": node.get("kind"),
             "name": node.get("name"),
             "symbol": node.get("mangledName"),
+            "storage_class": node.get("storageClass"),
             "type": node.get("type", {}).get("qualType"),
             "parameters": parameters,
             "source_range": list(selected_range),
@@ -751,18 +931,29 @@ def inspect_cpp_region(
         report["production_ir"] = production_ir
         effect_module = Path(production_ir["effect_ir"])
         effect_source = "optimized-effect-ir"
+        effect_symbol = production_ir["resolved_symbols"].get("effects")
         try:
-            effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(node["mangledName"]))
+            if effect_symbol is None:
+                raise ValueError("selected symbol was not retained in effect IR")
+            effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(effect_symbol))
         except ValueError:
             effect_module = Path(production_ir["analysis_ir"])
             effect_source = "analysis-ir-symbol-retention"
+            effect_symbol = production_ir["resolved_symbols"].get("analysis")
             try:
-                effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(node["mangledName"]))
+                if effect_symbol is None:
+                    raise ValueError("selected symbol was not retained in analysis IR")
+                effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(effect_symbol))
             except ValueError:
                 effect_module = Path(production_ir["raw_ir"])
                 effect_source = "production-ir-interprocedural-closure"
-                effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(node["mangledName"]))
+                effect_symbol = production_ir["resolved_symbols"].get("production")
+                if effect_symbol is None:
+                    raise ValueError("selected symbol was not retained in production IR")
+                effects = analyze_ir_effects(effect_module.read_text(errors="replace"), str(effect_symbol))
         effects["source"] = effect_source
+        effects["requested_ast_symbol"] = str(node["mangledName"])
+        effects["resolved_ir_symbol"] = str(effect_symbol)
         source_info = source_semantics(node, function_source)
         abi = describe_abi(
             str(node.get("type", {}).get("qualType", "")), parameters, effects["signature"], documents, source_text
@@ -958,7 +1149,13 @@ def inspect_cpp_region(
         report["closure"] = classify_cpp_closure(report)
         for capability in ("isolation", "candidate_generation", "local_proof", "benchmark", "source_rewrite"):
             report["closure"]["capabilities"][capability]["actual"] = True
-    except (CppFrontendError, ValueError, OSError, json.JSONDecodeError) as error:
+    except (
+        CppFrontendError,
+        ValueError,
+        OSError,
+        json.JSONDecodeError,
+        subprocess.SubprocessError,
+    ) as error:
         if isinstance(error, CppFrontendError):
             adapter = error.requirement
         else:
@@ -976,10 +1173,12 @@ def isolate_cpp_region(
     out_dir: Path,
     *,
     symbol: str | None = None,
+    source_line: int | None = None,
     command_index: int | None = None,
 ) -> tuple[int, dict[str, Any]]:
     report = inspect_cpp_region(
-        source, function, compilation_database, out_dir, symbol=symbol, command_index=command_index
+        source, function, compilation_database, out_dir, symbol=symbol,
+        source_line=source_line, command_index=command_index
     )
     closure = report.get("closure", {})
     if report.get("support_tier") == "canonical_source_transform":
@@ -1050,6 +1249,7 @@ def optimize_cpp_region(
     out_dir: Path,
     *,
     symbol: str | None = None,
+    source_line: int | None = None,
     command_index: int | None = None,
     n: int = 1 << 18,
     reps: int = 25,
@@ -1060,7 +1260,8 @@ def optimize_cpp_region(
     out_dir = out_dir.resolve()
     isolation_dir = out_dir / "isolation"
     isolation_code, report = isolate_cpp_region(
-        source, function, compilation_database, isolation_dir, symbol=symbol, command_index=command_index
+        source, function, compilation_database, isolation_dir, symbol=symbol,
+        source_line=source_line, command_index=command_index
     )
     result: dict[str, Any] = {"status": "adapter_required", "isolation": report}
     if isolation_code != 0:
@@ -1151,6 +1352,9 @@ def inspect_cpp_matrix(manifest: Path, out_dir: Path, *, materialize_isolation: 
         database = database if database.is_absolute() else base / database
         arguments = {
             "symbol": str(item["symbol"]) if item.get("symbol") else None,
+            "source_line": int(item["source_line"]) if item.get("source_line") is not None else (
+                int(item["line"]) if item.get("line") is not None else None
+            ),
             "command_index": int(item["command_index"]) if item.get("command_index") is not None else None,
         }
         region_dir = out_dir / safe_id
@@ -1163,6 +1367,7 @@ def inspect_cpp_matrix(manifest: Path, out_dir: Path, *, materialize_isolation: 
             "compile_database_sha256": _sha256(database_file.resolve().read_bytes()),
             "function": str(item["function"]),
             "symbol": arguments["symbol"],
+            "source_line": arguments["source_line"],
             "command_index": arguments["command_index"],
             "materialize_isolation": materialize_isolation,
         }

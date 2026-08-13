@@ -1,0 +1,13 @@
+{
+  "schema_version": "vladder-llvm-function-grammar-v1",
+  "version": "llvm-function-v1",
+  "pipelines": [
+    {"id": "baseline", "passes": "", "class": "baseline"},
+    {"id": "canonical-cleanup", "passes": "function(instcombine,simplifycfg)", "class": "expression-control"},
+    {"id": "scalar-promotion", "passes": "function(sroa,mem2reg,instcombine,simplifycfg)", "class": "memory-expression"},
+    {"id": "redundancy-elimination", "passes": "function(gvn,dse,adce)", "class": "redundancy-lifetime"},
+    {"id": "loop-normalize-unroll", "passes": "function(loop-simplify,loop-rotate,loop-unroll)", "class": "loop-schedule"},
+    {"id": "vectorization", "passes": "function(loop-vectorize,slp-vectorizer)", "class": "vector-schedule"},
+    {"id": "combined-scalar", "passes": "function(early-cse,instcombine,reassociate,gvn,simplifycfg)", "class": "expression-dataflow"}
+  ]
+}

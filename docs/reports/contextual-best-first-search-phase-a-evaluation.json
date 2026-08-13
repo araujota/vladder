@@ -1,0 +1,1346 @@
+{
+  "acceptance": {
+    "observed": 0.6100196463654224,
+    "passed": false,
+    "required_useful_recovery_at_30_percent": 0.99
+  },
+  "authority": "learned ordering only; deterministic/formal systems retain deletion authority",
+  "baselines": {
+    "fifo": {
+      "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+      "canonical_transposition_reductions": null,
+      "maximum_frontier_size": 12109,
+      "median_first_retained_work_fraction": null,
+      "median_first_useful_work_fraction": 0.20219851277077272,
+      "projects": 3,
+      "recovery": {
+        "0.01": {
+          "candidate_constructions": 191,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.052478134110787174,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "executed_work": 376.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.0,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.0
+        },
+        "0.05": {
+          "candidate_constructions": 961,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.20408163265306123,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "executed_work": 1871.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.0,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.0
+        },
+        "0.1": {
+          "candidate_constructions": 1913,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.4713313896987366,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "executed_work": 3738.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.0,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.0
+        },
+        "0.2": {
+          "candidate_constructions": 3809,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.9310009718172984,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "executed_work": 7472.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.0,
+            "composition": 0.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.0
+        },
+        "0.3": {
+          "candidate_constructions": 7430,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.9397473275024295,
+            "composition": 0.10603015075376884,
+            "grammar": 0.0
+          },
+          "executed_work": 11206.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.021739130434782608,
+            "composition": 0.10603015075376884,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.10412573673870335
+        },
+        "0.5": {
+          "candidate_constructions": 14714,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.9504373177842566,
+            "composition": 0.3663316582914573,
+            "grammar": 0.0
+          },
+          "executed_work": 18676.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.13043478260869565,
+            "composition": 0.3663316582914573,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.3610019646365422
+        },
+        "1.0": {
+          "candidate_constructions": 33081,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "executed_work": 37350.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 1.0
+        }
+      },
+      "retained_terminals": 0,
+      "roots": 751,
+      "total_candidate_constructions": 33081,
+      "total_compiler_invocations": 0.0,
+      "total_proof_calls": 0.0,
+      "useful_branches_by_stage": {
+        "candidate": 1029,
+        "composition": 1990,
+        "grammar": 0
+      },
+      "useful_terminals": 2036,
+      "useful_terminals_by_stage": {
+        "candidate": 46,
+        "composition": 1990,
+        "grammar": 0
+      }
+    },
+    "handwritten": {
+      "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+      "canonical_transposition_reductions": null,
+      "maximum_frontier_size": 1585,
+      "median_first_retained_work_fraction": null,
+      "median_first_useful_work_fraction": 0.002074832284390345,
+      "projects": 3,
+      "recovery": {
+        "0.01": {
+          "candidate_constructions": 334,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.010689990281827016,
+            "composition": 0.010552763819095477,
+            "grammar": 0.0
+          },
+          "executed_work": 375.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.0,
+            "composition": 0.010552763819095477,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.01031434184675835
+        },
+        "0.05": {
+          "candidate_constructions": 1676,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.05344995140913508,
+            "composition": 0.04874371859296482,
+            "grammar": 0.0
+          },
+          "executed_work": 1869.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.021739130434782608,
+            "composition": 0.04874371859296482,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.0481335952848723
+        },
+        "0.1": {
+          "candidate_constructions": 3354,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.08940719144800778,
+            "composition": 0.09849246231155778,
+            "grammar": 0.0
+          },
+          "executed_work": 3736.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.021739130434782608,
+            "composition": 0.09849246231155778,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.09675834970530452
+        },
+        "0.2": {
+          "candidate_constructions": 6706,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.18172983479105928,
+            "composition": 0.20452261306532662,
+            "grammar": 0.0
+          },
+          "executed_work": 7471.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.10869565217391304,
+            "composition": 0.20452261306532662,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.20235756385068762
+        },
+        "0.3": {
+          "candidate_constructions": 10062,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.27988338192419826,
+            "composition": 0.31206030150753766,
+            "grammar": 0.0
+          },
+          "executed_work": 11207.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.10869565217391304,
+            "composition": 0.31206030150753766,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.3074656188605108
+        },
+        "0.5": {
+          "candidate_constructions": 16770,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.5014577259475219,
+            "composition": 0.563819095477387,
+            "grammar": 0.0
+          },
+          "executed_work": 18676.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.13043478260869565,
+            "composition": 0.563819095477387,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.5540275049115914
+        },
+        "1.0": {
+          "candidate_constructions": 33081,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "executed_work": 37350.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 1.0
+        }
+      },
+      "retained_terminals": 0,
+      "roots": 751,
+      "total_candidate_constructions": 33081,
+      "total_compiler_invocations": 0.0,
+      "total_proof_calls": 0.0,
+      "useful_branches_by_stage": {
+        "candidate": 1029,
+        "composition": 1990,
+        "grammar": 0
+      },
+      "useful_terminals": 2036,
+      "useful_terminals_by_stage": {
+        "candidate": 46,
+        "composition": 1990,
+        "grammar": 0
+      }
+    },
+    "oracle": {
+      "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+      "canonical_transposition_reductions": null,
+      "maximum_frontier_size": 11198,
+      "median_first_retained_work_fraction": null,
+      "median_first_useful_work_fraction": 0.0006224496853171035,
+      "projects": 3,
+      "recovery": {
+        "0.01": {
+          "candidate_constructions": 230,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.04956268221574344,
+            "composition": 0.03768844221105527,
+            "grammar": 0.0
+          },
+          "executed_work": 377.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.10869565217391304,
+            "composition": 0.03768844221105527,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.03929273084479371
+        },
+        "0.05": {
+          "candidate_constructions": 1138,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.17103984450923226,
+            "composition": 0.17386934673366833,
+            "grammar": 0.0
+          },
+          "executed_work": 1870.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.21739130434782608,
+            "composition": 0.17386934673366833,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.17485265225933203
+        },
+        "0.1": {
+          "candidate_constructions": 2299,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.3848396501457726,
+            "composition": 0.38341708542713565,
+            "grammar": 0.0
+          },
+          "executed_work": 3737.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.45652173913043476,
+            "composition": 0.38341708542713565,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.3850687622789784
+        },
+        "0.2": {
+          "candidate_constructions": 4607,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.7793974732750243,
+            "composition": 0.7919597989949749,
+            "grammar": 0.0
+          },
+          "executed_work": 7471.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.8695652173913043,
+            "composition": 0.7919597989949749,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.793713163064833
+        },
+        "0.3": {
+          "candidate_constructions": 7339,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "executed_work": 11207.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 1.0
+        },
+        "0.5": {
+          "candidate_constructions": 14808,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "executed_work": 18676.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 1.0
+        },
+        "1.0": {
+          "candidate_constructions": 33081,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "executed_work": 37350.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 1.0
+        }
+      },
+      "retained_terminals": 0,
+      "roots": 751,
+      "total_candidate_constructions": 33081,
+      "total_compiler_invocations": 0.0,
+      "total_proof_calls": 0.0,
+      "useful_branches_by_stage": {
+        "candidate": 1029,
+        "composition": 1990,
+        "grammar": 0
+      },
+      "useful_terminals": 2036,
+      "useful_terminals_by_stage": {
+        "candidate": 46,
+        "composition": 1990,
+        "grammar": 0
+      }
+    },
+    "random": {
+      "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+      "canonical_transposition_reductions": null,
+      "maximum_frontier_size": 1585,
+      "median_first_retained_work_fraction": null,
+      "median_first_useful_work_fraction": 0.0021439933605366898,
+      "projects": 3,
+      "recovery": {
+        "0.01": {
+          "candidate_constructions": 324,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.015549076773566569,
+            "composition": 0.009547738693467337,
+            "grammar": 0.0
+          },
+          "executed_work": 376.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.08695652173913043,
+            "composition": 0.009547738693467337,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.011296660117878193
+        },
+        "0.05": {
+          "candidate_constructions": 1654,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.05928085519922255,
+            "composition": 0.04874371859296482,
+            "grammar": 0.0
+          },
+          "executed_work": 1871.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.10869565217391304,
+            "composition": 0.04874371859296482,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.05009823182711198
+        },
+        "0.1": {
+          "candidate_constructions": 3305,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.09329446064139942,
+            "composition": 0.0964824120603015,
+            "grammar": 0.0
+          },
+          "executed_work": 3736.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.10869565217391304,
+            "composition": 0.0964824120603015,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.09675834970530452
+        },
+        "0.2": {
+          "candidate_constructions": 6600,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.18172983479105928,
+            "composition": 0.18542713567839195,
+            "grammar": 0.0
+          },
+          "executed_work": 7472.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.21739130434782608,
+            "composition": 0.18542713567839195,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.18614931237721022
+        },
+        "0.3": {
+          "candidate_constructions": 9907,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.28765792031098153,
+            "composition": 0.2979899497487437,
+            "grammar": 0.0
+          },
+          "executed_work": 11206.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.3695652173913043,
+            "composition": 0.2979899497487437,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.29960707269155207
+        },
+        "0.5": {
+          "candidate_constructions": 16518,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.5121477162293488,
+            "composition": 0.5442211055276381,
+            "grammar": 0.0
+          },
+          "executed_work": 18677.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.5217391304347826,
+            "composition": 0.5442211055276381,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.543713163064833
+        },
+        "1.0": {
+          "candidate_constructions": 33081,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "executed_work": 37350.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 1.0
+        }
+      },
+      "retained_terminals": 0,
+      "roots": 751,
+      "total_candidate_constructions": 33081,
+      "total_compiler_invocations": 0.0,
+      "total_proof_calls": 0.0,
+      "useful_branches_by_stage": {
+        "candidate": 1029,
+        "composition": 1990,
+        "grammar": 0
+      },
+      "useful_terminals": 2036,
+      "useful_terminals_by_stage": {
+        "candidate": 46,
+        "composition": 1990,
+        "grammar": 0
+      }
+    },
+    "rc24": {
+      "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+      "canonical_transposition_reductions": null,
+      "maximum_frontier_size": 1585,
+      "median_first_retained_work_fraction": null,
+      "median_first_useful_work_fraction": 0.002074832284390345,
+      "projects": 3,
+      "recovery": {
+        "0.01": {
+          "candidate_constructions": 324,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.015549076773566569,
+            "composition": 0.010050251256281407,
+            "grammar": 0.0
+          },
+          "executed_work": 376.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.08695652173913043,
+            "composition": 0.010050251256281407,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.011787819253438114
+        },
+        "0.05": {
+          "candidate_constructions": 1654,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.05928085519922255,
+            "composition": 0.04874371859296482,
+            "grammar": 0.0
+          },
+          "executed_work": 1871.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.10869565217391304,
+            "composition": 0.04874371859296482,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.05009823182711198
+        },
+        "0.1": {
+          "candidate_constructions": 3305,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.09329446064139942,
+            "composition": 0.0964824120603015,
+            "grammar": 0.0
+          },
+          "executed_work": 3736.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.10869565217391304,
+            "composition": 0.0964824120603015,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.09675834970530452
+        },
+        "0.2": {
+          "candidate_constructions": 6600,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.18172983479105928,
+            "composition": 0.18542713567839195,
+            "grammar": 0.0
+          },
+          "executed_work": 7472.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.21739130434782608,
+            "composition": 0.18542713567839195,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.18614931237721022
+        },
+        "0.3": {
+          "candidate_constructions": 9907,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.28765792031098153,
+            "composition": 0.2984924623115578,
+            "grammar": 0.0
+          },
+          "executed_work": 11206.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.3695652173913043,
+            "composition": 0.2984924623115578,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.300098231827112
+        },
+        "0.5": {
+          "candidate_constructions": 16518,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 0.5121477162293488,
+            "composition": 0.5437185929648242,
+            "grammar": 0.0
+          },
+          "executed_work": 18677.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 0.5217391304347826,
+            "composition": 0.5437185929648242,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 0.5432220039292731
+        },
+        "1.0": {
+          "candidate_constructions": 33081,
+          "compiler_invocations": 0.0,
+          "decision_stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "executed_work": 37350.0,
+          "proof_calls": 0.0,
+          "retained_terminal_recovery": null,
+          "stage_recovery": {
+            "candidate": 1.0,
+            "composition": 1.0,
+            "grammar": 0.0
+          },
+          "useful_terminal_recovery": 1.0
+        }
+      },
+      "retained_terminals": 0,
+      "roots": 751,
+      "total_candidate_constructions": 33081,
+      "total_compiler_invocations": 0.0,
+      "total_proof_calls": 0.0,
+      "useful_branches_by_stage": {
+        "candidate": 1029,
+        "composition": 1990,
+        "grammar": 0
+      },
+      "useful_terminals": 2036,
+      "useful_terminals_by_stage": {
+        "candidate": 46,
+        "composition": 1990,
+        "grammar": 0
+      }
+    }
+  },
+  "best_variant": "gps-frontier",
+  "canonical_state_hash_available": false,
+  "decisions": 3867,
+  "device": "cuda",
+  "examples": 43153,
+  "folds": [
+    {
+      "architecture": "gps",
+      "encoder_pretraining": [],
+      "heldout_project": "duckdb",
+      "history": [],
+      "parameters": 690409,
+      "replay": {
+        "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+        "canonical_transposition_reductions": null,
+        "maximum_frontier_size": 10103,
+        "median_first_retained_work_fraction": null,
+        "median_first_useful_work_fraction": 0.00032331070158422246,
+        "projects": 1,
+        "recovery": {
+          "0.01": {
+            "candidate_constructions": 102,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.037578288100208766,
+              "composition": 0.013157894736842105,
+              "grammar": 0.0
+            },
+            "executed_work": 155.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.14285714285714285,
+              "composition": 0.013157894736842105,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.01607717041800643
+          },
+          "0.05": {
+            "candidate_constructions": 531,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.12734864300626306,
+              "composition": 0.08223684210526316,
+              "grammar": 0.0
+            },
+            "executed_work": 774.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.19047619047619047,
+              "composition": 0.08223684210526316,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.08467309753483387
+          },
+          "0.1": {
+            "candidate_constructions": 1044,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.2755741127348643,
+              "composition": 0.17982456140350878,
+              "grammar": 0.0
+            },
+            "executed_work": 1547.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.3333333333333333,
+              "composition": 0.17982456140350878,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.1832797427652733
+          },
+          "0.2": {
+            "candidate_constructions": 2140,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.5469728601252609,
+              "composition": 0.375,
+              "grammar": 0.0
+            },
+            "executed_work": 3093.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.3333333333333333,
+              "composition": 0.375,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.3740621650589496
+          },
+          "0.3": {
+            "candidate_constructions": 3197,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.9164926931106472,
+              "composition": 0.6282894736842105,
+              "grammar": 0.0
+            },
+            "executed_work": 4640.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.5714285714285714,
+              "composition": 0.6282894736842105,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.6270096463022508
+          },
+          "0.5": {
+            "candidate_constructions": 6084,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.9916492693110647,
+              "composition": 0.8223684210526315,
+              "grammar": 0.0
+            },
+            "executed_work": 7733.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.8095238095238095,
+              "composition": 0.8223684210526315,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.8220793140407289
+          },
+          "1.0": {
+            "candidate_constructions": 13726,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 1.0,
+              "composition": 1.0,
+              "grammar": 0.0
+            },
+            "executed_work": 15465.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 1.0,
+              "composition": 1.0,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 1.0
+          }
+        },
+        "retained_terminals": 0,
+        "roots": 257,
+        "total_candidate_constructions": 13726,
+        "total_compiler_invocations": 0.0,
+        "total_proof_calls": 0.0,
+        "useful_branches_by_stage": {
+          "candidate": 479,
+          "composition": 912,
+          "grammar": 0
+        },
+        "useful_terminals": 933,
+        "useful_terminals_by_stage": {
+          "candidate": 21,
+          "composition": 912,
+          "grammar": 0
+        }
+      },
+      "use_history": true,
+      "use_siblings": true,
+      "variant": "gps-frontier"
+    },
+    {
+      "architecture": "gps",
+      "encoder_pretraining": [],
+      "heldout_project": "llama_cpp",
+      "history": [],
+      "parameters": 689417,
+      "replay": {
+        "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+        "canonical_transposition_reductions": null,
+        "maximum_frontier_size": 10143,
+        "median_first_retained_work_fraction": null,
+        "median_first_useful_work_fraction": 0.0006224496853171035,
+        "projects": 1,
+        "recovery": {
+          "0.01": {
+            "candidate_constructions": 93,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.05303030303030303,
+              "composition": 0.04028436018957346,
+              "grammar": 0.0
+            },
+            "executed_work": 145.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.0,
+              "composition": 0.04028436018957346,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.038901601830663615
+          },
+          "0.05": {
+            "candidate_constructions": 465,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.1553030303030303,
+              "composition": 0.0971563981042654,
+              "grammar": 0.0
+            },
+            "executed_work": 723.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.0,
+              "composition": 0.0971563981042654,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.09382151029748284
+          },
+          "0.1": {
+            "candidate_constructions": 933,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.32954545454545453,
+              "composition": 0.23222748815165878,
+              "grammar": 0.0
+            },
+            "executed_work": 1446.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.0,
+              "composition": 0.23222748815165878,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.2242562929061785
+          },
+          "0.2": {
+            "candidate_constructions": 1853,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.7992424242424242,
+              "composition": 0.5308056872037915,
+              "grammar": 0.0
+            },
+            "executed_work": 2892.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.4,
+              "composition": 0.5308056872037915,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.5263157894736842
+          },
+          "0.3": {
+            "candidate_constructions": 2881,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.9848484848484849,
+              "composition": 0.6966824644549763,
+              "grammar": 0.0
+            },
+            "executed_work": 4338.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.7333333333333333,
+              "composition": 0.6966824644549763,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.6979405034324943
+          },
+          "0.5": {
+            "candidate_constructions": 5749,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.9886363636363636,
+              "composition": 0.8459715639810427,
+              "grammar": 0.0
+            },
+            "executed_work": 7230.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.8,
+              "composition": 0.8459715639810427,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.8443935926773455
+          },
+          "1.0": {
+            "candidate_constructions": 12783,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 1.0,
+              "composition": 1.0,
+              "grammar": 0.0
+            },
+            "executed_work": 14459.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 1.0,
+              "composition": 1.0,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 1.0
+          }
+        },
+        "retained_terminals": 0,
+        "roots": 246,
+        "total_candidate_constructions": 12783,
+        "total_compiler_invocations": 0.0,
+        "total_proof_calls": 0.0,
+        "useful_branches_by_stage": {
+          "candidate": 264,
+          "composition": 422,
+          "grammar": 0
+        },
+        "useful_terminals": 437,
+        "useful_terminals_by_stage": {
+          "candidate": 15,
+          "composition": 422,
+          "grammar": 0
+        }
+      },
+      "use_history": true,
+      "use_siblings": true,
+      "variant": "gps-frontier"
+    },
+    {
+      "architecture": "gps",
+      "encoder_pretraining": [],
+      "heldout_project": "rocksdb",
+      "history": [],
+      "parameters": 690409,
+      "replay": {
+        "canonical_transposition_limitation": "RC24 did not retain canonical semantic state hashes",
+        "canonical_transposition_reductions": null,
+        "maximum_frontier_size": 5205,
+        "median_first_retained_work_fraction": null,
+        "median_first_useful_work_fraction": 0.00134661998384056,
+        "projects": 1,
+        "recovery": {
+          "0.01": {
+            "candidate_constructions": 52,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.038461538461538464,
+              "composition": 0.027439024390243903,
+              "grammar": 0.0
+            },
+            "executed_work": 76.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.0,
+              "composition": 0.027439024390243903,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.02702702702702703
+          },
+          "0.05": {
+            "candidate_constructions": 243,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.15384615384615385,
+              "composition": 0.10518292682926829,
+              "grammar": 0.0
+            },
+            "executed_work": 372.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.0,
+              "composition": 0.10518292682926829,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.1036036036036036
+          },
+          "0.1": {
+            "candidate_constructions": 492,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.36363636363636365,
+              "composition": 0.19969512195121952,
+              "grammar": 0.0
+            },
+            "executed_work": 743.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.3,
+              "composition": 0.19969512195121952,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.2012012012012012
+          },
+          "0.2": {
+            "candidate_constructions": 972,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.7517482517482518,
+              "composition": 0.3795731707317073,
+              "grammar": 0.0
+            },
+            "executed_work": 1487.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.3,
+              "composition": 0.3795731707317073,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.3783783783783784
+          },
+          "0.3": {
+            "candidate_constructions": 1474,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.9825174825174825,
+              "composition": 0.5289634146341463,
+              "grammar": 0.0
+            },
+            "executed_work": 2228.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.5,
+              "composition": 0.5289634146341463,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.5285285285285285
+          },
+          "0.5": {
+            "candidate_constructions": 2946,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 0.986013986013986,
+              "composition": 0.8048780487804879,
+              "grammar": 0.0
+            },
+            "executed_work": 3713.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 0.6,
+              "composition": 0.8048780487804879,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 0.8018018018018018
+          },
+          "1.0": {
+            "candidate_constructions": 6572,
+            "compiler_invocations": 0.0,
+            "decision_stage_recovery": {
+              "candidate": 1.0,
+              "composition": 1.0,
+              "grammar": 0.0
+            },
+            "executed_work": 7426.0,
+            "proof_calls": 0.0,
+            "retained_terminal_recovery": null,
+            "stage_recovery": {
+              "candidate": 1.0,
+              "composition": 1.0,
+              "grammar": 0.0
+            },
+            "useful_terminal_recovery": 1.0
+          }
+        },
+        "retained_terminals": 0,
+        "roots": 248,
+        "total_candidate_constructions": 6572,
+        "total_compiler_invocations": 0.0,
+        "total_proof_calls": 0.0,
+        "useful_branches_by_stage": {
+          "candidate": 286,
+          "composition": 656,
+          "grammar": 0
+        },
+        "useful_terminals": 666,
+        "useful_terminals_by_stage": {
+          "candidate": 10,
+          "composition": 656,
+          "grammar": 0
+        }
+      },
+      "use_history": true,
+      "use_siblings": true,
+      "variant": "gps-frontier"
+    }
+  ],
+  "frontier_actions": 29241,
+  "projects": [
+    "duckdb",
+    "llama_cpp",
+    "rocksdb"
+  ],
+  "retained_evidence_available": false,
+  "schema_version": "vladder-contextual-search-evaluation-v1",
+  "score_combination": "raw",
+  "status": "phase_a_failed",
+  "variants": {
+    "gps-frontier": {
+      "decision_stage_recovery": {
+        "candidate": {
+          "0.01": 0.04178814382896016,
+          "0.05": 0.14188532555879493,
+          "0.1": 0.3138969873663751,
+          "0.2": 0.6686103012633625,
+          "0.3": 0.9523809523809523,
+          "0.5": 0.989310009718173,
+          "1.0": 1.0
+        },
+        "composition": {
+          "0.01": 0.023618090452261306,
+          "0.05": 0.09296482412060302,
+          "0.1": 0.19748743718592965,
+          "0.2": 0.40954773869346733,
+          "0.3": 0.6100502512562814,
+          "0.5": 0.821608040201005,
+          "1.0": 1.0
+        },
+        "grammar": {
+          "0.01": 0.0,
+          "0.05": 0.0,
+          "0.1": 0.0,
+          "0.2": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0,
+          "1.0": 0.0
+        }
+      },
+      "parameters": 690409,
+      "recovery": {
+        "0.01": 0.02455795677799607,
+        "0.05": 0.09282907662082515,
+        "0.1": 0.19793713163064833,
+        "0.2": 0.4081532416502947,
+        "0.3": 0.6100196463654224,
+        "0.5": 0.8202357563850687,
+        "1.0": 1.0
+      },
+      "stage_recovery": {
+        "candidate": {
+          "0.01": 0.06521739130434782,
+          "0.05": 0.08695652173913043,
+          "0.1": 0.21739130434782608,
+          "0.2": 0.34782608695652173,
+          "0.3": 0.6086956521739131,
+          "0.5": 0.7608695652173914,
+          "1.0": 1.0
+        },
+        "composition": {
+          "0.01": 0.023618090452261306,
+          "0.05": 0.09296482412060302,
+          "0.1": 0.19748743718592965,
+          "0.2": 0.40954773869346733,
+          "0.3": 0.6100502512562814,
+          "0.5": 0.821608040201005,
+          "1.0": 1.0
+        },
+        "grammar": {
+          "0.01": 0.0,
+          "0.05": 0.0,
+          "0.1": 0.0,
+          "0.2": 0.0,
+          "0.3": 0.0,
+          "0.5": 0.0,
+          "1.0": 0.0
+        }
+      },
+      "useful_terminals": 2036
+    }
+  }
+}

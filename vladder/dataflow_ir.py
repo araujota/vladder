@@ -24,14 +24,20 @@ DATAFLOW_FAMILIES = frozenset({
     "quantized-block-4x4",
 })
 OUTPUT_MODES = frozenset({"index-only", "value-only", "index-value"})
-CAPACITY_POLICIES = frozenset({"fail-unchanged", "truncate"})
+CAPACITY_POLICIES = frozenset({
+    "fail-unchanged",
+    "fail-input-extent-unchanged",
+    "truncate",
+})
 QUALITY_CLASSES = frozenset({"exact-encoded", "exact-decoded", "bounded-quality"})
 
 
 @dataclass(frozen=True)
 class BoundedDataflowContract:
     family: str
-    max_elements: int = 256
+    # None denotes a runtime-sized borrowed range. Proofs then use structural loop/block
+    # induction rather than claiming a source-level maximum that is not present.
+    max_elements: int | None = 256
     element_bits: int = 64
     output_mode: str = "index-value"
     stable: bool = True
@@ -49,7 +55,7 @@ class BoundedDataflowContract:
     def __post_init__(self) -> None:
         if self.family not in DATAFLOW_FAMILIES:
             raise ValueError(f"unsupported bounded dataflow family: {self.family}")
-        if self.max_elements <= 0 or self.max_elements > 4096:
+        if self.max_elements is not None and (self.max_elements <= 0 or self.max_elements > 4096):
             raise ValueError("max_elements must be in [1, 4096]")
         if self.element_bits not in {8, 16, 32, 64}:
             raise ValueError("element_bits must be 8, 16, 32, or 64")
@@ -75,10 +81,13 @@ class BoundedDataflowContract:
         if self.family in {"predicate-stable-compaction", "stateful-delta-transducer"}:
             if not self.record_trivially_copyable or not self.no_growth or not self.noexcept:
                 raise ValueError("bounded output closure requires trivial records, no growth, and noexcept execution")
+        if self.family == "stateful-delta-transducer" and self.capacity_policy == "truncate":
+            raise ValueError("stateful delta truncation requires a separate partial-commit contract")
 
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "BoundedDataflowContract":
         values = dict(payload)
+        values.pop("extent_semantics", None)
         if "field_widths" in values:
             values["field_widths"] = tuple(int(item) for item in values["field_widths"])
         if "target_isa" in values:
@@ -86,7 +95,12 @@ class BoundedDataflowContract:
         return cls(**values)
 
     def to_dict(self) -> dict[str, Any]:
-        return {**asdict(self), "field_widths": list(self.field_widths), "target_isa": list(self.target_isa)}
+        return {
+            **asdict(self),
+            "field_widths": list(self.field_widths),
+            "target_isa": list(self.target_isa),
+            "extent_semantics": "runtime-sized" if self.max_elements is None else "declared-maximum",
+        }
 
 
 @dataclass(frozen=True)

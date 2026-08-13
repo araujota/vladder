@@ -23,6 +23,10 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertEqual(checks["source.pypi-metadata"]["status"], "pass")
         self.assertEqual(checks["homebrew.python-resource-closure"]["status"], "pass")
         self.assertEqual(checks["validation.full-tests"]["status"], "not_run")
+        self.assertEqual(
+            checks["validation.production-canonical-search-smoke"]["status"],
+            "not_run",
+        )
         self.assertTrue(report["next_actions"])
 
     def test_target_summary_does_not_hide_setup_or_unavailable_states(self):
@@ -75,7 +79,7 @@ class ReleaseReadinessTests(unittest.TestCase):
         def http_result(url):
             if url.endswith("/api/health"):
                 return 200, {"status": "ok", "capability_submission": True}
-            return 200, {"info": {"version": "1.0.0rc23"}}
+            return 200, {"info": {"version": "1.0.0rc29"}}
 
         with patch("vladder.release_readiness.shutil.which", return_value="/usr/bin/gh"), patch(
             "vladder.release_readiness._gh_json", side_effect=gh_result

@@ -6,7 +6,7 @@ from typing import Any
 
 from .language_adapter import canonical_hash
 from .prior_data import PriorExperienceStore, make_candidate, make_observation, make_root
-from .schema_registry import validate_artifact
+from .schema_registry import validate_artifact, validate_payload
 from .search_training import search_training_integrity_errors
 
 
@@ -182,18 +182,22 @@ def _ingest_v2_model_training_bundle(bundle_path: Path, store_path: Path) -> dic
     }
 
 
-def graph_learning_examples(bundle_path: Path) -> list[dict[str, Any]]:
+def graph_learning_examples(bundle_path: Path, *, validate: bool = True) -> list[dict[str, Any]]:
     """Return lineage-aware branch examples for the high-recall pruning objective."""
-    schema_version = json.loads(bundle_path.resolve().read_text()).get("schema_version")
+    resolved = bundle_path.resolve()
+    bundle = json.loads(resolved.read_text())
+    schema_version = bundle.get("schema_version")
     if schema_version == HISTORICAL_MODEL_TRAINING_SCHEMA_VERSION:
         return _graph_learning_examples_v2(bundle_path)
-    validation = validate_artifact("model-training-bundle", bundle_path)
-    if validation["status"] != "pass":
-        raise ValueError(f"model-training bundle failed validation: {validation['errors']}")
-    bundle = json.loads(bundle_path.resolve().read_text())
-    integrity_errors = search_training_integrity_errors(bundle)
-    if integrity_errors:
-        raise ValueError(f"model-training bundle failed lineage validation: {integrity_errors}")
+    if validate:
+        validation = validate_payload(
+            "model-training-bundle", bundle, artifact=str(resolved),
+        )
+        if validation["status"] != "pass":
+            raise ValueError(f"model-training bundle failed validation: {validation['errors']}")
+        integrity_errors = search_training_integrity_errors(bundle)
+        if integrity_errors:
+            raise ValueError(f"model-training bundle failed lineage validation: {integrity_errors}")
     roots = {item["root_id"]: item for item in bundle["roots"]}
     searches = {item["search_id"]: item for item in bundle["searches"]}
     branches = {item["branch_id"]: item for item in bundle["branches"]}
@@ -204,7 +208,10 @@ def graph_learning_examples(bundle_path: Path) -> list[dict[str, Any]]:
     for branch in bundle["branches"]:
         search = searches[branch["search_id"]]
         root = roots[search["root_id"]]
-        graph = root["graph"]
+        decision_context = branch.get("decision_context", {})
+        graph = decision_context.get("graph") if isinstance(decision_context, dict) else None
+        if not isinstance(graph, dict):
+            graph = root["graph"]
         ancestor_path: list[dict[str, Any]] = []
         cursor: dict[str, Any] | None = branch
         while cursor is not None:
@@ -221,6 +228,14 @@ def graph_learning_examples(bundle_path: Path) -> list[dict[str, Any]]:
             "feature_partition": "pre-decision-v1",
             "decision_context": {
                 "graph": _learning_graph(graph),
+                "context": {
+                    "version": decision_context.get("context_version", "pre-decision-state-v2"),
+                    "quality": decision_context.get("quality", "root_only"),
+                    "focus_node_indices": list(decision_context.get("focus_node_indices", ())),
+                    "state_features": decision_context.get("state_features", {"numeric": [], "categorical": []}),
+                    "semantic_delta": decision_context.get("semantic_delta", {"numeric": [], "categorical": []}),
+                    "canonical_state_hash": decision_context.get("canonical_state_hash"),
+                },
                 "grammar": {
                     "version": search["grammar_version"], "hash": search["grammar_hash"],
                 },

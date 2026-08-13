@@ -21,9 +21,11 @@ write an adapter. Use `vladder build closure` as described in
 [cross-tu-closure.md](cross-tu-closure.md). It can turn uniquely resolved build helpers into
 hash-bound compositional edges while keeping implementation search local.
 
-Add `--symbol _Z...` for overloads and concrete template specializations. Add
-`--command-index N` when one source has multiple build configurations. Never choose either by
-guessing; inspect `candidate_symbols` and the compilation database. Materialized audit may compile
+Add `--symbol _Z...` for overloads and concrete template specializations. When the source inventory
+already records the exact definition line, use `--source-line N`; it must fall inside exactly one
+Clang-emitted definition or selection fails closed. Add `--command-index N` when one source has
+multiple build configurations. Never choose a symbol or command by guessing; inspect
+`candidate_symbols` and the compilation database. Materialized audit may compile
 and prove local units, but it performs no optimization, ranking, or source change.
 
 ## Modeled Boundaries
@@ -35,7 +37,7 @@ and prove local units, but it performs no optimization, ranking, or source chang
 - aggregate references and compiler-lowered aggregate results;
 - callable boundaries as explicit external contracts.
 
-`bounded-cpp-regions-v8` adds one shared `RegionClosureGraph` over these source bindings:
+`bounded-cpp-regions-v11` adds one shared `RegionClosureGraph` over these source bindings:
 
 - aggregate results become ordered register or `sret` live-out projections;
 - ordinary local returns become tagged CFG exits and are scheduled at whole-function scope;
@@ -46,6 +48,9 @@ and prove local units, but it performs no optimization, ranking, or source chang
   parametric call-preserving summaries;
 - exceptional CFG cleanup traces, named member projections, and atomic/volatile ordering facts are
   represented even when the whole wrapper remains protocol-bound.
+- Clang-selected constructor/destructor symbols may follow a bounded LLVM alias chain to the
+  concrete emitted definition; both identities remain in provenance. Typedefs use Clang's
+  desugared type for proof classification without discarding source spelling.
 
 Read `region-closure.json` and `region-closure-proof/region-closure-proof.json`. Z3 closure of an
 exit selector, aggregate projection, or capacity inequality does not prove a transformed function;
@@ -53,6 +58,13 @@ each candidate still needs Alive2 where applicable and full differential observa
 
 The frontend also records object-state use, allocation, exceptions, synchronization, source helper
 calls, definition-visible compiled helper summaries, and candidate loop/container subregions.
+
+Read both `eligible` and `schedule_eligible` on every region. The latter permits guarded ordinary
+Clang unroll/vector/interleave requests in an unchanged owning body; it does not turn callbacks,
+RAII, allocation, exceptions, atomics, or external APIs into locally proved semantics. In source
+search, also inspect the `llvm-function-pipeline` sibling. It can validate complete-module LLVM
+realizations for aggregate and helper-rich functions, but its source-reconstruction stage remains
+partial and unsupported Alive2 constructs are `KEEP_UNCERTAIN`, never pruning evidence.
 
 ## Read Capabilities, Not One Boolean
 

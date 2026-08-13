@@ -1,5 +1,78 @@
 # Changelog
 
+## 1.0.0rc29 - 2026-08-13
+
+### Added
+
+- Ship canonical semantic-state quotient-DAG search as the production search architecture, with
+  collision-checked identity, exact transposition, conservative action footprints, cost-gated POR,
+  state-keyed memoization, checkpoints, bounded memory, and concurrent canonical registration.
+- Bundle a schema-validated canonical-search qualification artifact in every wheel and expose it
+  through `vladder release canonical-search-evidence`.
+- Add composition-native exhaustive traces with canonical states, complete sibling frontiers,
+  exact action deltas, typed interaction/factor graphs, U0-U4 descendant labels, transpositions,
+  terminal lineage, and intrinsic proof/compiler/benchmark search costs.
+- Add `vladder-search-policy-training-contract-v1` readiness metadata and fail-closed trace integrity
+  checks for canonical ownership, sibling cardinality, lineage, labels, costs, summaries, and hashes.
+- Add contextual priority-only search-policy research, exact reduction qualification tooling,
+  nightly canonical-search checks, and the release-blocking eight-stage smoke battery.
+
+### Changed
+
+- Restrict model inference views to pre-decision parent state, ordered history, sibling actions,
+  interaction graphs, and action deltas. Completed states, selected actions, exact transpositions,
+  outcomes, labels, and measured costs remain post-search supervision.
+- Make v3 search bundles auxiliary branch/encoder supervision for composition policy work; the
+  enumerator-native trace is the authoritative future frontier-training artifact.
+- Clarify across CLI, README, agent skill, schemas, and release site that ML may order exploration
+  or propose an exact check but has no deletion, merge, proof, benchmark, or promotion authority.
+
+### Qualification
+
+- Preserve 1,333/1,333 RC26 U2 terminals and 295/295 adversarial RC27 terminal states.
+- Reduce the expensive bounded fixture from 48 to 8 Z3 proofs and from 48 to 8 optimized Clang
+  compilations while preserving all eight unique terminal states and reducing measured wall time.
+- Pass canonical collision, POR fail-open, incremental fallback, concurrency, checkpoint/resume,
+  cost-gating, and scaling smoke stages.
+
+## 1.0.0rc28 - 2026-08-12
+
+- Make canonical semantic-state DAG search the CLI/manifest default for fast, guided, and exhaustive
+  source search while retaining raw path traversal as `legacy_path_debug` qualification mode.
+- Add deterministic concurrent state identity, adaptive POR cost gating, complete effect footprints,
+  state-keyed memoization, memory ceilings, checkpoint/resume, and production search evidence.
+- Qualify exact terminal preservation on RC26/RC27 evidence and fresh DuckDB, llama.cpp, and RocksDB
+  roots; measure real Z3/compiler call and wall-time savings on an expensive bounded root.
+- Add a release-blocking eight-stage canonical-search smoke battery covering identity, POR safety,
+  incremental fallback, real Z3/Clang savings, cost gating, concurrency, resume, and scaling.
+
+## 1.0.0rc24 - 2026-08-10
+
+### Added
+
+- Add policy-interleaved lazy executable search with deterministic legality pruning, semantic-state
+  memoization, and model-controlled `EXPAND`, `DEFER`, and `PRUNE` before descendant expansion or
+  terminal source/proof/compile materialization.
+- Add stage-specific executable closure, ordered prefix/suffix source extraction, bounded dataflow
+  inference, cross-TU composition, lifetime-plan, and bounded protocol lineage.
+- Compile, prove, assembly-deduplicate, cache, and emit authoritative v3 descendant supervision for
+  every concrete terminal reached by supported bounded grammars.
+- Add persistent fail-open JSON-lines pruning-oracle integration, per-root incremental v3 campaign
+  emission, exact bit-popcount reduction, and selected-build C++ schedule composition over unroll,
+  vector-width, and interleave choices.
+- Preserve the full lazy ancestor action path in every online oracle decision and add a 12.3M-
+  parameter stage-specific graph/action-lineage shadow trainer with explicit live-eligibility gates.
+- Make automatic grammar-family dispatch the first real lazy decision instead of selecting the
+  first recognizer match before search, and exclude deterministic, canonicalized, and synthetic
+  trace nodes from learned-policy supervision and metrics.
+
+### Validation
+
+- Pass focused source-to-proof, cross-TU, lifetime, orchestration, and v3 lineage tests.
+- Reject pruning-model retraining after a 48-root llama.cpp, DuckDB, RocksDB, and DataFusion
+  campaign reached executable closure on only two roots; recognition-incomplete roots remain
+  `KEEP_UNCERTAIN` coverage debt rather than false negatives.
+
 ## 1.0.0rc23 - 2026-08-10
 
 ### Added

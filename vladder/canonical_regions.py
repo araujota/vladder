@@ -49,7 +49,11 @@ class CanonicalBoundedRegion:
 
     @property
     def executable_grammar(self) -> str:
-        return "deep-v2-exact-reduction" if self.operation == "count_equal_u8" else "ordered-loop-v1"
+        return (
+            "deep-v2-exact-reduction"
+            if self.operation == "count_equal_u8"
+            else "canonical-executable-grammar-v1"
+        )
 
     @property
     def region_hash(self) -> str:
@@ -76,10 +80,17 @@ def classify_canonical_region(language: str, function_source: str, signature: st
     This is deliberately a bounded recognizer. Compiler IR corroboration is a separate mandatory
     step so source spelling is never the sole semantic authority.
     """
-    if language not in {"rust", "zig", "julia"}:
+    if language not in {"c", "cpp", "rust", "zig", "julia"}:
         raise ValueError(f"unsupported canonical source language: {language}")
     compact = _compact(function_source)
     names = _sequence_names(language, signature, function_source)
+
+    if language == "rust" and _has_early_termination_reduction(compact):
+        raise CanonicalRegionError(
+            "early-termination",
+            "the selected reduction stops at a prefix/suffix frontier and is not a total count",
+            "use an ordered-prefix/suffix grammar with an explicit first-mismatch observable",
+        )
 
     if _is_count_equal(language, compact, signature):
         return CanonicalBoundedRegion(
@@ -122,7 +133,14 @@ def classify_canonical_region(language: str, function_source: str, signature: st
     has_minus = bool(re.search(rf"{re.escape(src)}\[{re.escape(index)}-1\]", compact))
     has_plus = bool(re.search(rf"{re.escape(src)}\[{re.escape(index)}\+1\]", compact))
     if has_minus and has_plus and re.search(dst_i, compact):
-        expression = _assignment_rhs(compact, dst_i)
+        expression = next(
+            (
+                value for value in _assignment_rhs_values(compact, dst_i)
+                if re.search(rf"{re.escape(src)}\[{re.escape(index)}-1\]", value)
+                and re.search(rf"{re.escape(src)}\[{re.escape(index)}\+1\]", value)
+            ),
+            None,
+        )
         return _region(
             "stencil", "neighborhood", "stencil_3_f32", neighbors=(-1, 0, 1),
             parameters=(("expression", _normalize_expression(expression or "", src, index)),),
@@ -333,7 +351,16 @@ def _compact(value: str) -> str:
 
 
 def _sequence_names(language: str, signature: str, source: str) -> tuple[str, str] | None:
-    if language == "rust":
+    if language in {"c", "cpp"}:
+        mutable = re.search(
+            r"(?:\bfloat\s*\*|(?:std::)?span\s*<\s*float\s*>)\s*([A-Za-z_]\w*)",
+            signature,
+        )
+        borrowed = re.search(
+            r"(?:\bconst\s+float\s*\*|(?:std::)?span\s*<\s*const\s+float\s*>)\s*([A-Za-z_]\w*)",
+            signature,
+        )
+    elif language == "rust":
         mutable = re.search(r"([A-Za-z_]\w*)\s*:\s*&\s*mut\s*\[f32\]", signature)
         borrowed = re.search(r"([A-Za-z_]\w*)\s*:\s*&\s*\[f32\]", signature)
     elif language == "zig":
@@ -350,7 +377,10 @@ def _sequence_names(language: str, signature: str, source: str) -> tuple[str, st
 
 def _is_count_equal(language: str, compact: str, signature: str) -> bool:
     signature_compact = re.sub(r"\s+", "", signature)
-    if language == "rust":
+    if language in {"c", "cpp"}:
+        boundary = bool(re.search(r"(?:uint8_t|unsignedchar|std::byte).*(?:size_t|std::size_t)", signature_compact))
+        operation = "==" in compact and bool(re.search(r"(?:count|found)\+=", compact))
+    elif language == "rust":
         boundary = "&[u8]" in signature_compact and "u8" in signature_compact and "->usize" in signature_compact
         operation = "==" in compact and (".fold(" in compact or ".count(" in compact or "while" in compact or "for" in compact)
     elif language == "zig":
@@ -362,8 +392,14 @@ def _is_count_equal(language: str, compact: str, signature: str) -> bool:
     return boundary and operation
 
 
+def _has_early_termination_reduction(compact: str) -> bool:
+    return any(token in compact for token in (
+        ".take_while(", ".takewhile(", ".position(", ".rposition(", ".find(",
+    ))
+
+
 def _loop_count(language: str, source: str) -> int:
-    if language == "rust":
+    if language in {"c", "cpp", "rust"}:
         return len(re.findall(r"\b(?:for|while|loop)\b", source))
     if language == "zig":
         return len(re.findall(r"\b(?:for|while)\s*\(", source))
@@ -378,6 +414,8 @@ def _loop_form(language: str, source: str, *, allow_fold: bool = False) -> str:
 
 def _loop_index(language: str, source: str) -> str | None:
     patterns = {
+        "c": r"\bfor\s*\([^;]*\b([A-Za-z_]\w*)\s*=",
+        "cpp": r"\bfor\s*\([^;]*\b([A-Za-z_]\w*)\s*=",
         "rust": r"\bfor\s+([A-Za-z_]\w*)\s+in\s+",
         "zig": r"\bfor\s*\([^)]*\)\s*\|(?:[^,|]+,\s*)?([A-Za-z_]\w*)\|",
         "julia": r"\bfor\s+([A-Za-z_]\w*)\s+in\s+",
@@ -394,8 +432,12 @@ def _indirect_stride(compact: str, index: str) -> int | None:
 
 
 def _assignment_rhs(compact: str, lhs_pattern: str) -> str | None:
-    match = re.search(lhs_pattern + r"=([^;}}]+)", compact)
-    return match.group(1) if match else None
+    values = _assignment_rhs_values(compact, lhs_pattern)
+    return values[0] if values else None
+
+
+def _assignment_rhs_values(compact: str, lhs_pattern: str) -> tuple[str, ...]:
+    return tuple(match.group(1) for match in re.finditer(lhs_pattern + r"=([^;}}]+)", compact))
 
 
 def _is_guarded_rhs(rhs: str, src: str, index: str, compact: str) -> bool:

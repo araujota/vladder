@@ -25,6 +25,15 @@ jobs:
         run: bandit -r vladder scripts -ll -ii -x tests
       - name: Seeded accepted and rejected transformations
         run: python scripts/validate_release_seeds.py --out-dir /tmp/vladder-release-seeds
+      - name: Production canonical-search invariants
+        run: |
+          python -m pytest -q \
+            tests/test_canonical_state_search.py \
+            tests/test_production_canonical_search.py \
+            tests/test_production_canonical_smoke.py
+          python scripts/run_production_canonical_smoke.py \
+            --out build/production-canonical-search-smoke.json
+          vladder release canonical-search-evidence > build/packaged-canonical-search-evidence.json
 
   test:
     runs-on: ubuntu-24.04
@@ -131,3 +140,5 @@ jobs:
           python -m twine check dist/*
           python scripts/audit_release.py --artifact dist/*.whl --artifact dist/*.tar.gz
           python scripts/release_preflight.py --require-artifacts
+          python -m pip install --force-reinstall --no-deps dist/*.whl
+          (cd /tmp && vladder release canonical-search-evidence >vladder-packaged-search-evidence.json)

@@ -244,6 +244,92 @@ def alive2_check(tc: Toolchain, ir: Path, out_dir: Path, name: str, timeout: int
     }
 
 
+def alive2_refinement_check(
+    tc: Toolchain,
+    source_ir: Path,
+    target_ir: Path,
+    out_dir: Path,
+    name: str,
+    *,
+    function: str,
+    timeout: int = 60,
+) -> dict[str, object]:
+    """Validate one same-named function across complete LLVM modules.
+
+    Real C++ functions commonly depend on named aggregate types, globals, personality
+    functions, and declarations that cannot be represented by concatenating two isolated
+    function bodies.  Alive2's two-module interface preserves that context while restricting
+    validation to the selected function.
+    """
+    if not source_ir.is_file() or not target_ir.is_file():
+        return {"status": "unavailable", "reason": "source or target LLVM module is absent"}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    source = out_dir / f"{name}.source.alive.ll"
+    target = out_dir / f"{name}.target.alive.ll"
+    log = out_dir / f"{name}.alive2.txt"
+    _sanitize_ir_for_alive2(source_ir, source)
+    _sanitize_ir_for_alive2(target_ir, target)
+    if source.read_bytes() == target.read_bytes():
+        log.write_text("Canonical complete-module identity proved before solver invocation.\n")
+        return {
+            "status": "correct",
+            "method": "canonical-llvm-module-identity",
+            "alive2_invoked": False,
+            "source_ir": str(source),
+            "target_ir": str(target),
+            "log": str(log),
+        }
+    if not tc.alive_tv:
+        return {
+            "status": "unavailable",
+            "reason": "alive-tv is unavailable",
+            "source_ir": str(source),
+            "target_ir": str(target),
+        }
+    try:
+        result = run(
+            [
+                tc.alive_tv,
+                "--smt-to=10000",
+                f"--func={function}",
+                str(source),
+                str(target),
+            ],
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        log.write_text("Alive2 timed out\n")
+        return {
+            "status": "timeout",
+            "method": "alive-tv-two-module",
+            "alive2_invoked": True,
+            "source_ir": str(source),
+            "target_ir": str(target),
+            "log": str(log),
+        }
+    output = result.stdout + result.stderr
+    log.write_text(output)
+    status = "error"
+    if "Transformation seems to be correct" in output:
+        status = "correct"
+    elif "Transformation doesn't verify" in output:
+        status = "incorrect"
+    elif "Out of memory" in output:
+        status = "oom"
+    elif "Unsupported" in output or "Could not translate" in output:
+        status = "unsupported"
+    return {
+        "status": status,
+        "method": "alive-tv-two-module",
+        "alive2_invoked": True,
+        "returncode": result.returncode,
+        "source_ir": str(source),
+        "target_ir": str(target),
+        "log": str(log),
+        "summary": output.strip()[-2000:],
+    }
+
+
 def _canonical_ir_identity(ir: Path, source_function: str, target_function: str) -> bool:
     text = ir.read_text(errors="replace")
 
@@ -324,11 +410,17 @@ def _sanitize_ir_for_alive2(source: Path, dest: Path) -> None:
             continue
         if line.startswith("!"):
             continue
+        # Remove instruction metadata before stripping attribute words.  Metadata
+        # names such as ``!noundef`` otherwise become malformed ``!!42`` tokens.
+        # Apply repeatedly because one instruction may carry several attachments.
+        previous = None
+        while previous != line:
+            previous = line
+            line = re.sub(r",\s*![A-Za-z0-9_.-]+\s+![0-9]+", "", line)
         for word in remove_words:
             line = line.replace(f" {word} ", " ").replace(f" {word}", "").replace(f"{word} ", "")
         line = re.sub(r"\s+#[0-9]+(?=\s*\{)", " ", line)
         line = re.sub(r"\s+#[0-9]+(?=\s*$)", "", line)
-        line = re.sub(r",\s*![A-Za-z0-9_.]+\s+![0-9]+", "", line)
         if line.startswith(("define ", "declare ")):
             line = re.sub(r"\s+", " ", line)
         lines.append(line)

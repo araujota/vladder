@@ -19,6 +19,13 @@ vladder prior init --out prior.yaml
 vladder prior run --manifest prior.yaml --out-dir prior-out
 ```
 
+The executable generator is policy-interleaved rather than rank-after-enumeration. Use
+`vladder source-search run` for authoritative shadow trees: the pruning policy is invoked on each
+partial or terminal semantic state before descendant expansion or expensive candidate artifacts
+are materialized. Deterministic illegality, semantic-state
+memoization, and learned budget decisions are recorded as separate authorities. See
+[Lazy Executable Search](lazy-executable-search.md).
+
 Read `prior-out/prior-summary.json` first. Its independent states answer:
 
 1. Was the experience dataset valid?
@@ -57,8 +64,10 @@ ancestor actions, stage, hardware, and workload are available before a pruning d
 Observations, coverage, search state, costs, and targets are post-search supervision and MUST NOT be
 fed to the encoder. This partition prevents outcome leakage.
 
-Positive utility propagates from proof-valid or stronger terminal evidence to every required
-ancestor. A branch becomes a negative example only when its complete subtree is exhaustively
+Positive utility propagates from a proof-valid, physically distinct realization or stronger retained
+terminal outcome to every required ancestor. Proof validity and physical distinctness are separate
+observations: a lone proof remains uncertain, and a proved compiler-identical terminal is negative
+when completely closed. A branch becomes a negative example only when its complete subtree is exhaustively
 represented or a named sound contract, legality, or dominance proof closes it. Absence of a winner
 in a partial, heuristic, budget-truncated, or interrupted trace is not a negative label.
 
@@ -75,6 +84,12 @@ JSONL/relational loader for lineage-aware language- and project-holdout training
 emits partial one-level searches and therefore cannot manufacture exhaustive negatives.
 Service ingestion independently recomputes direct utility, descendant utility, and survival class;
 producer-supplied labels are not trusted.
+
+Large exhaustive trees are transported as validated `full_trace`, `complete_subtree`, and
+`partial_snapshot` packets. Complete subtrees retain their external parent identity and remain
+authoritative for local descendant labels. Partial snapshots are deliberately non-negative
+evidence. Training loaders must consume every item in a campaign record's `bundles` array; silently
+reading only the compatibility `bundle` field discards dense-search supervision.
 
 The training boundary is intentionally open to future grammar growth. Canonical identity captures
 every non-provenance typed node and edge field, including previously unknown relations,
@@ -115,11 +130,80 @@ proof-risk, and ordinal outcome heads. Calibration uses held-out roots, ensemble
 semantic graph distance, and a conformal residual summary.
 
 This deliberately small backend validates the data and authority boundaries before introducing a
-12-30M parameter heterogeneous relational graph transformer. The v3 interchange retains
-the raw topology that model requires. Training that larger model is gated on
-at least 2,500 roots, 20 projects, 3 languages, 2 hardware targets, and 25,000 non-synthetic Grade
-A/B physical observations. Meeting the size gate makes the corpus eligible for model evaluation;
-it does not automatically authorize budgeted production search.
+10-30M parameter relational graph model. The v3 interchange retains the raw topology and partial
+action lineage that model requires. A branch-survival model is gated on thousands of
+useful-descendant paths, exhaustive or soundly closed negatives, action-family diversity, and
+root/project/language holdouts. Performance observations are optional because this head predicts
+survival rather than speed. Meeting a size gate makes a corpus eligible for held-out replay; live
+pruning additionally requires calibrated high-recall shadow evaluation and fail-open deployment.
+
+The reference relational shadow model is trained and served with:
+
+```bash
+python scripts/search_pruner.py train \
+  --progress campaign/training-v3/training-v3-progress.json \
+  --manifest campaign-manifest.json \
+  --output pruner-model
+
+python scripts/search_pruner.py serve --model pruner-model/model.pt
+```
+
+It consumes branch-level v3 examples, excludes deterministic, canonicalized, and legacy synthetic
+decision surfaces that are absent from the live policy interface, and uses the real lazy family and
+ancestor action path. Project-held-out replay,
+uncertainty/OOD abstention, exploration reserve, and minimum positive-path counts determine live
+eligibility.
+
+The RC24 C++-primary evaluation loaded 43,153 deduplicated examples from 770 semantic roots. The
+initial 14.2M-parameter model's 19.51% branch reduction missed 41 of 3,254 useful branches and was
+rejected. Frozen-corpus ablations then compared a 3.1M relational encoder, independent-seed
+ensembles, staged/focal training, frozen encoders, canonical graph-summary trees, embedding plus
+tree heads, hard-example objectives, retrieval consensus, and stage-specific risk thresholds.
+
+The selected three-member ensemble uses an upper-confidence score, exact-history and nearest-
+neighbor safety checks, family-local OOD rejection, and a 1% exploration reserve. Its maximum
+validated policy avoids 1.30% of online replay work at 99.969% useful-descendant recall. Grammar and
+candidate recall are 100%; composition recall is 99.950%. A stricter zero-miss policy avoids 1.27%
+of replay work. Both remain `shadow_only`; no packaged or live workflow enables them. The result
+shows that the existing corpus can support safe selective pruning, but not the intended 70-90%
+reduction. Further progress requires targeted cross-project candidate/composition evidence rather
+than broader relabeling or more aggressive calibration of these same roots. See
+[the validation report](reports/executable-source-search-rc24-validation.md).
+
+## Contextual Best-First Program
+
+RC24 closes the independent hard-pruning experiment. The successor policy answers which legal
+sibling to explore first, not which sibling is safe to delete. This follows learning-to-branch work
+that imitates an expensive branching oracle on graph state rather than classifying isolated nodes
+([Gasse et al., 2019](https://arxiv.org/abs/1906.01629)). Controlled encoder ablations include GIN,
+alternating GIN/GAT, and a local-message-passing plus global-attention variant motivated by the GPS
+recipe ([Rampasek et al., 2022](https://arxiv.org/abs/2205.12454)).
+
+One `SearchDecision` contains the parent semantic graph, complete prior action sequence, current
+grammar state, and every legal sibling action. Post-search distance, useful and retained terminal
+counts, subtree cost, and redundancy class are outcome-only supervision. Listwise and pairwise
+losses teach retained descendants before useful descendants, short useful paths before long useful
+paths, and useful siblings before exhausted siblings. Utility, cost, and redundancy are auxiliary
+heads. A redundancy head can propose equivalence checks, but only canonical identity, Z3, Alive2,
+or another declared verifier may merge states.
+
+The runtime is an anytime priority queue. `fast` and `guided` stop under explicit budgets;
+`exhaustive` uses the same learned ordering but eventually explores every state not removed by a
+sound deterministic mechanism. Evaluation replays held-out projects online and reports useful
+recovery at 1, 5, 10, 20, 30, 50, and 100 percent of exhaustive work, plus first discovery,
+proof/compiler calls, candidate construction, frontier size, and exact transpositions. Phase A
+requires at least 99% useful-terminal recovery by 30% work. Frontier-native future data raises the
+target to 99.9% and adds retained-terminal and transposition outcomes unavailable in RC24.
+
+```bash
+python scripts/contextual_search_policy.py \
+  --progress CAMPAIGN/training-v3/training-v3-progress.json \
+  --manifest CAMPAIGN.json \
+  --rc24-run RC24_MODEL_DIR \
+  --output contextual-policy
+
+vladder source-search run --manifest search.yaml --out-dir search-out --search-mode guided
+```
 
 ## Search Safety
 

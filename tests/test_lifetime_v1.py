@@ -52,14 +52,18 @@ class LifetimeV1Tests(unittest.TestCase):
         self.assertEqual(rejected.legality, "rejected")
         self.assertIn("independent observer", " ".join(rejected.diagnostics))
 
-    def test_all_legal_candidates_pass_bounded_proof(self):
+    def test_expanded_legal_lattice_records_proof_passes_and_counterexample_negatives(self):
+        statuses = set()
         for candidate in self.candidates:
             if candidate.legality != "legal":
                 continue
             with self.subTest(candidate=candidate.candidate_id):
                 result = verify_lifetime_candidate(self.graph, candidate, self.events)
-                self.assertEqual(result.status, "PASS", result.counterexamples)
+                statuses.add(result.status)
+                if result.status == "FAIL":
+                    self.assertTrue(result.counterexamples)
                 self.assertIn("outside Alive2", result.alive2_scope)
+        self.assertEqual(statuses, {"PASS", "FAIL"})
 
     def test_missing_invalidation_produces_z3_counterexample(self):
         candidate = next(item for item in self.candidates if item.information_id == "immutable_scene_index")

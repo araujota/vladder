@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/search-decision-bundle-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_schema", "decisions", "bundle_hash"],
+  "properties": {
+    "schema_version": {"const": "vladder-search-decision-bundle-v1"},
+    "source_schema": {"type": "string", "minLength": 1},
+    "bundle_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["decision_id", "project", "root_id", "search_id", "parent_branch_id", "parent_state", "search_history", "grammar_state", "depth", "canonical_state_hash", "frontier", "oracle_chosen_branch_id", "descendant_outcomes", "evidence_limitations"],
+        "properties": {
+          "decision_id": {"type": "string"},
+          "project": {"type": "string"},
+          "root_id": {"type": "string"},
+          "search_id": {"type": "string"},
+          "parent_branch_id": {"type": "string"},
+          "parent_state": {"type": "object"},
+          "search_history": {"type": "array", "items": {"type": "object"}},
+          "grammar_state": {"type": "object"},
+          "depth": {"type": "integer", "minimum": 0},
+          "canonical_state_hash": {"type": ["string", "null"]},
+          "frontier": {"type": "array", "minItems": 2, "items": {"type": "object"}},
+          "oracle_chosen_branch_id": {"type": "string"},
+          "descendant_outcomes": {"type": "array", "minItems": 2, "items": {"type": "object"}},
+          "evidence_limitations": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  }
+}

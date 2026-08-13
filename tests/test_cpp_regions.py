@@ -5,9 +5,11 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from vladder import CPP_SUPPORT_VERSION, CppAuditRequest, CppRegionRequest, VelocityLadder
 from vladder.cpp_regions import (
+    _resolve_ir_definition_symbol,
     inspect_cpp_matrix,
     inspect_cpp_region,
     isolate_cpp_region,
@@ -45,6 +47,51 @@ def write_database(root: Path, files: tuple[str, ...] | None = None) -> Path:
 
 
 class CppRegionTests(unittest.TestCase):
+    def test_clang_extraction_timeout_becomes_typed_adapter_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("supported_pointer.cpp",))
+            with patch(
+                "vladder.cpp_regions._emit_ast",
+                side_effect=subprocess.TimeoutExpired(["clang"], 180),
+            ):
+                report = inspect_cpp_region(
+                    FIXTURES / "supported_pointer.cpp", "transform", database, root / "inspect"
+                )
+            self.assertEqual(report["status"], "adapter_required")
+            self.assertEqual(report["adapters"][0]["kind"], "cpp-extraction-adapter")
+            self.assertIn("timed out", report["adapters"][0]["reason"])
+
+    def test_source_typedef_uses_clang_canonical_type_for_abi_proof(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("supported_typedef_scalar.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "supported_typedef_scalar.cpp", "transform", database, root / "inspect"
+            )
+            extent = report["typed_abi"]["parameters"][2]
+            self.assertEqual(extent["source_spelling"], "extent_t")
+            self.assertEqual(extent["spelling"], "unsigned long")
+            self.assertEqual(extent["category"], "scalar")
+            self.assertTrue(report["typed_abi"]["modeled"])
+
+    def test_cpp_abi_alias_resolves_to_the_concrete_llvm_definition(self):
+        module = r'''
+@_ZN4ItemC1Ei = unnamed_addr alias void (ptr, i32), ptr @_ZN4ItemC2Ei
+@_ZN4ItemD1Ev = unnamed_addr alias void (ptr), ptr @_ZN4ItemD2Ev
+define void @_ZN4ItemC2Ei(ptr %this, i32 %value) {
+entry:
+  ret void
+}
+define void @_ZN4ItemD2Ev(ptr %this) {
+entry:
+  ret void
+}
+'''
+        symbol, chain = _resolve_ir_definition_symbol(module, "_ZN4ItemC1Ei")
+        self.assertEqual(symbol, "_ZN4ItemC2Ei")
+        self.assertEqual(chain, ["_ZN4ItemC1Ei", "_ZN4ItemC2Ei"])
+
     def test_transitive_nonlocal_helper_effects_are_not_lost(self):
         module = """
 @state = global i32 0
@@ -211,7 +258,7 @@ attributes #1 = { nounwind nofree nosync nocallback willreturn memory(argmem: re
             closure = report["closure"]
             self.assertEqual(closure["disposition"], "local_regions_only")
             self.assertTrue(closure["capabilities"]["isolation"]["actual"])
-            self.assertEqual(closure["capabilities"]["candidate_generation"]["count"], 2)
+            self.assertEqual(closure["capabilities"]["candidate_generation"]["count"], 7)
             self.assertFalse(closure["capabilities"]["benchmark"]["actual"])
             self.assertFalse(closure["source_changes_performed"])
             for candidate in closure["candidates"]:
@@ -354,6 +401,8 @@ attributes #1 = { nounwind nofree nosync nocallback willreturn memory(argmem: re
             )
             region = report["closure"]["regions"][0]
             self.assertFalse(region["eligible"])
+            self.assertTrue(region["schedule_eligible"])
+            self.assertEqual(region["disposition"], "effect_preserving_schedule")
             self.assertIn("external_call", region["blockers"])
             detail = next(item for item in region["blocker_details"] if item["kind"] == "external_call")
             self.assertFalse(detail["whole_function_blocked"])
@@ -371,6 +420,41 @@ attributes #1 = { nounwind nofree nosync nocallback willreturn memory(argmem: re
             self.assertEqual(selected["status"], "supported")
             self.assertEqual(selected["selection"]["symbol"], pointer_symbol)
             self.assertEqual(selected["abi_class"], "pointer-view")
+
+    def test_overload_can_be_selected_by_authoritative_source_line(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("adapter_overload.cpp",))
+            selected = inspect_cpp_region(
+                FIXTURES / "adapter_overload.cpp", "transform", database,
+                root / "selected-line", source_line=4,
+            )
+            self.assertEqual(selected["status"], "supported")
+            self.assertIn("PfPKf", selected["selection"]["symbol"])
+            self.assertEqual(selected["requested_source_line"], 4)
+
+    def test_template_declaration_prefix_line_selects_one_specialization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("supported_template.cpp",))
+            selected = inspect_cpp_region(
+                FIXTURES / "supported_template.cpp", "transform", database,
+                root / "selected-line", source_line=7,
+            )
+            self.assertEqual(selected["status"], "supported")
+            self.assertEqual(selected["requested_source_line"], 7)
+
+    def test_one_template_definition_with_multiple_instantiations_is_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            database = write_database(root, ("adapter_template_instantiations.cpp",))
+            report = inspect_cpp_region(
+                FIXTURES / "adapter_template_instantiations.cpp", "transform", database,
+                root / "instantiations", source_line=3,
+            )
+            self.assertEqual(report["status"], "adapter_required")
+            self.assertEqual(report["adapters"][0]["kind"], "multi-symbol-definition-adapter")
+            self.assertEqual(len(report["candidate_symbols"]), 2)
 
     def test_ambiguous_compile_commands_require_an_index(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/production-search-checkpoint-v1.schema.json",
+  "title": "vLadder Production Search Checkpoint",
+  "type": "object",
+  "required": [
+    "schema_version", "identity", "saved_at_unix_ns", "frontier_state_ids",
+    "canonical_result", "runtime_states"
+  ],
+  "properties": {
+    "schema_version": {"const": "vladder-production-search-checkpoint-v1"},
+    "identity": {"type": "object", "additionalProperties": {"type": "string"}},
+    "saved_at_unix_ns": {"type": "integer", "minimum": 0},
+    "frontier_state_ids": {"type": "array", "items": {"type": "string"}},
+    "canonical_result": {"type": "object"},
+    "runtime_states": {"type": "object", "additionalProperties": {"type": "object"}}
+  },
+  "additionalProperties": false
+}

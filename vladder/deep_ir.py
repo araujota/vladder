@@ -343,6 +343,15 @@ def inspect_source_realization(source: str, language: str, function: str) -> Sou
         evidence.append("byte equality predicate")
     else:
         blockers.append("no supported exact byte predicate detected")
+    reduction_observable = bool(re.search(
+        r"(?:\b(?:count|sum|total|result|found)\w*\s*\+=|\+\+\s*(?:count|sum|total|result|found)|"
+        r"(?:count|sum|total|result|found)\w*\s*\+\+|\.filter\([^;{}]*\)\.count\(\)|\.fold\(|"
+        r"count_ones|popcount|movemask|sad_epu8|vladder_mask_popcount|vladder_lane_byte_accumulate)",
+        normalized,
+    ))
+    if predicate is not None and not reduction_observable:
+        blockers.append("predicate is not bound to a supported scalar or packed reduction observable")
+        predicate = None
     realization: str | None
     if any(token in source for token in ("is_x86_feature_detected", "__builtin_cpu_supports", "vladder_deployment_avx2")):
         realization = "guarded-avx2-byte" if any(token in source for token in ("sad_epu8", "vladder_lane_byte_accumulate")) else "guarded-avx2"

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/production-canonical-search-smoke-v1.schema.json",
+  "title": "vLadder Production Canonical Search Smoke Report",
+  "type": "object",
+  "required": [
+    "schema_version", "status", "release_blocking", "stage_order", "stages", "summary", "authority"
+  ],
+  "properties": {
+    "schema_version": {"const": "vladder-production-canonical-search-smoke-v1"},
+    "status": {"enum": ["PASS", "FAIL"]},
+    "release_blocking": {"const": true},
+    "stage_order": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {"type": "string"}
+    },
+    "stages": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "required": ["stage_id", "status", "duration_ms", "assertions", "metrics", "error"],
+        "properties": {
+          "stage_id": {"type": "string"},
+          "status": {"enum": ["PASS", "FAIL"]},
+          "duration_ms": {"type": "number", "minimum": 0},
+          "assertions": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {"type": "boolean"}
+          },
+          "metrics": {"type": "object"},
+          "error": {"type": ["string", "null"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["stage_count", "passed", "failed", "duration_ms"],
+      "properties": {
+        "stage_count": {"const": 8},
+        "passed": {"type": "integer", "minimum": 0, "maximum": 8},
+        "failed": {"type": "integer", "minimum": 0, "maximum": 8},
+        "duration_ms": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "authority": {
+      "type": "object",
+      "required": ["ml_deletion", "unknown_conditions", "terminal_identity"],
+      "properties": {
+        "ml_deletion": {"const": false},
+        "unknown_conditions": {"const": "fail_open"},
+        "terminal_identity": {"const": "collision-checked canonical bytes"}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

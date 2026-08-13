@@ -54,25 +54,77 @@ def discover_lifetime_candidates(
 ) -> tuple[LifetimeCandidate, ...]:
     candidates: list[LifetimeCandidate] = []
     for item in graph.information:
-        measured = attribution[item.id]
-        if "serialized_body" in item.traits and measured.realization_redundancy_ratio > 1.0:
-            candidates.append(_candidate(graph, item, measured, "serialization-body-reuse", "retain_body_per_record"))
-        elif "derived" in item.traits and measured.realization_redundancy_ratio > 1.0:
-            candidates.append(_candidate(graph, item, measured, "repeated-derivation-elimination", "retain_per_valid_scope"))
-
-        if "mixed_mutability" in item.traits and set(item.mutation_dependencies) != set(item.mutations):
-            candidates.append(_candidate(graph, item, measured, "immutable-mutable-projection-split", "split_stable_projection"))
-
-        if "unobserved_intermediate" in item.traits:
-            candidates.append(_candidate(graph, item, measured, "intermediate-realization-elimination", "direct_consumer"))
-        elif measured.retention_waste_ratio >= 0.5:
-            candidates.append(_candidate(graph, item, measured, "intermediate-realization-elimination", "retire_after_final_use"))
-
-        if measured.transfer_redundancy_ratio > 1.0 and item.candidate_placements:
-            target = next((placement for placement in item.candidate_placements if placement != item.current.placement), None)
-            if target:
-                candidates.append(_candidate(graph, item, measured, "placement-resident-state", "retain_at_consumer", target))
+        candidates.extend(discover_lifetime_candidates_for_information(graph, attribution, item.id))
     return tuple(sorted(candidates, key=lambda candidate: (candidate.information_id, candidate.family, candidate.candidate_id)))
+
+
+def discover_lifetime_candidates_for_information(
+    graph: LifetimeFlowGraph,
+    attribution: dict[str, LifetimeAttribution],
+    information_id: str,
+) -> tuple[LifetimeCandidate, ...]:
+    item = graph.item(information_id)
+    measured = attribution[item.id]
+    candidates: list[LifetimeCandidate] = []
+    if "serialized_body" in item.traits and measured.realization_redundancy_ratio > 1.0:
+        candidates.extend(_retention_candidates(
+            graph, item, measured, "serialization-body-reuse", "retain_body_per_record",
+        ))
+    elif "derived" in item.traits and measured.realization_redundancy_ratio > 1.0:
+        candidates.extend(_retention_candidates(
+            graph, item, measured, "repeated-derivation-elimination", "retain_per_valid_scope",
+        ))
+
+    if "mixed_mutability" in item.traits and set(item.mutation_dependencies) != set(item.mutations):
+        candidates.extend(_retention_candidates(
+            graph, item, measured, "immutable-mutable-projection-split", "split_stable_projection",
+        ))
+
+    if "unobserved_intermediate" in item.traits:
+        candidates.extend(
+            _candidate(
+                graph, item, measured, "intermediate-realization-elimination", "direct_consumer",
+                placement=placement, scope=item.consumers[0].scope,
+            )
+            for placement in item.candidate_placements
+        )
+    elif measured.retention_waste_ratio >= 0.5:
+        candidates.extend(
+            _candidate(
+                graph, item, measured, "intermediate-realization-elimination", "retire_after_final_use",
+                scope=scope,
+            )
+            for scope in item.candidate_scopes
+            if graph.scopes.contains(item.current.scope, scope)
+        )
+
+    if measured.transfer_redundancy_ratio > 1.0 and item.candidate_placements:
+        candidates.extend(
+            _candidate(
+                graph, item, measured, "placement-resident-state", "retain_at_consumer",
+                placement=placement, scope=scope,
+            )
+            for placement in item.candidate_placements
+            if placement != item.current.placement
+            for scope in item.candidate_scopes
+        )
+    return tuple(sorted(candidates, key=lambda candidate: (candidate.family, candidate.candidate_id)))
+
+
+def _retention_candidates(
+    graph: LifetimeFlowGraph,
+    item: LifetimeInformation,
+    measured: LifetimeAttribution,
+    family: str,
+    mode: str,
+) -> tuple[LifetimeCandidate, ...]:
+    return tuple(
+        _candidate(
+            graph, item, measured, family, mode, placement=placement, scope=scope,
+        )
+        for scope in item.candidate_scopes
+        for placement in item.candidate_placements
+    )
 
 
 def _candidate(
@@ -82,8 +134,9 @@ def _candidate(
     family: str,
     mode: str,
     placement: str | None = None,
+    scope: str | None = None,
 ) -> LifetimeCandidate:
-    candidate_scope = _candidate_scope(graph, item, family, mode)
+    candidate_scope = scope or _candidate_scope(graph, item, family, mode)
     if mode == "direct_consumer" and placement is None:
         placement = next(
             (candidate for candidate in item.candidate_placements if candidate != item.current.placement),

@@ -69,19 +69,61 @@ def _compaction_sequence(solver: z3.Solver, lanes: int = 8) -> None:
     solver.add(z3.Or(failures))
 
 
-def _capacity_atomicity(solver: z3.Solver, max_elements: int) -> None:
+def _capacity_atomicity(
+    solver: z3.Solver,
+    max_elements: int | None,
+    policy: str = "fail-unchanged",
+) -> None:
     selected = z3.Int("selected")
+    input_extent = z3.Int("input_extent")
     capacity = z3.Int("capacity")
     old_extent = z3.Int("old_extent")
-    committed_extent = z3.If(selected <= capacity, selected, old_extent)
+    guard_extent = input_extent if policy == "fail-input-extent-unchanged" else selected
+    committed_extent = z3.If(guard_extent <= capacity, selected, old_extent)
     state_version = z3.Int("state_version")
-    committed_version = z3.If(selected <= capacity, state_version + 1, state_version)
-    solver.add(selected >= 0, selected <= max_elements, capacity >= 0, capacity <= max_elements, old_extent >= 0)
+    committed_version = z3.If(guard_extent <= capacity, state_version + 1, state_version)
+    solver.add(selected >= 0, input_extent >= 0, selected <= input_extent, capacity >= 0, old_extent >= 0)
+    if max_elements is not None:
+        solver.add(input_extent <= max_elements, capacity <= max_elements)
     solver.add(z3.Or(
-        z3.And(selected > capacity, committed_extent != old_extent),
-        z3.And(selected > capacity, committed_version != state_version),
-        z3.And(selected <= capacity, committed_extent != selected),
+        z3.And(guard_extent > capacity, committed_extent != old_extent),
+        z3.And(guard_extent > capacity, committed_version != state_version),
+        z3.And(guard_extent <= capacity, committed_extent != selected),
     ))
+
+
+def _runtime_compaction_composition(solver: z3.Solver) -> None:
+    """Prove that stable block-local offsets compose for an arbitrary runtime extent."""
+    prefix_selected = z3.Int("prefix_selected")
+    local_before = z3.Int("local_before")
+    local_total = z3.Int("local_total")
+    suffix_before = z3.Int("suffix_before")
+    global_local_position = z3.Int("global_local_position")
+    global_suffix_position = z3.Int("global_suffix_position")
+    solver.add(
+        prefix_selected >= 0,
+        local_before >= 0,
+        local_total >= local_before,
+        suffix_before >= 0,
+        global_local_position == prefix_selected + local_before,
+        global_suffix_position == prefix_selected + local_total + suffix_before,
+    )
+    solver.add(z3.Or(
+        global_local_position != prefix_selected + local_before,
+        global_suffix_position != prefix_selected + local_total + suffix_before,
+        global_suffix_position < global_local_position,
+    ))
+
+
+def _alias_guard_completeness(solver: z3.Solver) -> None:
+    left = z3.Int("left_address")
+    right = z3.Int("right_address")
+    left_bytes = z3.Int("left_bytes")
+    right_bytes = z3.Int("right_bytes")
+    overlap = z3.And(left < right + right_bytes, right < left + left_bytes)
+    guard = z3.If(left <= right, right - left < left_bytes, left - right < right_bytes)
+    solver.add(left >= 0, right >= 0, left_bytes > 0, right_bytes > 0)
+    solver.add(overlap != guard)
 
 
 def _codec_bijection(solver: z3.Solver, widths: tuple[int, ...]) -> None:
@@ -205,14 +247,28 @@ def prove_dataflow_candidate(
     if contract.family == "predicate-stable-compaction":
         obligations.extend([
             _z3_proof("stable-sequence", z3_dir, "8-lane mask, prefix offsets, and ordered output", _compaction_sequence),
-            _z3_proof("capacity-atomicity", z3_dir, "bounded extent and fail-unchanged output", lambda solver: _capacity_atomicity(solver, contract.max_elements)),
+            _z3_proof("capacity-atomicity", z3_dir, "exact declared preflight failure and unchanged output", lambda solver: _capacity_atomicity(solver, contract.max_elements, contract.capacity_policy)),
         ])
+        if contract.max_elements is None:
+            obligations.append(_z3_proof(
+                "runtime-extent-block-induction",
+                z3_dir,
+                "arbitrary runtime extent as an ordered composition of proved finite blocks",
+                _runtime_compaction_composition,
+            ))
+        if contract.aliasing == "runtime-guarded-disjoint":
+            obligations.append(_z3_proof(
+                "alias-dispatch-completeness",
+                z3_dir,
+                "byte-range overlap guard selects the baseline-order fallback exactly on overlap",
+                _alias_guard_completeness,
+            ))
     elif contract.family == "fixed-width-codec":
         obligations.append(_z3_proof("codec-bijection", z3_dir, "declared fixed-width fields", lambda solver: _codec_bijection(solver, contract.field_widths)))
     elif contract.family == "stateful-delta-transducer":
         obligations.extend([
             _z3_proof("delta-reconstruction", z3_dir, "6-element bounded state transition", _delta_reconstruction),
-            _z3_proof("commit-rollback-atomicity", z3_dir, "bounded output and state publication", lambda solver: _capacity_atomicity(solver, contract.max_elements)),
+            _z3_proof("commit-rollback-atomicity", z3_dir, "bounded output and state publication", lambda solver: _capacity_atomicity(solver, contract.max_elements, contract.capacity_policy)),
             _z3_proof("stable-delta-sequence", z3_dir, "8-lane stable index/value delta", _compaction_sequence),
         ])
     elif contract.family == "aos-fused-multi-reduction":

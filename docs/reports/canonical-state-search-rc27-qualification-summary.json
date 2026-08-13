@@ -1,0 +1,81 @@
+{
+  "schema_version": "vladder-canonical-search-qualification-summary-v1",
+  "status": "PASS",
+  "disposition": "ADOPT_CANONICAL_REDUCED_SEARCH",
+  "rc26_replay": {
+    "roots": 102,
+    "raw_states": 66882,
+    "recorded_transpositions": 38656,
+    "transposition_ratio": 0.5779731467360426,
+    "unique_canonical_states": 28226,
+    "u2_terminals": 1333,
+    "u2_preservation_ratio": 1.0,
+    "captured_proof_calls": 19167,
+    "captured_compiler_calls": 22860,
+    "captured_evaluation_wall_hours": 24.64859602565428
+  },
+  "adversarial_campaign": {
+    "roots": 30,
+    "fixture_mix": {
+      "composition": 15,
+      "dependency": 5,
+      "alpha": 5,
+      "symmetry": 5
+    },
+    "raw_sequence_states": 35280,
+    "unique_canonical_states": 1795,
+    "state_reduction": 0.9491213151927438,
+    "canonical_candidate_constructions": 5475,
+    "reduced_candidate_constructions": 1805,
+    "candidate_reduction_vs_raw_sequence": 0.9488378684807256,
+    "por_incremental_candidate_reduction": 0.6703196347031963,
+    "transpositions": 3670,
+    "por_avoided_transitions": 3670,
+    "sleep_set_avoided_transitions": 3670,
+    "dependency_avoided_transitions": 10,
+    "alpha_collapses": 5,
+    "symmetry_collapses": 5,
+    "terminal_states": 295,
+    "terminal_preservation_ratio": 1.0,
+    "qualification_proof_work_reduction": 0.986211731713017,
+    "qualification_compiler_work_reduction": 0.986211731713017,
+    "peak_reduced_memory_bytes": 1885099,
+    "observed_cheap_fixture_wall_ms": {
+      "raw_sequence": 1271.1649464908987,
+      "canonical": 2169.511752203107,
+      "reduced": 5863.365685334429,
+      "net_saved": -4592.20073884353
+    }
+  },
+  "net_benefit": {
+    "cost_gate": "PASS",
+    "rc26_average_terminal_evaluation_wall_ms": 4528.217273543346,
+    "avoided_terminal_work_units": 21100,
+    "projected_avoided_cold_work_ms": 95545384.4717646,
+    "measured_reduction_overhead_ms": 4592.20073884353,
+    "projected_net_saved_ms": 95540792.27102575,
+    "claim_boundary": "Projection uses RC26 captured cold terminal cost; cheap-fixture wall time is the direct observation and regresses."
+  },
+  "local_egraph": {
+    "status": "PASS",
+    "input_expressions": 12,
+    "e_nodes": 24,
+    "e_classes": 12,
+    "unions": 12,
+    "peak_memory_bytes": 8400
+  },
+  "canonical_labeling": {
+    "current_deterministic_unique_states": 2,
+    "wl_partition_unique_states": 1,
+    "bounded_individualization_unique_states": 1,
+    "meaningful_additional_equivalence": true,
+    "implementation": "typed WL plus bounded internal individualization; no external nauty dependency"
+  },
+  "gates": {
+    "terminal_preservation": true,
+    "state_reduction_75_percent": true,
+    "candidate_reduction_70_percent": true,
+    "net_benefit_cost_gate": true,
+    "rc26_replay_preserved": true
+  }
+}

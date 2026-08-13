@@ -1,0 +1,60 @@
+{
+  "schema_version": "vladder-canonical-search-release-artifact-v1",
+  "release_version": "1.0.0rc29",
+  "engine_version": "production-canonical-search-v1",
+  "disposition": "PRODUCTION_CANONICAL_SEARCH_APPROVED",
+  "production_claim": "vLadder exhaustively searches unique reachable semantic realizations after completeness-preserving state-space reduction, rather than enumerating redundant transformation sequences.",
+  "authority": {
+    "canonical_identity": "collision-checked canonical bytes",
+    "exact_reduction": "deterministic or formally qualified only",
+    "ml_deletion": false,
+    "unknown_conditions": "fail_open"
+  },
+  "defaults": {
+    "fast": "canonical DAG plus cheap exact reductions and a finite budget",
+    "guided": "canonical DAG plus qualified cost-gated POR and a finite budget",
+    "exhaustive": "all reachable unique canonical states under qualified exact reductions",
+    "raw_sequence": "legacy_path_debug qualification mode only"
+  },
+  "qualification": {
+    "terminal_preservation_percent": 100.0,
+    "rc26_u2_terminals_preserved": 1333,
+    "rc26_u2_terminals_total": 1333,
+    "rc26_transposition_ratio": 0.5779731467360426,
+    "rc27_adversarial_terminal_states_preserved": 295,
+    "rc27_adversarial_terminal_states_total": 295,
+    "rc27_state_reduction_ratio": 0.9491213151927438,
+    "rc27_por_incremental_candidate_reduction_ratio": 0.6703196347031963,
+    "expensive_fixture_raw_proof_calls": 48,
+    "expensive_fixture_reduced_proof_calls": 8,
+    "expensive_fixture_raw_compiler_calls": 48,
+    "expensive_fixture_reduced_compiler_calls": 8,
+    "expensive_fixture_measured_wall_reduction_ratio": 0.767900739270347
+  },
+  "release_smoke": {
+    "stages": 8,
+    "required_passes": [
+      "canonical_identity",
+      "por_safety",
+      "incremental_canonicalization",
+      "expensive_terminal_reduction",
+      "cheap_region_cost_gate",
+      "concurrent_registration",
+      "checkpoint_resume",
+      "mini_scaling"
+    ]
+  },
+  "packaged_components": [
+    "vladder.canonical_search",
+    "vladder.production_search",
+    "vladder.production_smoke",
+    "vladder.composition_native"
+  ],
+  "training_contract": {
+    "schema": "vladder-composition-native-search-trace-v1",
+    "contract": "vladder-search-policy-training-contract-v1",
+    "ml_authority": "ordering_and_verified_proposals_only",
+    "inference_feature_boundary": "pre_decision_frontier_only",
+    "post_search_supervision": "terminal_lineage_and_descendant_utility"
+  }
+}

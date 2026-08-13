@@ -20,6 +20,7 @@ from .canonical_regions import (
     classify_canonical_region,
     corroborate_compiler_shape,
 )
+from .canonical_executable import canonical_region_from_dict, synthesize_canonical_region
 from .language_adapter import LANGUAGE_ADAPTER_PROTOCOL_VERSION, LanguageAdapterRegistry, LanguageCapability, LanguageRegionEvidence, file_sha256
 from .paired_benchmark import run_paired_benchmark
 from .closure_bindings import zig_function_summary
@@ -122,6 +123,18 @@ def synthesize_zig_region(request: ZigRegionRequest) -> dict[str, Any]:
     canonical = evidence.semantic_graph.contracts.get("canonical_region") if evidence.semantic_graph else None
     operation = (canonical or {}).get("operation") or (evidence.semantic_graph.contracts.get("operation") if evidence.semantic_graph else None)
     if operation != "count_equal_u8":
+        if canonical:
+            native = synthesize_canonical_region(
+                canonical_region_from_dict(canonical), "zig", output / "canonical-native",
+            )
+            report = {
+                "schema_version": "vladder-zig-synthesis-v2",
+                "status": native["status"],
+                "support": evidence.to_dict(),
+                **{key: value for key, value in native.items() if key not in {"schema_version", "status"}},
+            }
+            _write_json(output / "zig-synthesis.json", report)
+            return report
         report = {
             "schema_version": "vladder-zig-synthesis-v1",
             "status": "lowerer_required",
@@ -582,7 +595,7 @@ def _compile_zig(zig: Path, source: Path, output: Path, mode: str) -> dict[str, 
     output.mkdir(parents=True, exist_ok=True)
     llvm, assembly, obj = output / "module.ll", output / "module.s", output / "module.o"
     command = [str(zig), "build-obj", str(source), "-O", mode, f"-femit-llvm-ir={llvm}", f"-femit-asm={assembly}", f"-femit-bin={obj}"]
-    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_zig_cache_environment(output))
     return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "llvm_ir": str(llvm), "assembly": str(assembly), "object": str(obj)}
 
 
@@ -596,13 +609,13 @@ def _compile_zig_module(
         f"-Mroot={wrapper}", f"-Mtarget={target}",
         f"-femit-llvm-ir={llvm}", f"-femit-asm={assembly}", f"-femit-bin={obj}",
     ]
-    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_zig_cache_environment(output))
     return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "llvm_ir": str(llvm), "assembly": str(assembly), "object": str(obj)}
 
 
 def _compile_zig_executable(zig: Path, source: Path, output: Path) -> dict[str, Any]:
     command = [str(zig), "build-exe", str(source), "-O", "ReleaseFast", "-lc", "-femit-bin=" + str(output)]
-    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_zig_cache_environment(output.parent))
     return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "executable": str(output)}
 
 
@@ -613,7 +626,7 @@ def _compile_zig_executable_module(
         str(zig), "build-exe", "-O", "ReleaseFast", "-lc", "--dep", "target",
         f"-Mroot={source}", f"-Mtarget={target}", f"-femit-bin={output}",
     ]
-    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=_zig_cache_environment(output.parent))
     return {"status": "pass" if result.returncode == 0 else "fail", "command": command, "stdout": result.stdout, "stderr": result.stderr, "executable": str(output)}
 
 
@@ -659,6 +672,13 @@ def _available_cpu(cpu: int | None) -> int | None:
     if cpu is None: return None
     available = sorted(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else []
     return cpu if not available or cpu in available else available[0]
+
+
+def _zig_cache_environment(output: Path) -> dict[str, str]:
+    environment = os.environ.copy()
+    environment["ZIG_GLOBAL_CACHE_DIR"] = str(output.resolve() / "zig-global-cache")
+    environment["ZIG_LOCAL_CACHE_DIR"] = str(output.resolve() / "zig-local-cache")
+    return environment
 
 
 def _command(command: list[str]) -> str:

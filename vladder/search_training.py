@@ -14,6 +14,7 @@ from .training_privacy import (
     load_or_create_training_identity,
     private_identity,
     sanitize_root,
+    sanitize_decision_context,
     sanitize_training_action,
     sanitize_training_descriptor,
     search_privacy_manifest,
@@ -21,9 +22,9 @@ from .training_privacy import (
 
 
 MODEL_TRAINING_SCHEMA_VERSION = "vladder-model-training-bundle-v3"
-CANONICALIZER_VERSION = "search-pruner-graph-v3"
-LABELER_VERSION = "useful-descendant-v1"
-TARGET_DEFINITION = "proof-valid-or-stronger-v1"
+CANONICALIZER_VERSION = "search-pruner-state-graph-v4"
+LABELER_VERSION = "useful-descendant-v2"
+TARGET_DEFINITION = "proof-valid-distinct-or-stronger-v2"
 UTILITY_KEYS = ("proof_valid", "distinct_realization", "physically_material", "retained", "promoted")
 
 POSITIVE_OUTCOMES = {
@@ -38,6 +39,17 @@ POSITIVE_OUTCOMES = {
     "promoted": {"promoted_candidate"},
 }
 SOUND_REASONS = {"sound_contract", "sound_legality", "sound_dominance"}
+TERMINAL_NEGATIVE_OUTCOMES = {
+    "inapplicable", "semantic_mismatch", "illegal", "proof_failed", "duplicate",
+    "compiler_identical", "dominated_sound", "exhausted_no_useful_descendant",
+    "measured_regression", "statistical_tie", "small_win_below_floor",
+    "composed_regression", "resource_regression",
+}
+TERMINAL_POSITIVE_OUTCOMES = {
+    "distinct_realization", "material_regional_win", "composed_win",
+    "retained_candidate", "promoted_candidate",
+}
+STRONG_TERMINAL_POSITIVE_OUTCOMES = TERMINAL_POSITIVE_OUTCOMES - {"distinct_realization"}
 
 
 def empty_utility() -> dict[str, bool]:
@@ -92,6 +104,7 @@ def make_branch(
     evidence_coverage: str = "none",
     coverage: dict[str, Any] | None = None,
     search_cost: dict[str, Any] | None = None,
+    decision_context: dict[str, Any] | None = None,
     identity_material: Any | None = None,
 ) -> dict[str, Any]:
     default_coverage = {
@@ -119,6 +132,7 @@ def make_branch(
         "evidence_coverage": evidence_coverage,
         "coverage": {**default_coverage, **(coverage or {})},
         "search_cost": {**default_cost, **(search_cost or {})},
+        "decision_context": dict(decision_context or {}),
     }
     branch_id = canonical_hash(identity_material if identity_material is not None else body)
     return {
@@ -195,12 +209,25 @@ def derive_survival_labels(
             return memo[branch_id]
         branch = by_id[branch_id]
         child_results = [visit(child_id) for child_id in children.get(branch_id, [])]
-        complete = _subtree_is_complete(branch, child_results, len(children.get(branch_id, [])))
+        branch_observations = observations_by_branch.get(branch_id, [])
+        complete = _subtree_is_complete(
+            branch, child_results, len(children.get(branch_id, [])), branch_observations,
+        )
         values: dict[str, bool | None] = {}
         for key in UTILITY_KEYS:
             positive = branch["direct_utility"][key] or any(child[0][key] is True for child in child_results)
             values[key] = True if positive else False if complete else None
-        direct_useful = bool(branch["direct_utility"]["proof_valid"] or branch["direct_utility"]["physically_material"] or branch["direct_utility"]["retained"] or branch["direct_utility"]["promoted"])
+        outcomes = {item["outcome"] for item in branch_observations}
+        direct_useful = bool(
+            branch["direct_utility"]["physically_material"]
+            or branch["direct_utility"]["retained"]
+            or branch["direct_utility"]["promoted"]
+            or (
+                branch["direct_utility"]["proof_valid"]
+                and "distinct_realization" in outcomes
+                and not outcomes & TERMINAL_NEGATIVE_OUTCOMES
+            )
+        )
         positive_count = int(direct_useful) + sum(child[2] for child in child_results)
         useful: bool | None = True if positive_count else False if complete else None
         branch["descendant_utility"] = {**values, "useful": useful, "target_definition": TARGET_DEFINITION}
@@ -233,6 +260,7 @@ def _subtree_is_complete(
     branch: dict[str, Any],
     child_results: list[tuple[dict[str, bool | None], bool, int]],
     actual_children: int,
+    observations: list[dict[str, Any]],
 ) -> bool:
     coverage = branch["coverage"]
     if _is_sound_contract_closure(branch):
@@ -251,6 +279,16 @@ def _subtree_is_complete(
         and coverage["expected_child_count"] in {None, 0}
         and branch["evidence_coverage"] in {"complete", "soundly_blocked"}
         and coverage["completeness_reason"] in {"terminal", "not_applicable", *SOUND_REASONS}
+        and _terminal_evidence_is_resolved(observations)
+    )
+
+
+def _terminal_evidence_is_resolved(observations: list[dict[str, Any]]) -> bool:
+    """Require a distinctness or terminal-disposition result in addition to proof."""
+    outcomes = {str(item.get("outcome")) for item in observations}
+    return bool(
+        outcomes & (STRONG_TERMINAL_POSITIVE_OUTCOMES | TERMINAL_NEGATIVE_OUTCOMES)
+        or {"proof_passed", "distinct_realization"} <= outcomes
     )
 
 
@@ -303,8 +341,12 @@ def sanitize_search_trace(
         })
 
     sanitized_branches = []
+    raw_roots = {str(item["root_id"]): item for item in roots}
+    raw_searches = {str(item["search_id"]): item for item in searches}
     for item in branches:
         parent = item.get("parent_branch_id")
+        raw_search = raw_searches[str(item["search_id"])]
+        fallback_graph = raw_roots[str(raw_search["root_id"])]["semantic_graph"]
         sanitized_branches.append({
             "branch_id": branch_ids[str(item["branch_id"])],
             "search_id": search_ids[str(item["search_id"])],
@@ -317,6 +359,9 @@ def sanitize_search_trace(
             "evidence_coverage": item["evidence_coverage"],
             "coverage": _sanitize_coverage(item.get("coverage", {})),
             "search_cost": _sanitize_search_cost(item.get("search_cost", {})),
+            "decision_context": sanitize_decision_context(
+                item.get("decision_context"), fallback_graph=fallback_graph, identity=identity,
+            ),
             "direct_utility": empty_utility(),
             "descendant_utility": unknown_descendant_utility(),
             "survival": {"class": "KEEP_UNCERTAIN", "authority": "incomplete_tree", "positive_descendant_count": 0, "label_version": LABELER_VERSION},
@@ -406,10 +451,26 @@ def search_training_integrity_errors(bundle: dict[str, Any]) -> list[str]:
         root_branch = branches.get(search["root_branch_id"])
         if root_branch is None or root_branch.get("search_id") != search["search_id"]:
             errors.append(f"search {search['search_id']} has an invalid root branch")
-        elif root_branch.get("parent_branch_id") is not None or root_branch.get("depth") != 0 or not root_branch.get("baseline"):
-            errors.append(f"search {search['search_id']} root branch must be baseline depth zero with no parent")
+        elif root_branch.get("parent_branch_id") is not None:
+            errors.append(f"search {search['search_id']} fragment root must have no local parent")
+        elif search["fragment"]["kind"] == "full_trace" and (
+            root_branch.get("depth") != 0 or not root_branch.get("baseline")
+        ):
+            errors.append(f"search {search['search_id']} full-trace root must be baseline depth zero")
+        elif search["fragment"]["kind"] == "complete_subtree" and search["fragment"].get("external_parent_branch_id") is None:
+            errors.append(f"search {search['search_id']} complete subtree requires an external parent")
     for branch in branches.values():
         if branch["search_id"] not in searches: errors.append(f"branch {branch['branch_id']} references an unknown search")
+        context = branch.get("decision_context")
+        if not isinstance(context, dict):
+            errors.append(f"branch {branch['branch_id']} lacks a decision context")
+        else:
+            node_count = len(context.get("graph", {}).get("nodes", ()))
+            if any(
+                not isinstance(index, int) or index < 0 or index >= node_count
+                for index in context.get("focus_node_indices", ())
+            ):
+                errors.append(f"branch {branch['branch_id']} has an invalid decision focus")
         parent_id = branch["parent_branch_id"]
         if parent_id is not None:
             parent = branches.get(parent_id)

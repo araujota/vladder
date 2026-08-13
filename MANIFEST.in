@@ -3,6 +3,7 @@ recursive-include vladder/grammars *.json
 recursive-include vladder/skills *.md *.yaml
 recursive-include vladder/reviews *.md
 recursive-include vladder/schemas *.json
+recursive-include vladder/artifacts *.json
 recursive-include vladder/native *.cpp
 recursive-include examples *.c *.cpp *.comp *.rs *.zig *.jl *.toml *.json *.md *.yaml
 recursive-include studies *.rs *.zig *.jl *.md
