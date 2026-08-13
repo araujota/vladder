@@ -216,7 +216,11 @@ def _rust_candidate(region: CanonicalBoundedRegion, realization: str, function: 
         loop = f"if n==0{{return;}}dst[0]=src[0];if n==1{{return;}}{_rust_partition_loop(body, factor, '1', 'n-1')}dst[n-1]=src[n-1];"
     else:
         loop = _rust_partition_loop(f"dst[i]={function}_eval(src[i]);", factor, "0", "n")
-    return helper + f"#[inline(never)] pub fn {function}(dst:&mut[f32],src:&[f32]){{let n=src.len();{loop}}}\n"
+    return (
+        helper
+        + f"#[unsafe(no_mangle)]\n#[inline(never)] pub fn {function}(dst:&mut[f32],src:&[f32])"
+        + f"{{let n=src.len();{loop}}}\n"
+    )
 
 
 def _rust_partition_loop(body: str, factor: int, start: str, end: str) -> str:
