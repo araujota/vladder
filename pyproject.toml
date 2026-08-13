@@ -43,6 +43,7 @@ ml = [
 dev = [
   "bandit>=1.8,<2",
   "build>=1.2,<2",
+  "numpy>=2,<3",
   "pytest>=8,<9",
   "ruff>=0.16,<0.17",
   "tomli>=2,<3; python_version < '3.11'",
