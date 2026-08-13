@@ -612,6 +612,8 @@ def test_unified_search_executes_deep_byte_reduction_from_source() -> None:
     compiler = shutil.which("clang++-20") or shutil.which("clang++")
     if not compiler:
         return
+    if not shutil.which("alive-tv"):
+        pytest.skip("strict LLVM refinement requires Alive2")
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         source = root / "count.cpp"
@@ -1491,6 +1493,8 @@ def test_llvm_function_family_enumerates_and_proves_complete_module_candidates()
     compiler = shutil.which("clang++-20") or shutil.which("clang++")
     if not compiler:
         return
+    if not shutil.which("alive-tv"):
+        pytest.skip("strict LLVM refinement requires Alive2")
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         source = root / "aggregate.cpp"
@@ -1524,6 +1528,8 @@ def test_explicit_family_with_unresolved_neighbor_does_not_claim_complete_traini
     compiler = shutil.which("clang++-20") or shutil.which("clang++")
     if not compiler:
         return
+    if not shutil.which("alive-tv"):
+        pytest.skip("strict LLVM refinement requires Alive2")
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
         source = root / "owner.cpp"
