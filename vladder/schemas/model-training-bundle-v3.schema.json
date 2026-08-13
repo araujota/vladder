@@ -24,9 +24,9 @@
       "properties": {
         "grammar_version": {"type": "string", "minLength": 1, "maxLength": 120},
         "grammar_hash": {"$ref": "#/$defs/hash"},
-        "canonicalizer_version": {"const": "search-pruner-graph-v3"},
-        "labeler_version": {"const": "useful-descendant-v1"},
-        "target_definition": {"const": "proof-valid-or-stronger-v1"},
+        "canonicalizer_version": {"const": "search-pruner-state-graph-v4"},
+        "labeler_version": {"const": "useful-descendant-v2"},
+        "target_definition": {"const": "proof-valid-distinct-or-stronger-v2"},
         "identity_epoch": {"type": "string", "pattern": "^epoch:[0-9a-f-]{36}$"}
       }
     },
@@ -111,6 +111,24 @@
         "extension_namespaces": {"type": "array", "maxItems": 8, "items": {"$ref": "#/$defs/token"}}
       }
     },
+    "decisionContext": {
+      "type": "object", "additionalProperties": false,
+      "required": ["context_version", "quality", "graph", "focus_node_indices", "state_features", "semantic_delta"],
+      "properties": {
+        "context_version": {"const": "pre-decision-state-v2"},
+        "quality": {"enum": ["region_projected", "partial_state", "root_only"]},
+        "graph": {"$ref": "#/$defs/graph"},
+        "focus_node_indices": {
+          "type": "array", "maxItems": 128, "uniqueItems": true,
+          "items": {"type": "integer", "minimum": 0, "maximum": 511}
+        },
+        "state_features": {"$ref": "#/$defs/featureSet"},
+        "semantic_delta": {"$ref": "#/$defs/featureSet"},
+        "canonical_state_hash": {
+          "oneOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]
+        }
+      }
+    },
     "stageCoverage": {"enum": ["not_attempted", "partial", "complete", "soundly_closed"]},
     "search": {
       "type": "object", "additionalProperties": false,
@@ -139,7 +157,7 @@
         "children_status": {"enum": ["not_applicable", "not_enumerated", "partially_enumerated", "exhaustive", "soundly_closed"]},
         "emitted_child_count": {"type": "integer", "minimum": 0, "maximum": 1024},
         "expected_child_count": {"type": ["integer", "null"], "minimum": 0, "maximum": 1000000000},
-        "completeness_reason": {"enum": ["terminal", "exhaustive_grammar", "sound_contract", "sound_legality", "sound_dominance", "budget", "time", "interrupted", "not_applicable", "unknown"]},
+        "completeness_reason": {"enum": ["terminal", "exhaustive_grammar", "sound_contract", "sound_legality", "sound_dominance", "budget", "time", "interrupted", "not_applicable", "missing_contract", "unknown"]},
         "soundness_proof_class": {"$ref": "#/$defs/token"}
       }
     },
@@ -155,7 +173,7 @@
         "proof_valid": {"type": ["boolean", "null"]}, "distinct_realization": {"type": ["boolean", "null"]},
         "physically_material": {"type": ["boolean", "null"]}, "retained": {"type": ["boolean", "null"]},
         "promoted": {"type": ["boolean", "null"]}, "useful": {"type": ["boolean", "null"]},
-        "target_definition": {"const": "proof-valid-or-stronger-v1"}
+        "target_definition": {"const": "proof-valid-distinct-or-stronger-v2"}
       }
     },
     "searchCost": {
@@ -171,13 +189,14 @@
     },
     "branch": {
       "type": "object", "additionalProperties": false,
-      "required": ["branch_id", "search_id", "parent_branch_id", "depth", "stage", "baseline", "action", "state", "evidence_coverage", "coverage", "search_cost", "direct_utility", "descendant_utility", "survival"],
+      "required": ["branch_id", "search_id", "parent_branch_id", "depth", "stage", "baseline", "action", "decision_context", "state", "evidence_coverage", "coverage", "search_cost", "direct_utility", "descendant_utility", "survival"],
       "properties": {
         "branch_id": {"$ref": "#/$defs/hash"}, "search_id": {"$ref": "#/$defs/hash"},
         "parent_branch_id": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
         "depth": {"type": "integer", "minimum": 0, "maximum": 64},
         "stage": {"enum": ["baseline", "grammar_family", "candidate_family", "composition", "cross_tu"]},
         "baseline": {"type": "boolean"}, "action": {"$ref": "#/$defs/action"},
+        "decision_context": {"$ref": "#/$defs/decisionContext"},
         "state": {"enum": ["enumerated", "expanded", "terminal", "blocked", "pruned_sound", "pruned_heuristic", "duplicate", "compiler_identical", "interrupted"]},
         "evidence_coverage": {"enum": ["none", "partial", "complete", "soundly_blocked"]},
         "coverage": {"$ref": "#/$defs/coverage"}, "search_cost": {"$ref": "#/$defs/searchCost"},
@@ -188,7 +207,7 @@
             "class": {"enum": ["KEEP", "KEEP_UNCERTAIN", "PRUNE_HIGH_CONFIDENCE", "BLOCKED_BY_CONTRACT"]},
             "authority": {"enum": ["baseline_guard", "observed_positive_path", "derived_complete_tree", "sound_contract", "incomplete_tree"]},
             "positive_descendant_count": {"type": "integer", "minimum": 0, "maximum": 1000000000},
-            "label_version": {"const": "useful-descendant-v1"}
+        "label_version": {"const": "useful-descendant-v2"}
           }
         }
       }

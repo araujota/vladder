@@ -8,6 +8,7 @@ import platform
 import stat
 import tempfile
 from typing import Any
+from copy import deepcopy
 
 from .consent import CANONICAL_TRAINING_DATA, require_consent
 from .contribution_transport import (
@@ -34,6 +35,7 @@ from .search_training import (
 LEGACY_TRAINING_SCHEMA_VERSION = "vladder-training-bundle-v1"
 HISTORICAL_MODEL_TRAINING_SCHEMA_VERSION = "vladder-model-training-bundle-v2"
 TRAINING_OUTBOX_SCHEMA_VERSION = "vladder-training-outbox-v1"
+SEARCH_TRACE_FRAGMENT_BRANCH_LIMIT = 16
 
 
 def default_training_outbox_directory() -> Path:
@@ -296,6 +298,189 @@ def create_training_bundle_from_search_trace(
     if validation["status"] != "pass":
         raise ValueError(f"search training bundle failed schema validation: {validation['errors']}")
     return bundle
+
+
+def create_training_bundles_from_search_trace(
+    trace: dict[str, Any], output_path: Path, *, project_id: str,
+    producer_agent: str, producer_model: str, producer_provider: str | None = None,
+    apply_durable_consent: bool = False, consent_path: Path | None = None,
+    identity_path: Path | None = None,
+    maximum_branches: int = SEARCH_TRACE_FRAGMENT_BRANCH_LIMIT,
+) -> tuple[tuple[dict[str, Any], Path], ...]:
+    """Emit one or more independently valid v3 packets for a complete search trace."""
+    if maximum_branches < 1 or maximum_branches > 1024:
+        raise ValueError("maximum_branches must be between 1 and 1024")
+    fragments = _fragment_search_trace(trace, maximum_branches=maximum_branches)
+    if len(fragments) == 1:
+        paths = (output_path.resolve(),)
+    else:
+        directory = output_path.resolve().with_suffix(".fragments")
+        paths = tuple(directory / f"part-{index:05d}.json" for index in range(len(fragments)))
+    emitted = []
+    for fragment, path in zip(fragments, paths, strict=True):
+        bundle = create_training_bundle_from_search_trace(
+            fragment,
+            path,
+            project_id=project_id,
+            producer_agent=producer_agent,
+            producer_model=producer_model,
+            producer_provider=producer_provider,
+            apply_durable_consent=apply_durable_consent,
+            consent_path=consent_path,
+            identity_path=identity_path,
+        )
+        emitted.append((bundle, path))
+    return tuple(emitted)
+
+
+def _fragment_search_trace(
+    trace: dict[str, Any], *, maximum_branches: int,
+) -> tuple[dict[str, Any], ...]:
+    required = ("roots", "searches", "branches", "observations")
+    if any(not isinstance(trace.get(key), list) for key in required):
+        raise ValueError("search trace cannot be fragmented without roots, searches, branches, and observations")
+    if len(trace["branches"]) <= maximum_branches:
+        return (trace,)
+    roots = {str(item["root_id"]): item for item in trace["roots"]}
+    observations_by_branch: dict[str, list[dict[str, Any]]] = {}
+    for observation in trace["observations"]:
+        observations_by_branch.setdefault(str(observation["branch_id"]), []).append(observation)
+    fragments: list[dict[str, Any]] = []
+    for search in trace["searches"]:
+        search_id = str(search["search_id"])
+        selected = [item for item in trace["branches"] if str(item["search_id"]) == search_id]
+        by_id = {str(item["branch_id"]): item for item in selected}
+        children: dict[str, list[str]] = {branch_id: [] for branch_id in by_id}
+        for branch in selected:
+            parent = branch.get("parent_branch_id")
+            if parent is not None and str(parent) in children:
+                children[str(parent)].append(str(branch["branch_id"]))
+        for values in children.values():
+            values.sort()
+        sizes: dict[str, int] = {}
+
+        def subtree_size(branch_id: str) -> int:
+            if branch_id not in sizes:
+                sizes[branch_id] = 1 + sum(subtree_size(child) for child in children[branch_id])
+            return sizes[branch_id]
+
+        frontier: list[str] = []
+
+        def select_frontier(branch_id: str) -> None:
+            if subtree_size(branch_id) <= maximum_branches:
+                frontier.append(branch_id)
+                return
+            for child in children[branch_id]:
+                select_frontier(child)
+
+        root_branch_id = str(search["root_branch_id"])
+        select_frontier(root_branch_id)
+        component_nodes: set[str] = set()
+        for frontier_root in frontier:
+            pending = [frontier_root]
+            while pending:
+                current = pending.pop()
+                if current in component_nodes:
+                    continue
+                component_nodes.add(current)
+                pending.extend(children[current])
+            fragments.append(_search_trace_fragment(
+                trace,
+                roots[str(search["root_id"])],
+                search,
+                by_id,
+                children,
+                observations_by_branch,
+                component_nodes=_subtree_ids(frontier_root, children),
+                fragment_root=frontier_root,
+                kind="full_trace" if frontier_root == root_branch_id else "complete_subtree",
+                external_parent=by_id[frontier_root].get("parent_branch_id"),
+            ))
+        spine = set(by_id) - component_nodes
+        if spine:
+            if len(spine) <= maximum_branches:
+                fragments.append(_search_trace_fragment(
+                    trace, roots[str(search["root_id"])], search, by_id, children,
+                    observations_by_branch, component_nodes=spine,
+                    fragment_root=root_branch_id, kind="partial_snapshot", external_parent=None,
+                ))
+            else:
+                for branch_id in sorted(spine):
+                    fragments.append(_search_trace_fragment(
+                        trace, roots[str(search["root_id"])], search, by_id, children,
+                        observations_by_branch, component_nodes={branch_id},
+                        fragment_root=branch_id, kind="partial_snapshot",
+                        external_parent=by_id[branch_id].get("parent_branch_id"),
+                    ))
+    return tuple(fragments)
+
+
+def _subtree_ids(root: str, children: dict[str, list[str]]) -> set[str]:
+    result: set[str] = set()
+    pending = [root]
+    while pending:
+        current = pending.pop()
+        if current in result:
+            continue
+        result.add(current)
+        pending.extend(children[current])
+    return result
+
+
+def _search_trace_fragment(
+    trace: dict[str, Any],
+    root: dict[str, Any],
+    search: dict[str, Any],
+    branches: dict[str, dict[str, Any]],
+    children: dict[str, list[str]],
+    observations_by_branch: dict[str, list[dict[str, Any]]],
+    *,
+    component_nodes: set[str],
+    fragment_root: str,
+    kind: str,
+    external_parent: Any,
+) -> dict[str, Any]:
+    selected = []
+    for branch_id in sorted(component_nodes, key=lambda value: (int(branches[value]["depth"]), value)):
+        branch = deepcopy(branches[branch_id])
+        local_children = [child for child in children[branch_id] if child in component_nodes]
+        if branch_id == fragment_root:
+            branch["parent_branch_id"] = None
+        if len(local_children) != len(children[branch_id]):
+            branch["evidence_coverage"] = "partial"
+            branch["coverage"] = {
+                **branch["coverage"],
+                "children_status": "partially_enumerated",
+                "emitted_child_count": len(local_children),
+                "expected_child_count": None,
+                "completeness_reason": "interrupted",
+                "soundness_proof_class": "none",
+            }
+        selected.append(branch)
+    fragment_search = deepcopy(search)
+    fragment_search["root_branch_id"] = fragment_root
+    fragment_search["fragment"] = {
+        "kind": kind,
+        "external_parent_branch_id": external_parent,
+    }
+    if kind == "partial_snapshot":
+        fragment_search["coverage"] = "partial"
+        fragment_search["stage_coverage"] = {
+            key: "partial" if value == "complete" else value
+            for key, value in fragment_search["stage_coverage"].items()
+        }
+    observations = [
+        deepcopy(observation)
+        for branch_id in component_nodes
+        for observation in observations_by_branch.get(branch_id, ())
+    ]
+    return {
+        "grammar_version": trace.get("grammar_version", "structured-open-actions-v3"),
+        "roots": [deepcopy(root)],
+        "searches": [fragment_search],
+        "branches": selected,
+        "observations": observations,
+    }
 
 
 def _flat_candidates_to_partial_searches(

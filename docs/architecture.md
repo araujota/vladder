@@ -27,6 +27,12 @@ device timing.
 The evidence plane changes orchestration and application closure. It does not replace expression,
 loop, operator, lifetime, LLVM, Alive2, Z3, or hardware-specific search layers.
 
+Composition search uses a canonical semantic-state quotient DAG. The canonical state is the node;
+the transformation is an edge; and all action orderings that reach one collision-validated
+serialization attach to that node. Exact transposition, qualified partial-order/symmetry, and
+proof-gated descendant subsumption precede optional learned ordering. See
+[Canonical Semantic-State Search](canonical-state-search.md).
+
 ## Heterogeneous Execution Plane (rc14)
 
 `heterogeneous-execution-v1` extends `SemanticFlowGraph v2` across GPU kernels and bounded device
@@ -203,7 +209,7 @@ state ownership, layouts, quantization blocks, resource pressure, or token/seque
 
 ## Bounded C++ Closure Frontend
 
-`bounded-cpp-regions-v8` treats semantic capture, local closure, proof, candidate generation,
+`bounded-cpp-regions-v11` treats semantic capture, local closure, proof, candidate generation,
 benchmarking, source realization, and protocol equivalence as separate facts.
 It selects a concrete definition with Clang and the production compilation database, preserves
 source-level ownership and exception hazards, and recursively summarizes definition-visible LLVM
@@ -252,6 +258,43 @@ reason.
 New grammar families require an attribution study tied to measured cycles, bytes, cache traffic,
 dependency depth, or synchronization. This keeps representational breadth from creating an
 unbounded low-value search space.
+
+### Composition-Native Learned Ordering
+
+Composition search is lazy and canonical-state native. At each expansion, deterministic contract
+closure and exact semantic memoization run before a learned policy. The surviving sibling frontier
+is represented by the current `SemanticFlowGraph`, a typed transformation-interaction graph,
+ordered action history, and exact symbolic child deltas. Multi-action enablement uses factor nodes.
+
+The learned policy controls queue priority only. `fast` and `guided` may stop at declared budgets;
+`exhaustive` eventually visits every state not removed by deterministic or formally verified
+authority. OOD, uncertain, and underrepresented-family actions receive exploration priority.
+Learned equivalence or dominance outputs are checker requests, never merge authority.
+
+Native exhaustive traces retain terminal utility tiers and intrinsic candidate/proof/compiler cost
+outside the inference view. Terminal caches preserve cold evaluation cost separately from cache-read
+latency. Leave-one-project-out evaluation excludes normalized topologies shared with the held-out
+project and reports recovery against actual search cost at fixed budgets.
+
+RC26 is a negative qualification result, not an active production policy. Its best full model
+recovered 62.0% of useful composition terminals at 30% cost and failed the 80% representation and
+95% useful-recovery gates. The runtime interface remains because it preserves the authority model
+and supports future hypotheses, but no shipped checkpoint may claim search reduction from RC26.
+Exact canonical transposition is independent of that result and remains the primary measured
+composition reduction.
+
+### Production Canonical-State Search
+
+Production `fast`, `guided`, and `exhaustive` modes use the canonical quotient DAG by default.
+Canonical identity resolves before recursive expansion; analyses, proof preparation, and terminal
+evaluation are keyed to canonical state rather than action path. A collision-safe concurrent table
+retains all provenance edges while assigning one recursive owner.
+
+Qualified POR is adaptive. Rolling candidate/proof/compiler/canonicalization costs and complete
+action footprints determine whether an exact AB/BA check is economically justified. Declining POR
+only preserves more exact work. Checkpoints bind source, grammar, schema, and target identity;
+memory pressure evicts recomputable summaries before stopping with an intact resumable frontier.
+See [Production Canonical-State Search](production-canonical-search.md).
 
 ## Release Surfaces
 

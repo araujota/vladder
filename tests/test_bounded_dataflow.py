@@ -31,9 +31,9 @@ class BoundedDataflowTests(unittest.TestCase):
         self.assertEqual(set(self.grammar.sources), DATAFLOW_FAMILIES)
         for family in coverage["families"]:
             classes = family["native_lowering_classes"]
-            self.assertEqual(set(classes), {"c", "cpp", "zig", "julia"})
+            self.assertEqual(set(classes), {"c", "cpp", "rust", "zig", "julia"})
             self.assertEqual(set(classes["cpp"].values()), {"native_physical"})
-            for language in ("c", "zig", "julia"):
+            for language in ("c", "rust", "zig", "julia"):
                 for terminal, lowering_class in classes[language].items():
                     expected = (
                         "native_semantic"
@@ -78,7 +78,7 @@ class BoundedDataflowTests(unittest.TestCase):
     def test_shared_grammar_emits_every_native_language(self) -> None:
         with tempfile.TemporaryDirectory(prefix="vladder-dataflow-native-") as temporary:
             root = Path(temporary)
-            for language in ("c", "zig", "julia"):
+            for language in ("c", "rust", "zig", "julia"):
                 if language == "zig" and not shutil.which("zig"):
                     continue
                 if language == "julia" and not shutil.which("julia"):
@@ -111,6 +111,32 @@ class BoundedDataflowTests(unittest.TestCase):
                         Path(temporary) / output_mode / capacity_policy,
                     )
                     self.assertEqual(report["status"], "PASS", report)
+
+    def test_runtime_sized_u32_compaction_closes_exact_preflight_and_alias_dispatch(self) -> None:
+        contract = BoundedDataflowContract(
+            family="predicate-stable-compaction",
+            max_elements=None,
+            element_bits=32,
+            output_mode="index-only",
+            capacity_policy="fail-input-extent-unchanged",
+            aliasing="runtime-guarded-disjoint",
+        )
+        with tempfile.TemporaryDirectory(prefix="vladder-runtime-compaction-") as temporary:
+            for derivation in self.grammar.search(contract):
+                with self.subTest(target=derivation.target):
+                    candidate = emit_dataflow_cpp(contract, derivation)
+                    self.assertIn("std::uint32_t* current", candidate.source)
+                    self.assertIn("ordered_fallback", candidate.source)
+                    report = prove_dataflow_candidate(
+                        contract,
+                        derivation,
+                        candidate,
+                        Path(temporary) / derivation.target,
+                    )
+                    self.assertEqual(report["status"], "PASS", report)
+                    obligations = {item["id"] for item in report["obligations"]}
+                    self.assertIn("runtime-extent-block-induction", obligations)
+                    self.assertIn("alias-dispatch-completeness", obligations)
 
     def test_proof_binds_source_graph_and_state_obligations(self) -> None:
         contract = BoundedDataflowContract(family="stateful-delta-transducer", max_elements=64)

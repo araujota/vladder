@@ -2,7 +2,7 @@ import { ArrowDownToLine, BookOpen, Check, Code2, Cpu, LockKeyhole, MessageSquar
 import { CopyCommand } from "../components/copy-command";
 
 const github = "https://github.com/araujota/vladder";
-const install = "python3 -m pip install --pre vladder==1.0.0rc23";
+const install = "python3 -m pip install --pre vladder==1.0.0rc29";
 
 type Review = {
   review_id: string;
@@ -35,7 +35,7 @@ const support = [
 const workflow = [
   ["01", "Find the cost", "Profile the real workload and select a function or data path that matters"],
   ["02", "Capture behavior", "Record its outputs, memory effects, state, ordering, and valid assumptions"],
-  ["03", "Search implementations", "Try bounded alternatives for computation, movement, layout, and data lifetime"],
+  ["03", "Search unique states", "Collapse redundant transformation orders, then try bounded alternatives for computation, movement, layout, and data lifetime"],
   ["04", "Rebuild source", "Emit legal candidate graphs as readable C, C++, Rust, Zig, or Julia code"],
   ["05", "Prove and measure", "Check the covered semantics, then benchmark in the real build on the target hardware"],
   ["06", "Keep or reject", "Retain the patch only when correctness and representative performance both hold"],
@@ -76,7 +76,7 @@ export default async function Home() {
           <p className="eyebrow">Verified source-to-source optimization for systems code</p>
           <h1>vLadder</h1>
           <p className="lede">vLadder turns measured hot code into faster, reviewable source without treating correctness as a guess.</p>
-          <p className="intro-detail">Give it a bounded C, C++, Rust, Zig, Julia, or GPU region, the behavior that must stay unchanged, and a representative benchmark. It searches alternative implementations, rebuilds the best candidates as source, checks semantic parity, and measures them on your hardware.</p>
+          <p className="intro-detail">Give it a bounded C, C++, Rust, Zig, Julia, or GPU region, the behavior that must stay unchanged, and a representative benchmark. It searches unique semantic realizations, rebuilds the best candidates as source, checks semantic parity, and measures them on your hardware.</p>
           <p className="audience-note"><strong>It is a local CLI and coding-agent workflow, not a replacement compiler.</strong> Profilers find where the cost is. vLadder searches what implementation should exist. Your production compiler still generates the executable.</p>
           <div className="actions">
             <a className="primary-action" href={`${github}/releases`}><ArrowDownToLine size={19} />Get vLadder</a>
@@ -105,7 +105,7 @@ for (i = 0; i < n; ++i)
           <div className="run-output">
             <span>Promotion rule</span>
             <strong><Check size={17} />Same required behavior, measurably faster where it matters</strong>
-            <small>If either condition fails, the source stays unchanged and the rejected candidate remains auditable.</small>
+            <small>Canonical identity and qualified exact reductions remove redundant search work. ML may reorder exploration, never delete a semantic possibility. If proof or performance fails, the source stays unchanged.</small>
           </div>
         </div>
       </section>
@@ -208,7 +208,7 @@ for (i = 0; i < n; ++i)
           <div className="section-heading">
             <p className="eyebrow">The actual workflow</p>
             <h2>Production source → candidate source → defensible decision</h2>
-            <p className="section-intro">Language frontends capture a bounded region in one shared semantic graph. Grammar rules generate legal alternatives. Language emitters rebuild source. Proof tools establish the semantics they cover; application tests and the target machine establish whether the rewrite can ship.</p>
+            <p className="section-intro">Language frontends capture a bounded region in one shared semantic graph. Search operates on a quotient DAG of unique semantic states, so independent action orders converge before proof and compilation. Language emitters rebuild source. Proof tools establish the semantics they cover; application tests and the target machine establish whether the rewrite can ship.</p>
           </div>
           <div className="flow-visual" role="img" aria-label="Source through semantic flow, grammar search, proof, hardware, and source rewrite">
             {workflow.map(([number, label, detail], index) => (

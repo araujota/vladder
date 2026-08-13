@@ -4,9 +4,7 @@ description: Attribute, synthesize, formally verify, benchmark, and safely rewri
 ---
 
 # vLadder
-
 ## Required Package
-
 This skill is the agent workflow layer; it does not bundle the vLadder CLI. Before running a
 workflow, verify that the attendant [`vladder` package](https://pypi.org/project/vladder/) is
 installed and matches the release targeted below:
@@ -14,37 +12,40 @@ installed and matches the release targeted below:
 ```bash
 vladder --version
 ```
-
 If the command is unavailable or reports another version, tell the user that the skill requires
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc23'
+python3 -m pip install --pre 'vladder==1.0.0rc29'
 vladder doctor --strict
 ```
-
 Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or target-project
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc23`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc29`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
-`bounded-cpp-regions-v8`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
+`bounded-cpp-regions-v11`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
 `heterogeneous-execution-v1`. Use vLadder as a proof-gated workflow: semantic
 identity and lifetime -> realization and placement -> compiled IR -> information-flow graph ->
 bounded grammar search -> Z3/protocol/LLVM refinement -> physical measurement -> project-level
 replacement. Treat the compiler as the instruction-lowering engine and vLadder as the system that
 chooses which verified realization and implementation graph should exist.
-
 The executable `bounded-dataflow-v1` grammar adds stable variable-output compaction, exact
 fixed-width codecs, transactional state deltas, AoS projected multi-reductions, and deterministic
 4x4 packed blocks. Read [bounded-dataflow.md](references/bounded-dataflow.md) when the observable
 includes indices, values, exact extent, packed bytes, or next state rather than only a scalar.
+Exact byte-popcount reductions and selected-build unroll/vector/interleave composition are also
+source-executable through the lazy search route.
+For selected C++, read `eligible` separately from `schedule_eligible`. The latter permits a real
+compiler candidate in an unchanged owning wrapper but proves no callback, exception, allocation,
+atomic, or external protocol. Automatic source search also exposes complete-module
+`llvm-function-v1` candidates; require two-module Alive2 PASS before treating one as verified and
+never infer a C++ source rewrite from an LLVM replacement artifact.
 
 Read [systems-code-design.md](references/systems-code-design.md) before restructuring production
 code; preserve idiomatic ownership/protocol shells and expose bounded semantics and observables.
-
 All supported frontends converge on `SemanticFlowGraph v2`. Read typed `obligations`, `effects`,
 `protocols`, and `claims` before interpreting a graph. An obligation is actionable through its ID,
 scope, proof method, and language binding; do not recover semantics by parsing its human-readable
@@ -69,13 +70,20 @@ capability obligations. Do not describe a recognized structured archetype as gen
 its route is `executable_local`.
 
 The optional learned search prior is subordinate to this workflow. Read
-[learned-prior.md](references/learned-prior.md) before using `vladder prior`. It ranks structured,
-already enumerated grammar actions; it never supplies legality, equivalence, authoritative runtime,
-or promotion evidence. Preserve the baseline, exploration reserve, abstention fallback, and every
-ordinary proof and physical gate.
-
+[learned-prior.md](references/learned-prior.md),
+[lazy-executable-search.md](references/lazy-executable-search.md), and
+[composition-native-search.md](references/composition-native-search.md), and
+[canonical-state-search.md](references/canonical-state-search.md). It may set priority or
+request an exact check, but never supplies legality, equivalence, runtime authority, or promotion.
+Preserve fail-open OOD handling, exploration, exact canonicalization, and exhaustive fallback.
+Audit every native corpus before fitting. Do not deploy the RC26 composition checkpoint: its 62.0%
+useful recovery at 30% cost failed the scale gates. Its trace format and exact transposition remain
+valid research and deterministic search infrastructure. RC27 replaced learned reduction with an
+exact canonical DAG. RC28 makes it the production architecture with adaptive POR, checkpoint/resume,
+resource controls, and telemetry. Read [production-canonical-search.md](references/production-canonical-search.md).
+Use `exhaustive` normally, `exhaustive_canonical` as the no-POR oracle, `exhaustive_reduced` to force
+qualified reduction, and `legacy_path_debug` only for compatibility qualification.
 ## Non-Negotiable Rules
-
 1. Profile before adding a grammar family or changing code. Optimize a measured load-bearing
    region, not a plausible-looking loop.
 2. Freeze source revision, compiler, flags, hardware, workload, and semantic contract before
@@ -104,11 +112,8 @@ ordinary proof and physical gate.
     form lacking an export adapter. Review opt-in means request a review only when the persistent
     30-day cadence is due and obtain approval for the exact review before submission. Neither scope
     waives schema/privacy validation or permits source/raw-artifact upload.
-
 ## Workflow
-
 ### Canonical Agent Entry
-
 Do not select a specialist command family from memory. Begin with the production region and let
 the authoritative planner route it:
 
@@ -148,7 +153,6 @@ Read `promotion-summary.json` first. Answer, in order:
 
 Follow `next_action`; inspect only the five decisive artifacts before expanding into full lineage.
 Do not confuse `workflow_completed` with any later evidence state.
-
 For search-prior dataset and shadow-evaluation work, use its separate one-manifest route:
 
 ```bash
@@ -156,13 +160,55 @@ vladder prior init --out prior.yaml
 vladder prior run --manifest prior.yaml --out-dir prior-out
 ```
 
+For real roots, run `vladder source-search run --manifest executable-search.yaml --out-dir
+source-search-out --search-mode exhaustive`. Read `executable-closure.json`,
+`production-canonical-search.json`, then `canonical-state-dag.json`. For `family: auto`, every
+independently classified grammar family is a real first-layer
+lazy decision; do not reconstruct family outcomes from reporting-only wrappers. Deterministic
+impossibility and exact semantic memoization remain hard-reduction authorities. The learned policy
+orders the complete sibling frontier; it does not delete branches. `fast` and `guided` stop on a
+declared work budget, while `exhaustive` eventually visits every unique state not removed by
+deterministic or formally verified mechanisms. Compare against `exhaustive_canonical` before enabling
+a new exact reduction. Read
+[lazy-executable-search.md](references/lazy-executable-search.md) for manifests, closure classes,
+claim boundaries, and label authority.
+
 Read `prior-summary.json`. A valid synthetic pilot and a trained model do not imply production
 eligibility or that any live candidate was pruned.
 
-Require `vladder-model-training-bundle-v3`; preserve ancestor action paths, branch lineage, coverage authority, and
-descendant targets. Only exhaustive or soundly closed dead subtrees may train a prune label;
-incomplete negatives remain `KEEP_UNCERTAIN`; keep post-search supervision out of model inputs. Use `training from-search-trace` for authoritative
-lineage; `from-prior` emits partial one-level searches. V1/v2 are validation-only historical data.
+Require `vladder-model-training-bundle-v3` for auxiliary root/branch supervision and use `training
+from-search-trace`; `from-prior` is a partial one-level import. For future composition-policy
+updates, require the enumerator-native `composition-native-search-trace.json`, an embedded
+`vladder-search-policy-training-contract-v1`, and
+`future_policy_training_eligible=true`. Only exhaustive or soundly closed dead subtrees may train
+historical prune labels.
+Train and evaluate only branches marked `decision_surface=learned_eligible`; deterministic,
+canonicalized, and synthetic-wrapper records are audit evidence outside the learned policy surface.
+Exhaust every tractable bounded root and a stratified set of deeper roots. A budget-truncated root
+may contribute coverage and OOD examples, but every open frontier and affected ancestor remains
+`KEEP_UNCERTAIN`; absence of an enumerated Cartesian descendant is never a negative label.
+Read [learned-prior.md](references/learned-prior.md) for descendant-label and leakage rules.
+Never tensorize a completed native trace directly. Its validated inference view contains only the
+current parent state, ordered history, sibling actions, interaction graph, and action deltas; future
+states, transpositions, selected actions, outcomes, labels, and measured costs are supervision.
+The contextual reference model is `scripts/contextual_search_policy.py` and requires `vladder[ml]`.
+Its acceptance gate is useful-terminal recovery under an online work budget, not branch accuracy.
+The RC24 `scripts/search_pruner.py` classifier is retained for encoder pretraining, OOD, retrieval,
+and historical comparison only; do not optimize or enable its hard-pruning policy.
+Use `scripts/build_cpp_search_manifest.py` for deterministic family-stratified C++ campaigns. Pair
+every repeated trainer `--progress` with the corresponding `--manifest`; never merge incomplete
+campaigns or repeated roots by hand.
+Use `scripts/discover_cpp_object_roots.py` for a non-overlapping follow-up drawn from strong symbols
+in the exact built objects. For large shadow campaigns, `artifact_retention: decisive` keeps
+compressed, resumable search evidence and compact summaries after v3 emission while removing
+reproducible terminal products. Retain at least one `full_artifact_identifier` per project for
+forensic review. Ordinary optimization and release evidence use full retention.
+
+Candidate-dense roots may emit multiple v3 bundles. Treat `bundles` as the authoritative packet
+set and ingest every `full_trace` or `complete_subtree` packet. A `complete_subtree` preserves its
+external parent identity and negative-label authority; a `partial_snapshot` never creates a prune
+label merely because descendants are absent. Do not raise document-size limits or truncate a tree
+to make one artifact fit.
 
 The operational state order is strict:
 
@@ -200,10 +246,10 @@ it does not receive a Convex deployment credential. Run `vladder contribution do
 service access must be verified. The probe stores no contribution and must show both intended
 append scopes, cross-scope denial, moderation denial, and absence of a private training read path.
 
-When changing vLadder itself, use `vladder release check`. Require `release_candidate` with
-`--execute` during development and `formal_release` with both `--execute --online` before tagging.
-Treat `not_run`, `setup_required`, and `unavailable` as blockers for the target that names them;
-successful execution of a subset is not release readiness.
+When changing vLadder itself, first run `vladder release smoke-canonical-search`, then use
+`vladder release check`. Require `release_candidate --execute` during development and
+`formal_release --execute --online` before tagging. Treat `not_run`, `setup_required`, and
+`unavailable` as blockers for the target that names them; a subset is not release readiness.
 
 ### 1. Establish Environment And Attribution
 
@@ -262,7 +308,9 @@ vladder cpp optimize --source target.cpp --function transform --compile-commands
 vladder cpp audit --manifest cpp-regions.yaml --materialize-isolation --out-dir vladder-cpp-audit
 ```
 
-Use `--symbol` to select an overload or concrete template specialization. Read
+Use `--symbol` to select an overload or concrete template specialization. If an authoritative
+inventory already records the exact definition line, use `--source-line`; selection must resolve
+to one Clang definition. Read
 `closure.disposition` and the independent semantic-capture, isolation, candidate-generation,
 local-proof, benchmark, source-rewrite, and protocol-equivalence capabilities. The v5 frontend
 can emit whole local-function proof units and noinline lambda capsules for eligible nested loops,
@@ -296,61 +344,18 @@ element lifetime, no throwing local operation, and declared aliases. `reserve()`
 An owning wrapper that remains outside this envelope is an explicit adapter, not a blocker for the
 borrowed local kernel and not part of its Z3/Alive2 claim.
 
-For Rust, preserve native ownership and panic semantics and start from Cargo rather than a C FFI
-capsule. Read [rust-regions.md](references/rust-regions.md), then run:
+For Rust, Zig, or Julia, start from native project source and read the corresponding
+[Rust](references/rust-regions.md), [Zig](references/zig-regions.md), or
+[Julia](references/julia-regions.md) route. All three use the same `SemanticFlowGraph` vocabulary;
+borrow/panic/`Drop`, safety/error/defer, GC/world-age/dynamic-dispatch, and FFI facts remain typed
+language-bound obligations rather than separate information-flow ontologies.
 
-```bash
-vladder rust inspect --manifest-path Cargo.toml --source src/lib.rs --function module::count --out-dir vladder-rust-inspect
-vladder rust synthesize --manifest-path Cargo.toml --source src/lib.rs --function module::count --out-dir vladder-rust-synthesis
-vladder rust optimize --manifest-path Cargo.toml --source src/lib.rs --function module::count --out-dir vladder-rust-out
-```
-
-Rust uses the same `SemanticFlowGraph` vocabulary as C/C++. MIR, borrow, panic, `Drop`, unsafe, and
-monomorphization facts are language-bound proof obligations and provenance, not a parallel
-information-flow ontology. R1 closes safe, monomorphic, allocation-free scalar/array/borrowed-slice
-regions with a registered common operation. Unsafe code, owning allocation, custom destruction,
-async, atomics, FFI, and external effects remain explicit adapter boundaries. Require native Rust
-regeneration, MIR recapture, parametric schedule/Z3 proof, bounded LLVM refinement, differential
-execution, and physical ranking before promotion.
-
-R2 compiler-corroborates exact reductions, pointwise maps, guarded maps, stencils, scans,
-recurrences, and constant-stride indirect reads. A supported graph whose
-`candidate_generation.actual` is false is meaningful semantic capture, not executable synthesis;
-`rust synthesize` returns `lowerer_required` for that case.
-
-For Zig, read [zig-regions.md](references/zig-regions.md), preserve the compiler safety mode, and
-start from native source:
-
-```bash
-vladder zig inspect --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-inspect
-vladder zig synthesize --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-synthesis
-vladder zig optimize --source src/root.zig --function countEqual --build-root . --out-dir vladder-zig-out
-```
-
-Use `--specialization u8` for a compatible `comptime T: type` byte reduction. Capture keeps the
-target at its original module path; a detached source copy is invalid compiler provenance.
-Z3 recognizes the same seven canonical bounded families as Rust and C. Check
-`candidate_generation.actual`; non-reduction families currently require a native family lowerer.
-
-For Julia, read [julia-regions.md](references/julia-regions.md). Always provide one exact module,
-method, and tuple signature; a generic function name is not a proof boundary:
-
-```bash
-vladder julia inspect --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-inspect
-vladder julia synthesize --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-synthesis
-vladder julia optimize --project . --source src/Package.jl --module Package --function count_equal --signature 'Vector{UInt8},UInt8' --out-dir vladder-julia-out
-```
-
-Zig and Julia use the shared graph and source-derived exact-reduction schedule proof. Julia loads
-the declared package/module and does not invoke arbitrary methods during reflection. Methods beyond
-the executable grammar may still be `local_graph_only` with typed/LLVM/native capture. Native LLVM
-is compiler provenance; the strict Alive2 artifact validates the canonical schedule lowerer. Do
-not claim direct whole-frontend refinement. Zig allocator/error/defer/atomic/FFI protocols and
-Julia other methods/worlds, GC allocation, dynamic dispatch, tasks, globals, `ccall`, and external
-effects remain named adapters.
-J3 recognizes the same seven canonical families for concrete, zero-allocation byte or `Float32`
-vector specializations. `status: supported` and `candidate_generation.actual: false` means the
-typed SSA/LLVM-backed graph is closed but no candidate was generated.
+Select concrete monomorphizations or method signatures, preserve native safety and exception
+semantics, and require native regeneration plus compiler-IR recapture. `status: supported` with
+`candidate_generation.actual: false` is semantic capture, not executable synthesis. Native LLVM is
+compiler provenance; only the declared canonical lowerer and its bounded Z3/Alive2 envelope support
+a rewrite claim. Allocation, custom destruction, async/tasks, atomics, unsafe/external effects, and
+unresolved runtime dispatch remain named adapter boundaries.
 
 ### 3. Select Realization Lifetime And Placement
 
@@ -469,7 +474,6 @@ runtime plans are distinct; GraphML and simulation never prove or promote. Exter
 network, and visible presentation behavior require explicit protocols and physical runners.
 
 ### 7. Rewrite Production Source
-
 Apply the implementation at the code level in the owning module. Preserve local style, ABI,
 guards, fallback behavior, error handling, and surrounding invariants. Avoid retaining a generated
 harness or benchmark-only assumptions in production code.
@@ -490,11 +494,7 @@ same end-to-end workload used for attribution. Rebenchmark the full application;
 that disappears end to end is not a successful replacement.
 
 ### 8. Report With Bounded Claims
-
 Report baseline and winner, effect size and interval, workload, hardware, grammar version/hash,
 proof class, assumptions, code change, regional runtime share, and end-to-end delta. Classify the
 result as `bounded_optimal_local` only after exhaustive coverage with sound pruning; otherwise use
 `best_verified_found`. Never claim global optimality.
-
-## Advanced Modes: Operator, Pipeline, Projection, Q4_K, GPU, And Lifetime
-Follow delegated commands; deterministic plan lowering does not imply generic source emission or promotion.

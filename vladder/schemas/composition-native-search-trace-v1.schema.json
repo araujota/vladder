@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/composition-native-search-trace-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "complete", "training_contract", "root", "states", "frontiers", "transpositions", "terminals", "labels", "summary", "trace_hash"],
+  "properties": {
+    "schema_version": {"const": "vladder-composition-native-search-trace-v1"},
+    "complete": {"type": "boolean"},
+    "training_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version", "ml_authority", "hard_reduction_authority",
+        "inference_feature_boundary", "post_search_supervision", "frontier_context",
+        "canonical_state_identity", "search_cost_capture",
+        "future_policy_training_eligible", "limitations"
+      ],
+      "properties": {
+        "contract_version": {"const": "vladder-search-policy-training-contract-v1"},
+        "ml_authority": {"const": "ordering_and_verified_proposals_only"},
+        "hard_reduction_authority": {"const": "deterministic_or_formally_qualified_only"},
+        "inference_feature_boundary": {"const": "pre_decision_frontier_only"},
+        "post_search_supervision": {"const": "terminal_lineage_and_descendant_utility"},
+        "frontier_context": {"enum": ["complete", "partial"]},
+        "canonical_state_identity": {"enum": ["complete", "partial"]},
+        "search_cost_capture": {"enum": ["measured", "partial"]},
+        "future_policy_training_eligible": {"type": "boolean"},
+        "limitations": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "search_not_exhaustive", "frontier_context_incomplete",
+              "canonical_identity_incomplete", "terminal_outcomes_unavailable",
+              "search_cost_partial"
+            ]
+          }
+        }
+      }
+    },
+    "trace_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "root": {
+      "type": "object",
+      "required": ["root_id", "project_id", "canonical_root_hash", "source_frontend", "compiler_target", "semantic_graph", "contracts", "cross_tu_scope", "hardware_context"],
+      "properties": {
+        "root_id": {"type": "string"},
+        "project_id": {"type": "string"},
+        "canonical_root_hash": {"type": "string"},
+        "source_frontend": {"type": "string"},
+        "compiler_target": {"type": "string"},
+        "semantic_graph": {"type": "object"},
+        "contracts": {"type": "object"},
+        "cross_tu_scope": {"type": "object"},
+        "hardware_context": {"type": "object"}
+      }
+    },
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "state_id", "root_id", "parent_state_id", "canonical_state_hash", "search_depth",
+          "applied_transformations", "ordered_action_history", "semantic_graph", "active_contracts",
+          "open_contract_requirements", "affected_semantic_owners", "representation_state",
+          "lifetime_state", "authority_state", "cross_tu_context", "semantic_state", "stage",
+          "family", "terminal", "disposition", "canonical_of", "search_cost"
+        ],
+        "properties": {
+          "state_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "parent_state_id": {"type": ["string", "null"]},
+          "canonical_state_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "search_depth": {"type": "integer", "minimum": 0},
+          "terminal": {"type": "boolean"},
+          "canonical_of": {"type": ["string", "null"]},
+          "ordered_action_history": {"type": "array"},
+          "search_cost": {"type": "object"}
+        }
+      }
+    },
+    "frontiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["frontier_id", "state_id", "available_actions", "selected_action", "frontier_size", "parent_state", "search_history", "interaction_graph", "scoring_wall_ms"],
+        "properties": {
+          "frontier_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "state_id": {"type": ["string", "null"]},
+          "frontier_size": {"type": "integer", "minimum": 1},
+          "available_actions": {
+            "type": "array", "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": [
+                "action_id", "child_state_hash", "grammar_family", "transformation_family",
+                "affected_owners", "required_contracts", "created_contracts",
+                "invalidated_contracts", "composition_arity", "local_graph_delta",
+                "predicted_state_delta_shape", "action"
+              ]
+            }
+          },
+          "interaction_graph": {
+            "type": "object",
+            "required": ["schema_version", "nodes", "edges", "graph_hash"],
+            "properties": {
+              "schema_version": {"const": "vladder-optimization-interaction-graph-v1"}
+            }
+          }
+        }
+      }
+    },
+    "transpositions": {"type": "array", "items": {"type": "object", "required": ["state_id", "equivalent_state_id", "canonical_state_hash", "action_sequences", "authority"]}},
+    "terminals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "terminal_id", "state_id", "semantic_state_hash", "proof_status",
+          "semantic_distinctness", "compiler_identity", "dominance_status", "benchmark_status",
+          "physical_result", "retained_status", "terminal_class", "utility_tier", "search_cost"
+        ],
+        "properties": {
+          "utility_tier": {"enum": ["U0", "U1", "U2", "U3", "U4"]},
+          "retained_status": {"type": "boolean"},
+          "search_cost": {"type": "object"}
+        }
+      }
+    },
+    "labels": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["frontier_id", "action_outcomes", "pairwise_preferences", "oracle_action_order"],
+        "properties": {
+          "action_outcomes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "action_id", "child_state_id", "best_descendant_tier",
+                "contains_retained_descendant", "contains_material_descendant",
+                "contains_proof_valid_distinct_descendant", "distance_to_tiers",
+                "cost_to_best_descendant", "utility_terminal_counts", "redundancy_class",
+                "advantage_rank"
+              ],
+              "properties": {
+                "best_descendant_tier": {"enum": ["U0", "U1", "U2", "U3", "U4"]},
+                "redundancy_class": {"enum": [
+                  "unique", "canonical-equivalent", "compiler-identical", "dominated",
+                  "commutative-equivalent", "exhausted-dead"
+                ]}
+              }
+            }
+          }
+        }
+      }
+    },
+    "summary": {"type": "object", "required": ["state_count", "frontier_count", "composition_frontier_count", "terminal_count", "transposition_count", "retained_terminal_count", "material_terminal_count"]}
+  }
+}

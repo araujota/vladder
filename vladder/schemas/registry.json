@@ -104,6 +104,48 @@
       "stability": "historical",
       "producer": "historical validation only; current emission is retired"
     },
+    "search-decision-bundle": {
+      "artifact_schema_version": "vladder-search-decision-bundle-v1",
+      "file": "search-decision-bundle-v1.schema.json",
+      "stability": "candidate",
+      "producer": "frontier trajectory capture or RC24 complete-trace migration"
+    },
+    "composition-native-search-trace": {
+      "artifact_schema_version": "vladder-composition-native-search-trace-v1",
+      "file": "composition-native-search-trace-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder source-search run --mode exhaustive"
+    },
+    "canonical-state-dag": {
+      "artifact_schema_version": "vladder-canonical-state-dag-v1",
+      "file": "canonical-state-dag-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder canonical-search run or qualify"
+    },
+    "production-canonical-search": {
+      "artifact_schema_version": "vladder-production-canonical-search-v1",
+      "file": "production-canonical-search-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder source-search run in fast, guided, or exhaustive mode"
+    },
+    "production-canonical-search-smoke": {
+      "artifact_schema_version": "vladder-production-canonical-search-smoke-v1",
+      "file": "production-canonical-search-smoke-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder release smoke-canonical-search"
+    },
+    "canonical-search-release-artifact": {
+      "artifact_schema_version": "vladder-canonical-search-release-artifact-v1",
+      "file": "canonical-search-release-artifact-v1.schema.json",
+      "stability": "stable",
+      "producer": "packaged vLadder release qualification"
+    },
+    "production-search-checkpoint": {
+      "artifact_schema_version": "vladder-production-search-checkpoint-v1",
+      "file": "production-search-checkpoint-v1.schema.json",
+      "stability": "candidate",
+      "producer": "vladder source-search run with checkpoint configuration"
+    },
     "whole-build-index": {
       "artifact_schema_version": "vladder-whole-build-index-v1",
       "file": "whole-build-index-v1.schema.json",

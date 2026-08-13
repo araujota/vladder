@@ -136,6 +136,7 @@ from .dataflow_ir import BoundedDataflowContract, build_bounded_dataflow_graph
 from .dataflow_lowering import emit_dataflow_cpp
 from .dataflow_multilang import emit_dataflow_native
 from .dataflow_proof import prove_dataflow_candidate
+from .executable_search import run_executable_search_manifest
 
 
 HARNESS = r"""
@@ -750,6 +751,24 @@ def doctor_command(args: argparse.Namespace) -> int:
 
 
 def release_command(args: argparse.Namespace) -> int:
+    if args.release_command == "canonical-search-evidence":
+        from .release_artifacts import load_canonical_search_release_artifact
+
+        report = load_canonical_search_release_artifact()
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    if args.release_command == "smoke-canonical-search":
+        from .production_smoke import write_production_canonical_smoke
+
+        report = write_production_canonical_smoke(Path(args.out))
+        print(
+            "vLadder canonical search smoke: "
+            f"status={report['status']} passed={report['summary']['passed']} "
+            f"failed={report['summary']['failed']}"
+        )
+        print(f"vLadder canonical search smoke: wrote {Path(args.out).resolve()}")
+        return 0 if report["status"] == "PASS" else 1
+
     from .release_readiness import evaluate_release_readiness, refresh_online_release_readiness, write_release_readiness
 
     if args.reuse_local_report:
@@ -1089,6 +1108,7 @@ def cpp_region_command(args: argparse.Namespace) -> int:
             compilation_database,
             out_dir,
             symbol=args.symbol,
+            source_line=args.source_line,
             command_index=args.command_index,
         )
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -1100,6 +1120,7 @@ def cpp_region_command(args: argparse.Namespace) -> int:
             compilation_database,
             out_dir,
             symbol=args.symbol,
+            source_line=args.source_line,
             command_index=args.command_index,
         )
         if args.cpp_command == "synthesize":
@@ -1113,6 +1134,7 @@ def cpp_region_command(args: argparse.Namespace) -> int:
         compilation_database,
         out_dir,
         symbol=args.symbol,
+        source_line=args.source_line,
         command_index=args.command_index,
         n=args.n,
         reps=args.reps,
@@ -1683,6 +1705,18 @@ def lifetime_command(args: argparse.Namespace) -> int:
     return 0 if report["status"] == "pass" else 1
 
 
+def executable_search_command(args: argparse.Namespace) -> int:
+    report = run_executable_search_manifest(
+        Path(args.manifest),
+        Path(args.out_dir),
+        workers=args.workers,
+        shadow_exhaustive=not args.live,
+        search_mode=args.search_mode,
+    )
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0 if report["complete_count"] == report["root_count"] else 2
+
+
 def system_closure_command(args: argparse.Namespace) -> int:
     report = run_system_closure(Path(args.manifest), Path(args.out_dir))
     graph = report["system_graph"]
@@ -1789,6 +1823,17 @@ def build_parser() -> argparse.ArgumentParser:
     release_check.add_argument("--reuse-local-report", help="refresh online state on a matching report produced with --execute")
     release_check.add_argument("--out", default="build/release-readiness.json")
     release_check.set_defaults(func=release_command)
+    release_smoke = release_sub.add_parser(
+        "smoke-canonical-search",
+        help="run the release-blocking production canonical-state search smoke battery",
+    )
+    release_smoke.add_argument("--out", default="build/production-canonical-search-smoke.json")
+    release_smoke.set_defaults(func=release_command)
+    release_evidence = release_sub.add_parser(
+        "canonical-search-evidence",
+        help="print the canonical-search qualification artifact bundled in this installation",
+    )
+    release_evidence.set_defaults(func=release_command)
     grammar = sub.add_parser("grammar", help="inspect the versioned C/C++ capability registry")
     grammar.add_argument("--family", help="show one grammar family")
     grammar.add_argument("--registry", help="load an alternate capabilities.json")
@@ -1956,6 +2001,7 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--function", required=True, help="source name, optionally class- or namespace-qualified")
         command.add_argument("--compile-commands", required=True, help="compile_commands.json or its containing directory")
         command.add_argument("--symbol", help="exact Clang mangled symbol for an overload or template specialization")
+        command.add_argument("--source-line", type=int, help="line inside the exact source definition to select")
         command.add_argument("--command-index", type=int, help="exact JSON compilation database entry index")
         command.add_argument("--out-dir", default=default_out)
         if action == "optimize":
@@ -2393,6 +2439,36 @@ def build_parser() -> argparse.ArgumentParser:
     skill_install.add_argument("--target", default=str(Path.home() / ".codex" / "skills"), help="parent directory for the vladder skill")
     skill_install.add_argument("--force", action="store_true", help="replace a differing existing skill")
     skill_install.set_defaults(func=skill_command)
+    executable_search = sub.add_parser(
+        "source-search",
+        help="lazily enumerate, prove, compile, deduplicate, and trace executable semantic candidates",
+    )
+    executable_search_sub = executable_search.add_subparsers(dest="source_search_command", required=True)
+    executable_search_run = executable_search_sub.add_parser(
+        "run",
+        help="run one manifest of compiler/source roots through the policy-interleaved generator",
+    )
+    executable_search_run.add_argument("--manifest", required=True)
+    executable_search_run.add_argument("--out-dir", default="vladder-source-search")
+    executable_search_run.add_argument("--workers", type=int, help="override manifest worker count")
+    executable_search_run.add_argument(
+        "--live",
+        action="store_true",
+        help="mark the run live; without a configured oracle this still expands exhaustively",
+    )
+    executable_search_run.add_argument(
+        "--search-mode",
+        choices=(
+            "fast", "guided", "exhaustive", "exhaustive_canonical",
+            "exhaustive_reduced", "guided_reduced", "legacy_path_debug",
+        ),
+        help=(
+            "search authority: canonical modes operate on unique semantic-state DAG nodes; reduced "
+            "modes add only qualified exact reductions; learned policy changes order only; "
+            "legacy_path_debug retains the path-oriented qualification engine"
+        ),
+    )
+    executable_search_run.set_defaults(func=executable_search_command)
     lifetime = sub.add_parser("lifetime", help="attribute and synthesize semantic realization lifetimes")
     lifetime_sub = lifetime.add_subparsers(dest="lifetime_command", required=True)
     for action, help_text, default_out in (

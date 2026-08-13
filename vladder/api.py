@@ -132,6 +132,7 @@ class CppRegionRequest:
     output_directory: Path
     action: str = "isolate"
     symbol: str | None = None
+    source_line: int | None = None
     command_index: int | None = None
     minimum_speedup_pct: float = 1.0
     benchmark: BenchmarkPolicy = field(default_factory=BenchmarkPolicy)
@@ -145,6 +146,8 @@ class CppRegionRequest:
         ]
         if self.symbol:
             args.extend(("--symbol", self.symbol))
+        if self.source_line is not None:
+            args.extend(("--source-line", str(self.source_line)))
         if self.command_index is not None:
             args.extend(("--command-index", str(self.command_index)))
         if self.action == "optimize":

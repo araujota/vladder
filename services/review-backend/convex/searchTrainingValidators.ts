@@ -18,19 +18,20 @@ const graphEdge = v.object({
   source: v.number(), destination: v.number(), relation: v.string(), ordering: v.string(),
   numeric_features: v.array(numericFeature), categorical_features: v.array(categoricalFeature),
 });
+const semanticGraph = v.object({
+    nodes: v.array(graphNode), edges: v.array(graphEdge),
+    obligations: v.array(v.object({ category: v.string(), scope: v.string(), proof_method: v.string() })),
+    effects: v.array(v.object({ kind: v.string(), phase: v.string(), ordering: v.string() })),
+    protocols: v.array(v.object({ kind: v.string() })),
+    claims: v.array(v.object({ status: v.string(), scope: v.string() })),
+});
 const modelRoot = v.object({
   root_id: v.string(), project_id: v.string(), graph_version: v.string(),
   languages: v.array(v.union(
     v.literal("c"), v.literal("cpp"), v.literal("rust"), v.literal("zig"), v.literal("julia"),
     v.literal("cuda"), v.literal("spirv"), v.literal("other"),
   )),
-  graph: v.object({
-    nodes: v.array(graphNode), edges: v.array(graphEdge),
-    obligations: v.array(v.object({ category: v.string(), scope: v.string(), proof_method: v.string() })),
-    effects: v.array(v.object({ kind: v.string(), phase: v.string(), ordering: v.string() })),
-    protocols: v.array(v.object({ kind: v.string() })),
-    claims: v.array(v.object({ status: v.string(), scope: v.string() })),
-  }),
+  graph: semanticGraph,
   contract_features: featureSet,
 });
 const action = v.object({
@@ -49,7 +50,7 @@ const nullableBoolean = v.union(v.boolean(), v.null());
 const descendantUtility = v.object({
   proof_valid: nullableBoolean, distinct_realization: nullableBoolean, physically_material: nullableBoolean,
   retained: nullableBoolean, promoted: nullableBoolean, useful: nullableBoolean,
-  target_definition: v.literal("proof-valid-or-stronger-v1"),
+  target_definition: v.literal("proof-valid-distinct-or-stronger-v2"),
 });
 
 export const searchTrainingBundleValidator = v.object({
@@ -58,9 +59,9 @@ export const searchTrainingBundleValidator = v.object({
   producer: v.object({ agent: v.string(), model: v.string(), provider: v.union(v.string(), v.null()) }),
   dataset: v.object({
     grammar_version: v.string(), grammar_hash: v.string(),
-    canonicalizer_version: v.literal("search-pruner-graph-v3"),
-    labeler_version: v.literal("useful-descendant-v1"),
-    target_definition: v.literal("proof-valid-or-stronger-v1"), identity_epoch: v.string(),
+    canonicalizer_version: v.literal("search-pruner-state-graph-v4"),
+    labeler_version: v.literal("useful-descendant-v2"),
+    target_definition: v.literal("proof-valid-distinct-or-stronger-v2"), identity_epoch: v.string(),
   }),
   roots: v.array(modelRoot),
   searches: v.array(v.object({
@@ -93,6 +94,17 @@ export const searchTrainingBundleValidator = v.object({
       v.literal("composition"), v.literal("cross_tu"),
     ),
     baseline: v.boolean(), action,
+    decision_context: v.object({
+      context_version: v.literal("pre-decision-state-v2"),
+      quality: v.union(
+        v.literal("region_projected"), v.literal("partial_state"), v.literal("root_only"),
+      ),
+      graph: semanticGraph,
+      focus_node_indices: v.array(v.number()),
+      state_features: featureSet,
+      semantic_delta: featureSet,
+      canonical_state_hash: v.optional(v.union(v.string(), v.null())),
+    }),
     state: v.union(
       v.literal("enumerated"), v.literal("expanded"), v.literal("terminal"), v.literal("blocked"),
       v.literal("pruned_sound"), v.literal("pruned_heuristic"), v.literal("duplicate"),
@@ -108,7 +120,8 @@ export const searchTrainingBundleValidator = v.object({
       completeness_reason: v.union(
         v.literal("terminal"), v.literal("exhaustive_grammar"), v.literal("sound_contract"),
         v.literal("sound_legality"), v.literal("sound_dominance"), v.literal("budget"),
-        v.literal("time"), v.literal("interrupted"), v.literal("not_applicable"), v.literal("unknown"),
+        v.literal("time"), v.literal("interrupted"), v.literal("not_applicable"),
+        v.literal("missing_contract"), v.literal("unknown"),
       ),
       soundness_proof_class: v.string(),
     }),
@@ -126,7 +139,7 @@ export const searchTrainingBundleValidator = v.object({
         v.literal("baseline_guard"), v.literal("observed_positive_path"),
         v.literal("derived_complete_tree"), v.literal("sound_contract"), v.literal("incomplete_tree"),
       ),
-      positive_descendant_count: v.number(), label_version: v.literal("useful-descendant-v1"),
+      positive_descendant_count: v.number(), label_version: v.literal("useful-descendant-v2"),
     }),
   })),
   observations: v.array(v.object({

@@ -82,6 +82,56 @@ PUBLIC_OPERATION_ALIASES = {
     "atomic_transition": "commit",
     "summarized_helper": "call",
     "multi_exit_merge": "return",
+    # Canonical operation spellings emitted by executable search grammars. Keep
+    # these semantic distinctions while still removing source identifiers.
+    "borrowed-u8-sequence": "input",
+    "borrowed-contiguous-sequence": "input",
+    "projected-bool-field-view": "input",
+    "projected-word-field-view": "input",
+    "arrow-primitive-values-view": "input",
+    "contiguous-forward-traversal": "loop",
+    "bounded-source-order-traversal": "loop",
+    "load-byte-or-word": "load",
+    "load-element-or-word": "load",
+    "load-fixed-width-element": "load",
+    "element-load": "load",
+    "previous-element-load": "load",
+    "exact-popcount": "popcount",
+    "exact-add": "add",
+    "exact-indicator-sum": "reduce",
+    "count-true": "compare",
+    "count-nonzero": "compare",
+    "count-equal": "compare",
+    "count-adjacent-changes": "compare",
+    "count_true": "compare",
+    "count_nonzero": "compare",
+    "count_equal": "compare",
+    "count_adjacent_changes": "compare",
+    "scalar-byte-remainder": "reduce",
+    "return-exact-popcount": "output",
+    "return-count": "output",
+    "typed-live-in": "input",
+    "borrowed-state-projection": "map",
+    "closed-compiled-region": "map",
+    "inlined_into_selected_ir": "call",
+    "typed-live-outs": "output",
+    "predicate-parameter": "input",
+    "ordered-prefix-traversal": "loop",
+    "ordered-suffix-traversal": "loop",
+    "load-u8": "load",
+    "equal-u8": "compare",
+    "nonzero-u8": "compare",
+    "stop-at-first-false": "guard",
+    "ordered-prefix-extent": "reduce",
+    "ordered-suffix-extent": "reduce",
+    "return-ordered-extent": "output",
+    "protocol_boundary": "barrier",
+    "ordered-raii-cleanup": "retire",
+    "exact_call_preserving": "call",
+    "ordered-result-projections": "map",
+    "tagged-return-merge": "return",
+    "normal-exception-terminate-outcome": "return",
+    "atomic-happens-before-projection": "fence",
 }
 PUBLIC_SCOPES = frozenset({
     "instruction", "expression", "iteration", "loop", "function", "fragment", "record",
@@ -127,12 +177,12 @@ SAFE_CATEGORY_KEYS = frozenset({
 })
 SAFE_ACTION_NUMERIC_KEYS = frozenset({
     "accumulators", "batch", "block", "block_size", "depth", "distance", "lanes",
-    "execution_width", "prefetch", "sequence_tile", "tile", "token_tile", "unroll",
+    "execution_width", "factor", "prefetch", "sequence_tile", "tile", "token_tile", "unroll",
     "variant", "vector_width", "width",
 })
 SAFE_ACTION_CATEGORY_KEYS = frozenset({
-    "algorithm", "direction", "dispatch", "exactness", "isa", "layout", "mode", "order",
-    "output", "phase", "schedule", "tail", "traversal",
+    "algorithm", "decision_surface", "direction", "dispatch", "exactness", "isa", "layout", "mode", "order",
+    "output", "phase", "realization", "schedule", "tail", "traversal",
 })
 SAFE_HARDWARE_KEYS = frozenset({
     "architecture", "vendor", "microarchitecture", "device_class", "isa", "vector_width_bits",
@@ -153,6 +203,13 @@ SAFE_CONTRACT_KEYS = frozenset({
 SAFE_RESOURCE_KEYS = frozenset({
     "allocations", "branch_misses", "bytes_moved", "code_size", "cycles", "instructions",
     "l1d_misses", "l2_misses", "llc_misses", "memory_bytes", "stack_bytes", "stalls",
+})
+SAFE_DECISION_NUMERIC_KEYS = frozenset({
+    "action_count", "depth", "factor", "region_count", "remaining_count",
+    "selected_count", "tile", "width",
+})
+SAFE_DECISION_CATEGORY_KEYS = frozenset({
+    "delta_kind", "placement", "scope", "stage", "terminal",
 })
 _SUSPICIOUS_TEXT = re.compile(r"[/\\]|::|\.(?:c|cc|cpp|cxx|h|hpp|rs|zig|jl)(?:$|:)|[A-Fa-f0-9]{32,}")
 
@@ -294,6 +351,68 @@ def sanitize_graph(graph: dict[str, Any]) -> dict[str, Any]:
         "protocols": protocols[:64],
         "claims": claims[:128],
     }
+
+
+def sanitize_decision_context(
+    value: Any,
+    *,
+    fallback_graph: dict[str, Any],
+    identity: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    raw = value if isinstance(value, dict) else {}
+    raw_graph = raw.get("graph") if isinstance(raw.get("graph"), dict) else fallback_graph
+    raw_nodes = [item for item in raw_graph.get("nodes", ()) if isinstance(item, dict)]
+    node_index = {
+        str(item.get("id", f"node:{index}")): index
+        for index, item in enumerate(raw_nodes)
+    }
+    focus = sorted({
+        node_index[str(item)]
+        for item in raw.get("focus_node_ids", ())
+        if str(item) in node_index
+    })
+    quality = str(raw.get("quality") or "root_only")
+    if quality not in {"region_projected", "partial_state", "root_only"}:
+        quality = "root_only"
+    canonical = (
+        raw.get("context", {}).get("canonical_state_hash")
+        if isinstance(raw.get("context"), dict) else None
+    ) or raw.get("canonical_state_hash")
+    return {
+        "context_version": str(raw.get("context_version") or "pre-decision-state-v2")[:64],
+        "quality": quality,
+        "graph": sanitize_graph(raw_graph),
+        "focus_node_indices": focus[:128],
+        "state_features": _sanitize_decision_features(raw.get("state_features")),
+        "semantic_delta": _sanitize_decision_features(raw.get("semantic_delta")),
+        "canonical_state_hash": (
+            private_identity(identity, "semantic-state", canonical)
+            if identity is not None and canonical is not None else None
+        ),
+    }
+
+
+def _sanitize_decision_features(value: Any) -> dict[str, Any]:
+    numeric: list[dict[str, Any]] = []
+    categorical: list[dict[str, Any]] = []
+    if not isinstance(value, dict):
+        return {"numeric": numeric, "categorical": categorical}
+    for raw_key, raw_value in sorted(value.items()):
+        key = str(raw_key).lower()
+        if (
+            key in SAFE_DECISION_NUMERIC_KEYS
+            and isinstance(raw_value, (int, float))
+            and not isinstance(raw_value, bool)
+            and math.isfinite(float(raw_value))
+        ):
+            numeric.append({"name": key, "value": float(_bucket_number(float(raw_value)))})
+        elif key in SAFE_DECISION_CATEGORY_KEYS:
+            token = str(raw_value).lower() if isinstance(raw_value, bool) else raw_value
+            categorical.append({
+                "name": key,
+                "value": _safe_generated_token(token, fallback="other"),
+            })
+    return {"numeric": numeric[:128], "categorical": categorical[:128]}
 
 
 def sanitize_candidate(

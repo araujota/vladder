@@ -1,0 +1,419 @@
+{
+  "concurrency": {
+    "elapsed_ms": 200.53417002782226,
+    "recursive_owners": 17,
+    "registrations": 4096,
+    "registrations_per_second": 20425.446692858968,
+    "schema_version": "vladder-production-concurrency-stress-v1",
+    "status": "PASS",
+    "unique_actual": 17,
+    "unique_expected": 17,
+    "workers": 16
+  },
+  "disabled_experimental_mechanisms": [
+    "learned deletion",
+    "unqualified dominance",
+    "unqualified macro reduction",
+    "coarse optimization-equivalence collapse",
+    "global ownership/protocol e-graphs"
+  ],
+  "disposition": "PRODUCTION_CANONICAL_SEARCH_APPROVED",
+  "failure_and_counterexample_summary": {
+    "alias_and_contract_overlap": "fails independence screening",
+    "dominance_and_macro_false_positive": "disabled without descendant qualification",
+    "hash_collision": "qualified by unit regression",
+    "incremental_hash_divergence": "raises and falls back to clean rematerialization",
+    "unknown_footprint": "fails open as dependent",
+    "unresolved_failures": []
+  },
+  "gates": {
+    "concurrent_identity": true,
+    "measured_expensive_root": true,
+    "rc26_replay": true,
+    "rc27_replay": true,
+    "real_system_root_capture": true,
+    "resource_and_footprint": true,
+    "scaling_three_systems": true,
+    "terminal_preservation": true
+  },
+  "measured_expensive_root": {
+    "compiler": "/usr/bin/clang++-20",
+    "compiler_calls_avoided": 40,
+    "measured_wall_ms_saved": 573.4215669799596,
+    "measured_wall_reduction": 0.767900739270347,
+    "proof_calls_avoided": 40,
+    "raw": {
+      "candidate_constructions": 79,
+      "compiler_calls": 48,
+      "compiler_wall_ms": 722.429,
+      "complete": true,
+      "expansions": 31,
+      "generated_states": 79,
+      "measured_wall_ms": 746.7391781974584,
+      "proof_calls": 48,
+      "proof_wall_ms": 15.539,
+      "search_wall_ms": 746.7119679786265,
+      "terminal_canonical_hashes": [
+        "0f465288fd7b13a09e1417b11f5df969a79b050f3a10768cd9b1e7058ba212a9",
+        "304803488ede6ef0f96da651c0aee351009a666bdddcc608072c5af592e1c6e3",
+        "3e32100c53a0f2587c94b49c8f2da6bfa90d3598e31a5c78d64b89429eeb5bd5",
+        "544cb753bc54604e7d2abbe8cfbfe2e0fe1b7fec411578e7e6c36526532771d1",
+        "7e6d156cbfbc12376a8e46672df0f7337e0afa5135dde185273f3fff0112b86f",
+        "bff71b1111912101d2e44488f353393042dbfc52c0ca25a68c1218728616ea6e",
+        "d8e8067bbe7a57623fcd42e49a534de6edc633610165538caf15fe79a63488ff",
+        "ec4f18aa8e24f79a17c9f90881f13c6b59b533278ce40dc57edd6262b576c298"
+      ],
+      "terminal_paths": 48
+    },
+    "reduced": {
+      "candidate_constructions": 43,
+      "compiler_calls": 8,
+      "compiler_wall_ms": 121.369,
+      "measured_wall_ms": 173.31761121749878,
+      "proof_calls": 8,
+      "proof_wall_ms": 3.517,
+      "terminal_states": 8
+    },
+    "schema_version": "vladder-production-expensive-root-v1",
+    "scope": "bounded C++ source root with actual Z3 proof and optimized object compilation per terminal",
+    "status": "PASS",
+    "terminal_preservation": true
+  },
+  "production_claim": "vLadder exhaustively searches unique reachable semantic realizations after completeness-preserving state-space reduction, rather than enumerating redundant transformation sequences.",
+  "production_defaults": {
+    "exhaustive": "all reachable unique canonical states under qualified exact reductions",
+    "fast": "canonical DAG + cheap exact reductions + finite budget",
+    "guided": "canonical DAG + qualified cost-gated POR + finite budget",
+    "raw_sequence": "legacy_path_debug qualification mode only"
+  },
+  "production_engine_version": "production-canonical-search-v1",
+  "rc26_metrics": {
+    "average_terminal_evaluation_wall_ms": 4528.217273543346,
+    "captured_compiler_calls": 22860,
+    "captured_evaluation_wall_hours": 24.64859602565428,
+    "captured_evaluation_wall_ms": 88734945.69235541,
+    "captured_proof_calls": 19167,
+    "raw_states": 66882,
+    "recorded_transpositions": 38656,
+    "terminal_records": 19596,
+    "transposition_ratio": 0.5779731467360426,
+    "u2_preservation_ratio": 1.0,
+    "u2_terminals": 1333,
+    "unique_canonical_states": 28226
+  },
+  "rc27_adversarial_totals": {
+    "alpha_equivalent_collapses": 5,
+    "candidate_reduction_vs_raw_sequence": 0.9488378684807256,
+    "canonical_candidate_constructions": 5475,
+    "canonical_search_wall_ms": 3423.5565674025565,
+    "canonicalization_wall_ms": 394.9884339235723,
+    "compiler_call_reduction_vs_raw_sequence": 0.986211731713017,
+    "dependency_avoided_transitions": 10,
+    "fixture_alpha": 5,
+    "fixture_composition": 15,
+    "fixture_dependency": 5,
+    "fixture_symmetry": 5,
+    "net_wall_clock_reduction_vs_raw_sequence": -4.4002482455770355,
+    "peak_reduced_memory_bytes": 1908461,
+    "por_avoided_transitions": 3670,
+    "por_incremental_candidate_reduction": 0.6703196347031963,
+    "proof_call_reduction_vs_raw_sequence": 0.986211731713017,
+    "raw_compiler_calls": 21395,
+    "raw_proof_calls": 21395,
+    "raw_sequence_states": 35280,
+    "raw_sequence_wall_ms": 1251.2514521367848,
+    "reduced_candidate_constructions": 1805,
+    "reduced_compiler_calls": 295,
+    "reduced_proof_calls": 295,
+    "reduced_search_wall_ms": 6757.06845917739,
+    "sleep_set_avoided_transitions": 3670,
+    "state_reduction_vs_raw_sequence": 0.9491213151927438,
+    "symmetry_collapses": 5,
+    "terminal_preservation_ratio": 1.0,
+    "terminal_states": 295,
+    "transpositions": 3670,
+    "unique_canonical_states": 1795
+  },
+  "real_system_roots": [
+    {
+      "compile_command_sha256": "86cb36d21560dee562084c53046a9283cdd820698e0d06804f53dd966b59611c",
+      "function": "StringValueResult",
+      "levels": [
+        {
+          "canonical_states": 9,
+          "complete_footprint_actions": 8,
+          "missing_footprint_actions": 0,
+          "raw_states": 9,
+          "reduced_candidate_constructions": 9,
+          "selected_region_count": 1,
+          "selected_regions": [
+            "region-002"
+          ],
+          "terminal_preservation": true,
+          "terminals": 8
+        },
+        {
+          "canonical_states": 81,
+          "complete_footprint_actions": 144,
+          "missing_footprint_actions": 0,
+          "raw_states": 145,
+          "reduced_candidate_constructions": 81,
+          "selected_region_count": 2,
+          "selected_regions": [
+            "region-002",
+            "region-003"
+          ],
+          "terminal_preservation": true,
+          "terminals": 64
+        },
+        {
+          "canonical_states": 729,
+          "complete_footprint_actions": 1944,
+          "missing_footprint_actions": 0,
+          "raw_states": 3481,
+          "reduced_candidate_constructions": 729,
+          "selected_region_count": 3,
+          "selected_regions": [
+            "region-002",
+            "region-003",
+            "region-004"
+          ],
+          "terminal_preservation": true,
+          "terminals": 512
+        }
+      ],
+      "project": "duckdb",
+      "source": "/root/Documents/Codex/2026-08-10/vladder-graphml-training-campaign/sources/duckdb/src/execution/operator/csv_scanner/scanner/string_value_scanner.cpp",
+      "symbol": "_ZN6duckdb17StringValueResultC1ERNS_9CSVStatesERNS_15CSVStateMachineERKNS_10shared_ptrINS_15CSVBufferHandleELb1EEERNS_9AllocatorEmmRNS_15CSVErrorHandlerERNS_11CSVIteratorENS5_INS_11CSVFileScanELb1EEERmbRKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEmRb"
+    },
+    {
+      "compile_command_sha256": "044def14f03b2787ba7fe4032347c207a2752c9a68f27e140bf1ada23099e316",
+      "function": "ggml_compute_forward_sum_f32",
+      "levels": [
+        {
+          "canonical_states": 9,
+          "complete_footprint_actions": 8,
+          "missing_footprint_actions": 0,
+          "raw_states": 9,
+          "reduced_candidate_constructions": 9,
+          "selected_region_count": 1,
+          "selected_regions": [
+            "region-000"
+          ],
+          "terminal_preservation": true,
+          "terminals": 8
+        },
+        {
+          "canonical_states": 81,
+          "complete_footprint_actions": 144,
+          "missing_footprint_actions": 0,
+          "raw_states": 145,
+          "reduced_candidate_constructions": 81,
+          "selected_region_count": 2,
+          "selected_regions": [
+            "region-000",
+            "region-001"
+          ],
+          "terminal_preservation": true,
+          "terminals": 64
+        },
+        {
+          "canonical_states": 729,
+          "complete_footprint_actions": 1944,
+          "missing_footprint_actions": 0,
+          "raw_states": 3481,
+          "reduced_candidate_constructions": 729,
+          "selected_region_count": 3,
+          "selected_regions": [
+            "region-000",
+            "region-001",
+            "region-002"
+          ],
+          "terminal_preservation": true,
+          "terminals": 512
+        }
+      ],
+      "project": "llama.cpp",
+      "source": "/root/Documents/Codex/2026-08-10/vladder-graphml-training-campaign/sources/llama.cpp/ggml/src/ggml-cpu/ops.cpp",
+      "symbol": "_ZL28ggml_compute_forward_sum_f32PK19ggml_compute_paramsP11ggml_tensor"
+    },
+    {
+      "compile_command_sha256": "31187fbf7fe787425639b967e1c67cd79222d21b7ea4386ab2df0b89c5f120e7",
+      "function": "DBImplSecondary::CalculateResumedCompactionBytes",
+      "levels": [
+        {
+          "canonical_states": 9,
+          "complete_footprint_actions": 8,
+          "missing_footprint_actions": 0,
+          "raw_states": 9,
+          "reduced_candidate_constructions": 9,
+          "selected_region_count": 1,
+          "selected_regions": [
+            "region-000"
+          ],
+          "terminal_preservation": true,
+          "terminals": 8
+        },
+        {
+          "canonical_states": 81,
+          "complete_footprint_actions": 144,
+          "missing_footprint_actions": 0,
+          "raw_states": 145,
+          "reduced_candidate_constructions": 81,
+          "selected_region_count": 2,
+          "selected_regions": [
+            "region-000",
+            "region-001"
+          ],
+          "terminal_preservation": true,
+          "terminals": 64
+        },
+        {
+          "canonical_states": 729,
+          "complete_footprint_actions": 1944,
+          "missing_footprint_actions": 0,
+          "raw_states": 3481,
+          "reduced_candidate_constructions": 729,
+          "selected_region_count": 3,
+          "selected_regions": [
+            "region-000",
+            "region-001",
+            "region-002"
+          ],
+          "terminal_preservation": true,
+          "terminals": 512
+        }
+      ],
+      "project": "rocksdb",
+      "source": "/root/Documents/Codex/2026-08-10/vladder-graphml-training-campaign/sources/rocksdb/db/db_impl/db_impl_secondary.cc",
+      "symbol": "_ZNK7rocksdb15DBImplSecondary31CalculateResumedCompactionBytesERKSt6vectorINS_21SubcompactionProgressESaIS2_EE"
+    }
+  ],
+  "resources_and_footprints": {
+    "analysis_cache": {
+      "current_bytes": 38587,
+      "entries": 211,
+      "evictions": 0,
+      "hits": 0,
+      "maximum_bytes": 8388608,
+      "misses": 211
+    },
+    "complete_footprint_ratio": 1.0,
+    "configured_ceiling_bytes": 67108864,
+    "footprint_audit": {
+      "families": [
+        {
+          "average_downstream_cost_ms": 0.05609457006029267,
+          "complete_footprints": 405,
+          "complete_ratio": 1.0,
+          "generated_actions": 405,
+          "grammar_family": "loop-unroll-schedule",
+          "missing_footprints": 0,
+          "partial_footprints": 0,
+          "por_eligible_actions": 405
+        },
+        {
+          "average_downstream_cost_ms": 0.031118155653884986,
+          "complete_footprints": 405,
+          "complete_ratio": 1.0,
+          "generated_actions": 405,
+          "grammar_family": "selected-build-cpp",
+          "missing_footprints": 0,
+          "partial_footprints": 0,
+          "por_eligible_actions": 405
+        }
+      ]
+    },
+    "peak_memory_bytes": 1995070,
+    "schema_version": "vladder-production-resource-qualification-v1",
+    "status": "PASS"
+  },
+  "scaling": [
+    {
+      "classification": "acceptable",
+      "project": "duckdb",
+      "source": {
+        "path": "/root/Documents/Codex/2026-08-10/vladder-graphml-training-campaign/sources/duckdb/src/function/aggregate/distributive/count.cpp",
+        "sha256": "c3f7d56f7f51938f65171e052a7b2fe23c68b515b28f57c9af97304906ca68ca"
+      },
+      "widest_level": {
+        "canonical_candidate_constructions": 811,
+        "canonical_unique_states": 243,
+        "composition_width": 5,
+        "growth_from_previous": {
+          "canonical_construction": 3.737327188940092,
+          "canonical_unique": 3.0,
+          "raw": 10.001579778830964,
+          "reduced_construction": 2.875968992248062,
+          "terminal_proof_compile_work": 2.0
+        },
+        "por_skips": 440,
+        "raw_candidate_constructions": 6331,
+        "raw_paths_or_states": 6331,
+        "reduced_candidate_constructions": 371,
+        "reduced_unique_states": 243,
+        "terminal_preservation": true,
+        "terminal_states": 32,
+        "transpositions": 568
+      }
+    },
+    {
+      "classification": "acceptable",
+      "project": "llama.cpp",
+      "source": {
+        "path": "/root/Documents/Codex/2026-08-10/vladder-graphml-training-campaign/sources/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c",
+        "sha256": "f73c8a6794d8085f4a59827f5a90091c36ce6d1b1fcbb0b77398af1bedf21560"
+      },
+      "widest_level": {
+        "canonical_candidate_constructions": 811,
+        "canonical_unique_states": 243,
+        "composition_width": 5,
+        "growth_from_previous": {
+          "canonical_construction": 3.737327188940092,
+          "canonical_unique": 3.0,
+          "raw": 10.001579778830964,
+          "reduced_construction": 2.875968992248062,
+          "terminal_proof_compile_work": 2.0
+        },
+        "por_skips": 440,
+        "raw_candidate_constructions": 6331,
+        "raw_paths_or_states": 6331,
+        "reduced_candidate_constructions": 371,
+        "reduced_unique_states": 243,
+        "terminal_preservation": true,
+        "terminal_states": 32,
+        "transpositions": 568
+      }
+    },
+    {
+      "classification": "acceptable",
+      "project": "rocksdb",
+      "source": {
+        "path": "/root/Documents/Codex/2026-08-10/vladder-graphml-training-campaign/sources/rocksdb/db/db_impl/db_impl.cc",
+        "sha256": "5651a3547090869600b15f47acf225e13bee2671aaa9dc6a5ebf993a7e457c3f"
+      },
+      "widest_level": {
+        "canonical_candidate_constructions": 811,
+        "canonical_unique_states": 243,
+        "composition_width": 5,
+        "growth_from_previous": {
+          "canonical_construction": 3.737327188940092,
+          "canonical_unique": 3.0,
+          "raw": 10.001579778830964,
+          "reduced_construction": 2.875968992248062,
+          "terminal_proof_compile_work": 2.0
+        },
+        "por_skips": 440,
+        "raw_candidate_constructions": 6331,
+        "raw_paths_or_states": 6331,
+        "reduced_candidate_constructions": 371,
+        "reduced_unique_states": 243,
+        "terminal_preservation": true,
+        "terminal_states": 32,
+        "transpositions": 568
+      }
+    }
+  ],
+  "schema_version": "vladder-production-canonical-search-qualification-summary-v1",
+  "status": "PASS"
+}

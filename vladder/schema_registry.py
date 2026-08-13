@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -38,11 +39,17 @@ def schema_for_kind(kind: str) -> dict[str, Any]:
     return schema
 
 
-def validate_artifact(kind: str, artifact_path: Path) -> dict[str, Any]:
-    artifact_path = artifact_path.resolve()
-    payload = json.loads(artifact_path.read_text())
+@lru_cache(maxsize=None)
+def _validator_for_kind(kind: str) -> tuple[dict[str, Any], Draft202012Validator]:
     schema = schema_for_kind(kind)
     validator = Draft202012Validator(schema, format_checker=FormatChecker())
+    return schema, validator
+
+
+def validate_payload(
+    kind: str, payload: Any, *, artifact: str = "<in-memory>",
+) -> dict[str, Any]:
+    schema, validator = _validator_for_kind(kind)
     errors = sorted(validator.iter_errors(payload), key=lambda item: list(item.absolute_path))
     rendered = []
     for error in errors:
@@ -52,7 +59,13 @@ def validate_artifact(kind: str, artifact_path: Path) -> dict[str, Any]:
         "schema_version": "vladder-schema-validation-v1",
         "status": "pass" if not rendered else "fail",
         "artifact_kind": kind,
-        "artifact": str(artifact_path),
+        "artifact": artifact,
         "artifact_schema": schema.get("$id"),
         "errors": rendered,
     }
+
+
+def validate_artifact(kind: str, artifact_path: Path) -> dict[str, Any]:
+    artifact_path = artifact_path.resolve()
+    payload = json.loads(artifact_path.read_text())
+    return validate_payload(kind, payload, artifact=str(artifact_path))

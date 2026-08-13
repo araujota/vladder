@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/canonical-search-release-artifact-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "release_version", "engine_version", "disposition",
+    "production_claim", "authority", "defaults", "qualification", "release_smoke",
+    "packaged_components", "training_contract"
+  ],
+  "properties": {
+    "schema_version": {"const": "vladder-canonical-search-release-artifact-v1"},
+    "release_version": {"type": "string", "pattern": "^1\\.0\\.0rc[0-9]+$"},
+    "engine_version": {"const": "production-canonical-search-v1"},
+    "disposition": {"const": "PRODUCTION_CANONICAL_SEARCH_APPROVED"},
+    "production_claim": {"type": "string", "minLength": 1},
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canonical_identity", "exact_reduction", "ml_deletion", "unknown_conditions"],
+      "properties": {
+        "canonical_identity": {"const": "collision-checked canonical bytes"},
+        "exact_reduction": {"const": "deterministic or formally qualified only"},
+        "ml_deletion": {"const": false},
+        "unknown_conditions": {"const": "fail_open"}
+      }
+    },
+    "defaults": {"type": "object", "required": ["fast", "guided", "exhaustive", "raw_sequence"]},
+    "qualification": {
+      "type": "object",
+      "required": [
+        "terminal_preservation_percent", "rc26_u2_terminals_preserved",
+        "rc26_u2_terminals_total", "rc26_transposition_ratio",
+        "rc27_adversarial_terminal_states_preserved",
+        "rc27_adversarial_terminal_states_total", "rc27_state_reduction_ratio",
+        "rc27_por_incremental_candidate_reduction_ratio",
+        "expensive_fixture_raw_proof_calls", "expensive_fixture_reduced_proof_calls",
+        "expensive_fixture_raw_compiler_calls", "expensive_fixture_reduced_compiler_calls",
+        "expensive_fixture_measured_wall_reduction_ratio"
+      ],
+      "properties": {
+        "terminal_preservation_percent": {"const": 100.0}
+      }
+    },
+    "release_smoke": {
+      "type": "object",
+      "required": ["stages", "required_passes"],
+      "properties": {
+        "stages": {"const": 8},
+        "required_passes": {"type": "array", "minItems": 8, "uniqueItems": true}
+      }
+    },
+    "packaged_components": {"type": "array", "minItems": 4, "uniqueItems": true},
+    "training_contract": {
+      "type": "object",
+      "required": [
+        "schema", "contract", "ml_authority", "inference_feature_boundary",
+        "post_search_supervision"
+      ],
+      "properties": {
+        "schema": {"const": "vladder-composition-native-search-trace-v1"},
+        "contract": {"const": "vladder-search-policy-training-contract-v1"},
+        "ml_authority": {"const": "ordering_and_verified_proposals_only"},
+        "inference_feature_boundary": {"const": "pre_decision_frontier_only"},
+        "post_search_supervision": {"const": "terminal_lineage_and_descendant_utility"}
+      }
+    }
+  }
+}

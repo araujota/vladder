@@ -1,0 +1,39 @@
+name: Canonical Search Nightly
+
+on:
+  schedule:
+    - cron: "23 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install native proof and compiler tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm z3
+      - run: python -m pip install --upgrade pip '.[dev]'
+      - name: Canonical determinism and production invariants
+        run: >-
+          python -m pytest -q
+          tests/test_canonical_state_search.py
+          tests/test_production_canonical_search.py
+      - name: Fresh bounded qualification
+        run: >-
+          python scripts/qualify_production_search_nightly.py
+          --output build/production-search-nightly.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-search-nightly
+          path: build/production-search-nightly.json
+          if-no-files-found: error

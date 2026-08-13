@@ -15,7 +15,7 @@ from vladder.verification_policy import VerificationPolicy, evaluate_promotion
 
 class ReleaseSurfaceTests(unittest.TestCase):
     def test_public_identity_and_registry(self):
-        self.assertEqual(vladder.__version__, "1.0.0rc23")
+        self.assertEqual(vladder.__version__, "1.0.0rc29")
         registry = load_registry()
         self.assertEqual(registry.version, "vladder-v1")
         self.assertGreaterEqual(len(registry.families), 10)

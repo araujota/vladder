@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vladder"
-version = "1.0.0rc23"
+version = "1.0.0rc29"
 description = "Verified hardware-aware information-flow superoptimization for systems languages"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -36,6 +36,10 @@ Issues = "https://github.com/araujota/vladder/issues"
 Changelog = "https://github.com/araujota/vladder/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
+ml = [
+  "numpy>=2,<3",
+  "torch>=2.6,<3",
+]
 dev = [
   "bandit>=1.8,<2",
   "build>=1.2,<2",
@@ -61,6 +65,7 @@ vladder = [
   "skills/**/*.md",
   "skills/**/*.yaml",
   "native/*.cpp",
+  "artifacts/*.json",
 ]
 
 [tool.pytest.ini_options]

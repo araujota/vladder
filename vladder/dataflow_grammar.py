@@ -98,7 +98,7 @@ class BoundedDataflowGrammar:
             lowering_classes = {
                 "cpp": {terminal: "native_physical" for terminal in terminals},
             }
-            for language in ("c", "zig", "julia"):
+            for language in ("c", "rust", "zig", "julia"):
                 lowering_classes[language] = {
                     terminal: (
                         "native_semantic"
@@ -116,7 +116,7 @@ class BoundedDataflowGrammar:
                 "cpp_emitter": "vladder.dataflow_lowering:emit_dataflow_cpp",
                 "native_emitters": {
                     language: "vladder.dataflow_multilang:emit_dataflow_native"
-                    for language in ("c", "cpp", "zig", "julia")
+                    for language in ("c", "cpp", "rust", "zig", "julia")
                 },
                 "native_lowering_classes": lowering_classes,
                 "physical_distinction_policy": (

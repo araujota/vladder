@@ -4,6 +4,7 @@ from dataclasses import replace
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -43,6 +44,17 @@ from vladder.gpu_workflow import (
 
 ROOT = Path(__file__).resolve().parents[1]
 GPU = ROOT / "examples" / "gpu"
+
+
+def _cuda_device_available() -> bool:
+    nvidia_smi = shutil.which("nvidia-smi")
+    if not nvidia_smi:
+        return False
+    result = subprocess.run(
+        [nvidia_smi, "-L"], text=True, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return result.returncode == 0 and bool(result.stdout.strip())
 
 
 class HeterogeneousGPUTests(unittest.TestCase):
@@ -277,7 +289,8 @@ extern \"C\" __global__ void scale(float *dst, const float *src, float factor, i
         self.assertEqual(dma_evidence.status, "FAIL")
 
     @unittest.skipUnless(
-        shutil.which("nvcc") and shutil.which("vulkaninfo") and Path("/sys/bus/pci/devices").is_dir(),
+        shutil.which("nvcc") and shutil.which("vulkaninfo") and
+        Path("/sys/bus/pci/devices").is_dir() and _cuda_device_available(),
         "live CUDA/Vulkan/Linux topology unavailable",
     )
     def test_live_topology_joins_cuda_and_vulkan_identity(self) -> None:
@@ -374,7 +387,7 @@ extern \"C\" __global__ void scale(float *dst, const float *src, float factor, i
         )
 
     @unittest.skipUnless(
-        shutil.which("nvcc") and shutil.which("nvidia-smi"),
+        shutil.which("nvcc") and _cuda_device_available(),
         "CUDA device toolchain unavailable",
     )
     def test_cuda_pointwise_full_physical_path_fails_closed_without_effect(self) -> None:

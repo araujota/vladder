@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -72,6 +73,65 @@ pub export fn {fn}(r:[*]const Record,n:usize,kind:u32) Stats {{ var s=Stats{{.co
     return f'const std=@import("std");\n// vLadder realization: {realization}; semantic scalar fallback\n{body}\n'
 
 
+def _rust_source(contract: BoundedDataflowContract, realization: str, fn: str) -> str:
+    pre = "#![allow(clippy::missing_safety_doc)]\nuse std::slice;\n"
+    if contract.family == "predicate-stable-compaction":
+        write_i = (
+            "if !out_indices.is_null() { unsafe { *out_indices.add(out) = i as u32; } }"
+            if contract.output_mode != "value-only" else ""
+        )
+        write_v = (
+            "if !out_values.is_null() { unsafe { *out_values.add(out) = current[i]; } }"
+            if contract.output_mode != "index-only" else ""
+        )
+        limit = (
+            "if selected > capacity { return usize::MAX; } let limit = selected;"
+            if contract.capacity_policy == "fail-unchanged" else
+            "let limit = selected.min(capacity);"
+        )
+        body = f"""#[unsafe(no_mangle)]
+pub unsafe extern "C" fn {fn}(out_indices:*mut u32,out_values:*mut u64,capacity:usize,current:*const u64,baseline:*const u64,n:usize)->usize {{
+ let current=unsafe{{slice::from_raw_parts(current,n)}}; let baseline=unsafe{{slice::from_raw_parts(baseline,n)}};
+ let selected=(0..n).filter(|&i|current[i]!=baseline[i]).count(); {limit}
+ let mut out=0usize; for i in 0..n {{ if out>=limit{{break;}} if current[i]!=baseline[i]{{{write_i} {write_v} out+=1;}} }} out
+}}"""
+    elif contract.family == "fixed-width-codec":
+        swap = "word.swap_bytes()" if contract.byte_order == "big" else "word"
+        body = f"""#[unsafe(no_mangle)]
+pub extern "C" fn {fn}(a:u16,b:u16,c:u32)->u64 {{ let word=(a as u64)|((b as u64)<<16)|((c as u64)<<32); {swap} }}"""
+    elif contract.family == "stateful-delta-transducer":
+        body = f"""#[unsafe(no_mangle)]
+pub unsafe extern "C" fn {fn}(next:*mut u64,indices:*mut u32,values:*mut u64,capacity:usize,current:*const u64,baseline:*const u64,n:usize)->usize {{
+ let current=unsafe{{slice::from_raw_parts(current,n)}};let baseline=unsafe{{slice::from_raw_parts(baseline,n)}};
+ let selected=(0..n).filter(|&i|current[i]!=baseline[i]).count();if selected>capacity{{return usize::MAX;}}
+ unsafe{{core::ptr::copy_nonoverlapping(baseline.as_ptr(),next,n);}}let mut out=0usize;
+ for i in 0..n{{if current[i]!=baseline[i]{{unsafe{{*indices.add(out)=i as u32;*values.add(out)=current[i];*next.add(i)=current[i];}}out+=1;}}}}out
+}}"""
+    elif contract.family == "aos-fused-multi-reduction":
+        body = f"""#[repr(C)] pub struct {fn}_record{{pub kind:u32,pub flags:u32,pub bytes:u64}}
+#[repr(C)] pub struct {fn}_stats{{pub count:u64,pub bytes:u64,pub flagged:u64}}
+#[unsafe(no_mangle)] pub unsafe extern "C" fn {fn}(r:*const {fn}_record,n:usize,kind:u32)->{fn}_stats{{
+ let r=unsafe{{slice::from_raw_parts(r,n)}};let mut s={fn}_stats{{count:0,bytes:0,flagged:0}};
+ for x in r{{if x.kind==kind&&(x.flags&1)==0{{s.count+=1;s.bytes+=x.bytes;s.flagged+=((x.flags>>1)&1)as u64;}}}}s
+}}"""
+    else:
+        body = _rust_block(fn)
+    return pre + f"\n// vLadder realization: {realization}; semantic scalar fallback\n" + body + "\n"
+
+
+def _rust_block(fn: str) -> str:
+    return f"""#[derive(Clone,Copy)] #[repr(C)] pub struct {fn}_pixel{{pub r:u8,pub g:u8,pub b:u8,pub a:u8}}
+fn {fn}_p565(r:u8,g:u8,b:u8)->u16{{((r as u16>>3)<<11)|((g as u16>>2)<<5)|(b as u16>>3)}}
+fn {fn}_d565(v:u16)->{fn}_pixel{{let r=((v>>11)&31)as u8;let g=((v>>5)&63)as u8;let b=(v&31)as u8;{fn}_pixel{{r:(r<<3)|(r>>2),g:(g<<2)|(g>>4),b:(b<<3)|(b>>2),a:255}}}}
+#[unsafe(no_mangle)] pub unsafe extern "C" fn {fn}(x:*const {fn}_pixel)->u64{{
+ let x=unsafe{{slice::from_raw_parts(x,16)}};let(mut lr,mut lg,mut lb)=(255u8,255u8,255u8);let(mut hr,mut hg,mut hb)=(0u8,0u8,0u8);
+ for q in x{{lr=lr.min(q.r);lg=lg.min(q.g);lb=lb.min(q.b);hr=hr.max(q.r);hg=hg.max(q.g);hb=hb.max(q.b);}}
+ let lo={fn}_p565(lr,lg,lb);let hi={fn}_p565(hr,hg,hb);let p0={fn}_d565(lo);let p1={fn}_d565(hi);
+ let p=[p0,p1,{fn}_pixel{{r:((2*p0.r as u16+p1.r as u16)/3)as u8,g:((2*p0.g as u16+p1.g as u16)/3)as u8,b:((2*p0.b as u16+p1.b as u16)/3)as u8,a:255}},{fn}_pixel{{r:((p0.r as u16+2*p1.r as u16)/3)as u8,g:((p0.g as u16+2*p1.g as u16)/3)as u8,b:((p0.b as u16+2*p1.b as u16)/3)as u8,a:255}}];
+ let mut bits=0u32;for(i,q)in x.iter().enumerate(){{let(mut best,mut be)=(0u32,u32::MAX);for(j,v)in p.iter().enumerate(){{let dr=q.r as i32-v.r as i32;let dg=q.g as i32-v.g as i32;let db=q.b as i32-v.b as i32;let e=(dr*dr+dg*dg+db*db)as u32;if e<be{{be=e;best=j as u32;}}}}bits|=best<<(2*i);}}lo as u64|((hi as u64)<<16)|((bits as u64)<<32)
+}}"""
+
+
 def _zig_block(fn: str) -> str:
     return f"""pub const Pixel=extern struct{{r:u8,g:u8,b:u8,a:u8}};
 fn p565(r:u8,g:u8,b:u8)u16{{return (@as(u16,r>>3)<<11)|(@as(u16,g>>2)<<5)|@as(u16,b>>3);}} fn d565(v:u16)Pixel{{const r:u8=@intCast((v>>11)&31);const g:u8=@intCast((v>>5)&63);const b:u8=@intCast(v&31);return .{{.r=(r<<3)|(r>>2),.g=(g<<2)|(g>>4),.b=(b<<3)|(b>>2),.a=255}};}}
@@ -121,7 +181,7 @@ def emit_dataflow_native(contract: BoundedDataflowContract, derivation: Dataflow
     grammar = grammar or load_bounded_dataflow_grammar()
     if derivation.target not in grammar.family_terminals(contract.family):
         raise ValueError("derivation terminal does not match the dataflow contract")
-    emitters = {"c": _c_source, "zig": _zig_source, "julia": _julia_source}
+    emitters = {"c": _c_source, "rust": _rust_source, "zig": _zig_source, "julia": _julia_source}
     if language not in emitters:
         raise ValueError(f"unsupported bounded-dataflow language: {language}")
     source = emitters[language](contract, derivation.target, function)
@@ -131,7 +191,12 @@ def emit_dataflow_native(contract: BoundedDataflowContract, derivation: Dataflow
     obligations = (
         obligation(f"dataflow.{language}.source-binding", "representation", "native source preserves the bounded contract", scope="generated-function", proof_method="native-compile-and-differential", language=language, native_construct=lowering_class),
     )
-    flags = ("-std=c17", "-O3", "-march=native", "-Wall", "-Wextra") if language == "c" else (("ReleaseFast",) if language == "zig" else ("--startup-file=no", "-O3"))
+    flags = (
+        ("-std=c17", "-O3", "-march=native", "-Wall", "-Wextra") if language == "c" else
+        ("--edition=2024", "-C", "opt-level=3", "-C", "target-cpu=native") if language == "rust" else
+        ("ReleaseFast",) if language == "zig" else
+        ("--startup-file=no", "-O3")
+    )
     return DataflowCandidate(f"{contract.family}:{derivation.target}:{language}", language, function, contract.family, derivation.target, source, hashlib.sha256(source.encode()).hexdigest(), derivation.derivation_hash, graph.graph_hash, flags, obligations, lowering_class)
 
 
@@ -149,6 +214,12 @@ def _native_smoke_harness(contract: BoundedDataflowContract, language: str, fn: 
         if family == "stateful-delta-transducer": return f'pub fn main() !void {{const c=[_]u64{{1,4,3}};const b=[_]u64{{1,2,3}};var n=[_]u64{{9,9,9}};var i:[3]u32=undefined;var v:[3]u64=undefined;if({fn}(&n,&i,&v,3,&c,&b,3)!=1 or i[0]!=1 or n[1]!=4)return error.Mismatch;}}\n'
         if family == "aos-fused-multi-reduction": return f'pub fn main() !void {{const r=[_]Record{{.{{.kind=2,.flags=0,.bytes=7}},.{{.kind=2,.flags=2,.bytes=5}}}};const s={fn}(&r,2,2);if(s.count!=2 or s.bytes!=12 or s.flagged!=1)return error.Mismatch;}}\n'
         return f'pub fn main() !void {{var p:[16]Pixel=undefined;for(0..16)|i|p[i]=.{{.r=@intCast(i),.g=@intCast(2*i),.b=@intCast(3*i),.a=255}};if({fn}(&p)==0)return error.Mismatch;}}\n'
+    if language == "rust":
+        if family == "predicate-stable-compaction": return f'fn main(){{let c=[1u64,4,3,8];let b=[1u64,2,3,4];let mut i=[0u32;4];let mut v=[0u64;4];let n=unsafe{{{fn}(i.as_mut_ptr(),v.as_mut_ptr(),4,c.as_ptr(),b.as_ptr(),4)}};assert!(n==2&&i[0]==1&&i[1]==3&&v[0]==4&&v[1]==8);}}\n'
+        if family == "fixed-width-codec": return f'fn main(){{assert_eq!({fn}(1,2,3),1u64|(2u64<<16)|(3u64<<32));}}\n'
+        if family == "stateful-delta-transducer": return f'fn main(){{let c=[1u64,4,3];let b=[1u64,2,3];let mut n=[9u64;3];let mut i=[0u32;3];let mut v=[0u64;3];let z=unsafe{{{fn}(n.as_mut_ptr(),i.as_mut_ptr(),v.as_mut_ptr(),3,c.as_ptr(),b.as_ptr(),3)}};assert!(z==1&&i[0]==1&&v[0]==4&&n[1]==4);}}\n'
+        if family == "aos-fused-multi-reduction": return f'fn main(){{let r=[{fn}_record{{kind:2,flags:0,bytes:7}},{fn}_record{{kind:2,flags:2,bytes:5}}];let s=unsafe{{{fn}(r.as_ptr(),2,2)}};assert!(s.count==2&&s.bytes==12&&s.flagged==1);}}\n'
+        return f'fn main(){{let mut p:[{fn}_pixel;16]=core::array::from_fn(|i|{fn}_pixel{{r:i as u8,g:(2*i)as u8,b:(3*i)as u8,a:255}});assert_ne!(unsafe{{{fn}(p.as_mut_ptr())}},0);}}\n'
     if family == "predicate-stable-compaction": return f'c=UInt64[1,4,3,8];b=UInt64[1,2,3,4];i=Vector{{UInt32}}(undef,4);v=Vector{{UInt64}}(undef,4);n={fn}(i,v,4,c,b);@assert n==2 && i[1:2]==UInt32[1,3] && v[1:2]==UInt64[4,8]\n'
     if family == "fixed-width-codec": return f'@assert {fn}(UInt16(1),UInt16(2),UInt32(3))==(UInt64(1)|(UInt64(2)<<16)|(UInt64(3)<<32))\n'
     if family == "stateful-delta-transducer": return f'c=UInt64[1,4,3];b=UInt64[1,2,3];n=fill(UInt64(9),3);i=Vector{{UInt32}}(undef,3);v=Vector{{UInt64}}(undef,3);@assert {fn}(n,i,v,3,c,b)==1 && i[1]==1 && n[2]==4\n'
@@ -158,7 +229,7 @@ def _native_smoke_harness(contract: BoundedDataflowContract, language: str, fn: 
 
 def run_native_dataflow_differential(contract: BoundedDataflowContract, candidate: Any, output_directory: Path) -> dict[str, Any]:
     output_directory.mkdir(parents=True, exist_ok=True)
-    suffix = {"c": ".c", "zig": ".zig", "julia": ".jl"}[candidate.language]
+    suffix = {"c": ".c", "rust": ".rs", "zig": ".zig", "julia": ".jl"}[candidate.language]
     source = output_directory / ("differential" + suffix)
     source.write_text(candidate.source + "\n" + _native_smoke_harness(contract, candidate.language, candidate.function))
     binary = output_directory / "differential"
@@ -168,11 +239,22 @@ def run_native_dataflow_differential(contract: BoundedDataflowContract, candidat
         command = [compiler, *candidate.compiler_flags, str(source), "-o", str(binary)]
         compiled = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         executed = subprocess.run([str(binary)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) if compiled.returncode == 0 else compiled
+    elif candidate.language == "rust":
+        compiler = shutil.which("rustc")
+        if not compiler: return {"status": "UNAVAILABLE", "reason": "rustc unavailable"}
+        command = [compiler, *candidate.compiler_flags, str(source), "-o", str(binary)]
+        compiled = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        executed = subprocess.run([str(binary)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) if compiled.returncode == 0 else compiled
     elif candidate.language == "zig":
         compiler = shutil.which("zig")
         if not compiler: return {"status": "UNAVAILABLE", "reason": "Zig unavailable"}
         command = [compiler, "build-exe", str(source), "-O", "ReleaseFast", f"-femit-bin={binary}"]
-        compiled = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        environment = os.environ.copy()
+        environment["ZIG_GLOBAL_CACHE_DIR"] = str(output_directory / "zig-global-cache")
+        environment["ZIG_LOCAL_CACHE_DIR"] = str(output_directory / "zig-local-cache")
+        compiled = subprocess.run(
+            command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=environment,
+        )
         executed = subprocess.run([str(binary)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) if compiled.returncode == 0 else compiled
     else:
         compiler = shutil.which("julia")

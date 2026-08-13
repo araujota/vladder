@@ -15,6 +15,7 @@ from vladder.orchestrator import (
     build_plan,
     inventory_external_authorities,
     run_portfolio,
+    run_optimization,
     sign_remote_result,
     terminal_status,
     verify_remote_result,
@@ -337,6 +338,45 @@ class EvidenceOrchestratorTests(unittest.TestCase):
             disposition = json.loads((Path(directory) / "disposition.json").read_text())
             self.assertEqual(disposition["terminal_status"], "NO_COVERAGE")
             self.assertTrue(disposition["failures"])
+
+    def test_canonical_cpp_route_uses_lazy_executable_source_search(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "compact.cpp"
+            source.write_text(
+                "#include <cstddef>\n#include <cstdint>\n"
+                "std::size_t compact(std::uint32_t* __restrict out_indices, "
+                "std::uint64_t* __restrict out_values, std::size_t out_capacity, "
+                "const std::uint64_t* __restrict current, const std::uint64_t* __restrict baseline, "
+                "std::size_t n) noexcept {\n"
+                "  if (n > 64 || out_capacity < n) return SIZE_MAX;\n"
+                "  std::size_t output_count = 0;\n"
+                "  for (std::size_t i=0;i<n;++i) if (current[i] != baseline[i]) {\n"
+                "    out_indices[output_count] = static_cast<std::uint32_t>(i);\n"
+                "    out_values[output_count] = current[i]; ++output_count; }\n"
+                "  return output_count;\n}\n"
+            )
+            compile_commands = root / "compile_commands.json"
+            compile_commands.write_text(json.dumps([{
+                "directory": str(root),
+                "file": str(source),
+                "arguments": ["clang++", "-std=c++20", "-c", str(source)],
+            }]))
+            request = OptimizationRequest(
+                project=root,
+                source=source,
+                symbol="compact",
+                compile_commands=compile_commands,
+                contract=None,
+                workload=None,
+                profile=None,
+                output_directory=root / "out",
+                plan_only=False,
+            )
+            report = run_optimization(request, emit_progress=False)
+            self.assertEqual(report["disposition"]["terminal_status"], "NO_BENCHMARK")
+            self.assertTrue(report["summary"]["states"]["candidate_proved"])
+            self.assertTrue((root / "out/executable-search/executable-search-trace.json").is_file())
 
 
 if __name__ == "__main__":

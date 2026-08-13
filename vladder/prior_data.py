@@ -113,7 +113,8 @@ def make_root(
     project_id: str,
     graph_version: str = "semantic-flow-v2",
 ) -> dict[str, Any]:
-    canonical_graph = canonical_semantic_graph(graph)
+    semantic_graph = _semantic_graph_record(graph)
+    canonical_graph = canonical_semantic_graph(semantic_graph)
     root_id = canonical_hash({"graph": canonical_graph, "contract": _semantic_value(contract)})
     record = {
         "schema_version": ROOT_SCHEMA,
@@ -121,7 +122,7 @@ def make_root(
         "project_id": project_id,
         "graph_version": graph_version,
         "canonicalizer_version": CANONICAL_GRAPH_SCHEMA,
-        "semantic_graph": _semantic_graph_record(graph),
+        "semantic_graph": semantic_graph,
         "canonical_graph": canonical_graph,
         "contract": _semantic_value(contract),
         "provenance": sorted((_provenance_value(item) for item in provenance), key=canonical_hash),

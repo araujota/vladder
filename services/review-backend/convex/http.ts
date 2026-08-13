@@ -160,8 +160,15 @@ function searchTrainingBounds(bundle: SearchTrainingBundle): string | null {
       return "search context outside bounds";
     }
     const rootBranch = branches.get(search.root_branch_id);
-    if (!rootBranch || rootBranch.search_id !== search.search_id || rootBranch.parent_branch_id !== null
-      || rootBranch.depth !== 0 || !rootBranch.baseline) return "invalid search root branch";
+    if (!rootBranch || rootBranch.search_id !== search.search_id || rootBranch.parent_branch_id !== null) {
+      return "invalid search root branch";
+    }
+    if (search.fragment.kind === "full_trace" && (rootBranch.depth !== 0 || !rootBranch.baseline)) {
+      return "invalid full-trace root branch";
+    }
+    if (search.fragment.kind === "complete_subtree" && search.fragment.external_parent_branch_id === null) {
+      return "complete subtree requires an external parent";
+    }
   }
   const childCounts = new Map<string, number>();
   for (const branch of bundle.branches) {
@@ -217,6 +224,12 @@ function searchTrainingBounds(bundle: SearchTrainingBundle): string | null {
     retained: new Set(["retained_candidate", "promoted_candidate", "composed_win"]),
     promoted: new Set(["promoted_candidate"]),
   };
+  const terminalNegativeOutcomes = new Set([
+    "inapplicable", "semantic_mismatch", "illegal", "proof_failed", "duplicate",
+    "compiler_identical", "dominated_sound", "exhausted_no_useful_descendant",
+    "measured_regression", "statistical_tie", "small_win_below_floor",
+    "composed_regression", "resource_regression",
+  ]);
   const soundReasons = new Set(["sound_contract", "sound_legality", "sound_dominance"]);
   const observationOutcomes = new Map<string, Set<string>>();
   for (const observation of bundle.observations) {
@@ -273,8 +286,10 @@ function searchTrainingBounds(bundle: SearchTrainingBundle): string | null {
       const positive = directUtility[key] || childResults.some((child) => child.utility[key] === true);
       return [key, positive ? true : complete ? false : null];
     })) as DerivedUtility;
-    const directlyUseful = directUtility.proof_valid || directUtility.physically_material
-      || directUtility.retained || directUtility.promoted;
+    const outcomes = observationOutcomes.get(branchId) ?? new Set<string>();
+    const directlyUseful = directUtility.physically_material || directUtility.retained
+      || directUtility.promoted || (directUtility.proof_valid && directUtility.distinct_realization
+        && ![...outcomes].some((outcome) => terminalNegativeOutcomes.has(outcome)));
     const positiveCount = Number(directlyUseful) + childResults.reduce((sum, child) => sum + child.positiveCount, 0);
     const result = { utility, complete, positiveCount };
     visiting.delete(branchId);

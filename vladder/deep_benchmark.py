@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -205,10 +206,15 @@ def _sha256(path: Path) -> str:
 def _function_symbol_matches(symbol: str, function: str) -> bool:
     """Match native and JIT symbol spellings without accepting unrelated suffixes."""
     normalized = symbol.strip('"')
-    return bool(re.search(
+    native_or_jit = bool(re.search(
         rf"(?:^|[.$_]){re.escape(function)}(?:$|[.$_]\d+$)",
         normalized,
-    )) and not normalized.endswith(("_scalar", "_avx2"))
+    ))
+    legacy_rust = bool(re.search(
+        rf"\d+{re.escape(function)}\d+h[0-9a-f]+E$",
+        normalized,
+    ))
+    return (native_or_jit or legacy_rust) and not normalized.endswith(("_scalar", "_avx2"))
 
 
 def _normalized_identity(
@@ -247,16 +253,34 @@ def _normalized_identity(
     }
 
 
+def _resolved_alias_target(aliases: dict[str, str], requested: str) -> str | None:
+    current = requested
+    visited: set[str] = set()
+    for _ in range(32):
+        target = aliases.get(current)
+        if target is None:
+            return current if current != requested else None
+        if current in visited:
+            return None
+        visited.add(current)
+        current = target
+    return None
+
+
 def _hot_llvm_identity(path: Path, function: str) -> dict[str, Any]:
     text = path.read_text(errors="replace")
-    alias_target: str | None = None
-    alias = re.search(
-        rf'^@(?:"?{re.escape(function)}"?)\s*=\s*alias\b[^\n]*\bptr\s+@(?:"([^"]+)"|([^,\s]+))',
+    global_name = r'(?:"(?:\\.|[^"\\])*"|[-A-Za-z$._0-9]+)'
+    aliases: dict[str, str] = {}
+    for alias in re.finditer(
+        rf'^\s*@(?P<source>{global_name})\s*=\s*[^\n]*\balias\b(?P<body>[^\n]*)$',
         text,
         flags=re.MULTILINE,
-    )
-    if alias:
-        alias_target = alias.group(1) or alias.group(2)
+    ):
+        targets = list(re.finditer(rf'@(?P<target>{global_name})', alias.group("body")))
+        if targets:
+            source = alias.group("source").strip('"')
+            aliases[source] = targets[-1].group("target").strip('"')
+    alias_target = _resolved_alias_target(aliases, function)
     selected: list[str] = []
     active = False
     depth = 0
@@ -289,14 +313,23 @@ def _hot_assembly_identity(
     path: Path, function: str, llvm_path: Path | None = None,
 ) -> dict[str, Any]:
     """Fingerprint a resolved hot body; an empty selection is never an identity."""
+    text = path.read_text(errors="replace")
+    aliases: dict[str, str] = {}
+    for alias in re.finditer(
+        r'^\s*\.(?:set|equ)\s+(?P<source>[A-Za-z_.$][A-Za-z0-9_.$]*)\s*,\s*(?P<target>[A-Za-z_.$][A-Za-z0-9_.$]*)\s*$',
+        text,
+        flags=re.MULTILINE,
+    ):
+        aliases[alias.group("source")] = alias.group("target")
+    alias_target = _resolved_alias_target(aliases, function)
     selected: list[str] = []
     active = False
     symbol: str | None = None
-    for raw in path.read_text(errors="replace").splitlines():
+    for raw in text.splitlines():
         label = re.match(r'^\s*(?:"([^"]+)"|([A-Za-z_.$][A-Za-z0-9_.$]*)):\s*(?:[#;].*)?$', raw)
         candidate_symbol = (label.group(1) or label.group(2)) if label else None
         if candidate_symbol is not None and not candidate_symbol.startswith(".L"):
-            active = _function_symbol_matches(candidate_symbol, function)
+            active = _function_symbol_matches(candidate_symbol, function) or candidate_symbol == alias_target
             if active:
                 symbol = candidate_symbol
                 selected.append("FUNCTION")
@@ -385,10 +418,28 @@ def compile_deep_harness(
         baseline = emit_zig_candidate(contract, "scalar", "deep_baseline")
         source.write_text(baseline + "\n" + candidate.source)
         harness.write_text("#define _GNU_SOURCE\n#include <stdint.h>\n#include <stddef.h>\n#include <stdio.h>\n#include <stdlib.h>\n#include <string.h>\n#include <time.h>\n\nextern size_t deep_baseline(const uint8_t *, size_t, uint8_t);\nextern size_t deep_candidate(const uint8_t *, size_t, uint8_t);\n\n" + C_HARNESS)
+        zig_environment = {
+            **os.environ,
+            "ZIG_GLOBAL_CACHE_DIR": str((output_directory / "zig-global-cache").resolve()),
+            "ZIG_LOCAL_CACHE_DIR": str((output_directory / "zig-local-cache").resolve()),
+        }
         zig_command = [compiler, "build-obj", "-O", "ReleaseFast", "-mcpu", "native", f"-femit-bin={obj}", f"-femit-asm={assembly}", f"-femit-llvm-ir={llvm}", str(source)]
-        generated = subprocess.run(zig_command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        generated = subprocess.run(
+            zig_command,
+            cwd=output_directory,
+            env=zig_environment,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         command = [linker, "-std=c17", "-O3", "-march=native", str(harness), str(obj), "-o", str(binary)]
-        completed = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE) if generated.returncode == 0 else generated
+        completed = subprocess.run(
+            command,
+            cwd=output_directory,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ) if generated.returncode == 0 else generated
         if generated.returncode != 0:
             command = zig_command
     elif candidate.language == "julia":

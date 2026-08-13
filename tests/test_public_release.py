@@ -31,6 +31,7 @@ from vladder.training_privacy import load_or_create_training_identity, private_i
 from vladder.prior_synthetic import generate_synthetic_prior_corpus
 from vladder.paired_benchmark import run_paired_benchmark
 from vladder.schema_registry import list_artifact_schemas, validate_artifact
+from vladder.release_artifacts import load_canonical_search_release_artifact
 from scripts.validate_release_seeds import validate as validate_release_seeds
 
 
@@ -112,6 +113,11 @@ class PublicReleaseContractTests(unittest.TestCase):
                 "agent-review",
                 "agent-disposition",
                 "benchmark-result",
+                "canonical-state-dag",
+                "canonical-search-release-artifact",
+                "production-canonical-search",
+                "production-canonical-search-smoke",
+                "production-search-checkpoint",
                 "cross-tu-closure",
                 "optimization-campaign",
                 "optimization-plan",
@@ -120,7 +126,9 @@ class PublicReleaseContractTests(unittest.TestCase):
                 "remote-result",
                 "promotion-summary",
                 "resource-protocol",
+                "search-decision-bundle",
                 "semantic-flow",
+                "composition-native-search-trace",
                 "spirv-semantics",
                 "system-closure",
                 "model-training-bundle",
@@ -136,8 +144,19 @@ class PublicReleaseContractTests(unittest.TestCase):
             if name not in {
                 "model-training-bundle", "model-training-bundle-v2", "agent-disposition", "optimization-campaign",
                 "optimization-plan", "physical-runner", "project-evidence", "remote-result",
+                "search-decision-bundle", "composition-native-search-trace",
+                "canonical-state-dag",
+                "production-canonical-search",
+                "production-canonical-search-smoke",
+                "production-search-checkpoint",
             }
         ))
+
+    def test_packaged_canonical_search_release_artifact_is_valid(self) -> None:
+        artifact = load_canonical_search_release_artifact()
+        self.assertEqual(artifact["release_version"], "1.0.0rc29")
+        self.assertEqual(artifact["qualification"]["terminal_preservation_percent"], 100.0)
+        self.assertFalse(artifact["authority"]["ml_deletion"])
 
     def test_promotion_summary_validation_accepts_contract_and_rejects_missing_state(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

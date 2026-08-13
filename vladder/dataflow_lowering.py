@@ -59,7 +59,151 @@ def _write_lines(contract: BoundedDataflowContract, index: str, value: str, outp
 def _capacity_limit(contract: BoundedDataflowContract) -> str:
     if contract.capacity_policy == "fail-unchanged":
         return "if (selected > capacity) return std::numeric_limits<std::size_t>::max();\n    const std::size_t limit = selected;"
+    if contract.capacity_policy == "fail-input-extent-unchanged":
+        return "if (n > capacity) return std::numeric_limits<std::size_t>::max();\n    const std::size_t limit = selected;"
     return "const std::size_t limit = std::min(selected, capacity);"
+
+
+def _generic_value_type(contract: BoundedDataflowContract) -> str:
+    return f"std::uint{contract.element_bits}_t"
+
+
+def _compaction_generic(
+    contract: BoundedDataflowContract,
+    function: str,
+    realization: str,
+) -> str:
+    """Exact fixed-width scalar/block realizations for 8/16/32-bit values.
+
+    The guarded SIMD terminal names remain search-distinct, but Clang owns vector lowering for
+    these widths until width-specific intrinsic networks are admitted and proved.
+    """
+    value_type = _generic_value_type(contract)
+    block = {
+        "scalar-two-pass": 1,
+        "fused-stable": 1,
+        "mask-prefix-stable": 64,
+        "guarded-avx2-compaction": max(1, 256 // contract.element_bits),
+        "guarded-avx512-compress": max(1, 512 // contract.element_bits),
+    }[realization]
+    # Width-specific intrinsic networks are currently admitted only for u64. For narrower
+    # values these terminals vary block structure and expose vectorizable loops to Clang; the
+    # assembly-identity stage records whether that produces a distinct machine realization.
+    target = ""
+    write = _write_lines(contract, "i", "current[i]", "output")
+    if realization == "fused-stable" and contract.capacity_policy != "fail-unchanged":
+        preflight = (
+            "if (n > capacity) return std::numeric_limits<std::size_t>::max();"
+            if contract.capacity_policy == "fail-input-extent-unchanged" else ""
+        )
+        limit = "n" if contract.capacity_policy != "truncate" else "capacity"
+        return f"""
+{target}extern "C" std::size_t {function}(
+    std::uint32_t* out_indices, {value_type}* out_values, std::size_t capacity,
+    const {value_type}* current, const {value_type}* baseline, std::size_t n) noexcept {{
+    {preflight}
+    std::size_t output = 0;
+    for (std::size_t i = 0; i < n && output < {limit}; ++i) {{
+        if (current[i] == baseline[i]) continue;
+        {write}
+        ++output;
+    }}
+    return output;
+}}
+"""
+    return f"""
+{target}extern "C" std::size_t {function}(
+    std::uint32_t* out_indices, {value_type}* out_values, std::size_t capacity,
+    const {value_type}* current, const {value_type}* baseline, std::size_t n) noexcept {{
+    std::size_t selected = 0;
+    for (std::size_t base = 0; base < n; base += {block}) {{
+        const std::size_t end = std::min<std::size_t>(n, base + {block});
+        for (std::size_t i = base; i < end; ++i) selected += current[i] != baseline[i];
+    }}
+    {_capacity_limit(contract)}
+    std::size_t output = 0;
+    for (std::size_t base = 0; base < n && output < limit; base += {block}) {{
+        const std::size_t end = std::min<std::size_t>(n, base + {block});
+        for (std::size_t i = base; i < end && output < limit; ++i) {{
+            if (current[i] == baseline[i]) continue;
+            {write}
+            ++output;
+        }}
+    }}
+    return output;
+}}
+"""
+
+
+def _alias_guarded_compaction(
+    contract: BoundedDataflowContract,
+    function: str,
+    body: str,
+) -> str:
+    if contract.aliasing != "runtime-guarded-disjoint":
+        return body
+    declaration = f'extern "C" std::size_t {function}('
+    if body.count(declaration) != 1:
+        raise ValueError("runtime alias guard requires exactly one public compaction entry")
+    inner = f"{function}_disjoint"
+    body = body.replace(declaration, f"static std::size_t {inner}(", 1)
+    value_type = _generic_value_type(contract)
+    write = _write_lines(contract, "i", "current[i]", "output")
+    if contract.capacity_policy == "fail-unchanged":
+        capacity = """
+    std::size_t selected = 0;
+    for (std::size_t i = 0; i < n; ++i) selected += current[i] != baseline[i];
+    if (selected > capacity) return std::numeric_limits<std::size_t>::max();
+    const std::size_t limit = selected;
+"""
+    elif contract.capacity_policy == "fail-input-extent-unchanged":
+        capacity = """
+    if (n > capacity) return std::numeric_limits<std::size_t>::max();
+    const std::size_t limit = n;
+"""
+    else:
+        capacity = "const std::size_t limit = capacity;"
+    used_index = contract.output_mode in {"index-only", "index-value"}
+    used_value = contract.output_mode in {"value-only", "index-value"}
+    return body + f"""
+static bool {function}_overlap(const void* lhs, std::size_t lhs_count, std::size_t lhs_size,
+                               const void* rhs, std::size_t rhs_count, std::size_t rhs_size) noexcept {{
+    if (lhs == nullptr || rhs == nullptr || lhs_count == 0 || rhs_count == 0) return false;
+    if (lhs_count > std::numeric_limits<std::size_t>::max() / lhs_size ||
+        rhs_count > std::numeric_limits<std::size_t>::max() / rhs_size) return true;
+    const std::uintptr_t a = reinterpret_cast<std::uintptr_t>(lhs);
+    const std::uintptr_t b = reinterpret_cast<std::uintptr_t>(rhs);
+    const std::size_t a_bytes = lhs_count * lhs_size;
+    const std::size_t b_bytes = rhs_count * rhs_size;
+    return a <= b ? b - a < a_bytes : a - b < b_bytes;
+}}
+
+static std::size_t {function}_ordered_fallback(
+    std::uint32_t* out_indices, {value_type}* out_values, std::size_t capacity,
+    const {value_type}* current, const {value_type}* baseline, std::size_t n) noexcept {{
+    {capacity}
+    std::size_t output = 0;
+    for (std::size_t i = 0; i < n && output < limit; ++i) {{
+        if (current[i] == baseline[i]) continue;
+        {write}
+        ++output;
+    }}
+    return output;
+}}
+
+extern "C" std::size_t {function}(
+    std::uint32_t* out_indices, {value_type}* out_values, std::size_t capacity,
+    const {value_type}* current, const {value_type}* baseline, std::size_t n) noexcept {{
+    const bool aliases =
+        {str(used_index).lower()} && ({function}_overlap(out_indices, capacity, sizeof(*out_indices), current, n, sizeof(*current)) ||
+                                    {function}_overlap(out_indices, capacity, sizeof(*out_indices), baseline, n, sizeof(*baseline))) ||
+        {str(used_value).lower()} && ({function}_overlap(out_values, capacity, sizeof(*out_values), current, n, sizeof(*current)) ||
+                                    {function}_overlap(out_values, capacity, sizeof(*out_values), baseline, n, sizeof(*baseline))) ||
+        ({str(used_index and used_value).lower()} && {function}_overlap(out_indices, capacity, sizeof(*out_indices), out_values, capacity, sizeof(*out_values)));
+    if (aliases) return {function}_ordered_fallback(out_indices, out_values, capacity, current, baseline, n);
+    return {inner}(out_indices, out_values, capacity, current, baseline, n);
+}}
+"""
 
 
 def _compaction_scalar(contract: BoundedDataflowContract, function: str, *, static_name: str | None = None) -> str:
@@ -127,7 +271,10 @@ def _compaction_fused(contract: BoundedDataflowContract, function: str) -> str:
         return {scalar}(out_indices, out_values, capacity, current, baseline, n);
 """
     else:
-        fallback = ""
+        fallback = (
+            "if (n > capacity) return std::numeric_limits<std::size_t>::max();"
+            if contract.capacity_policy == "fail-input-extent-unchanged" else ""
+        )
     return _compaction_scalar(contract, function, static_name=scalar) + f"""
 extern "C" std::size_t {function}(
     std::uint32_t* out_indices, std::uint64_t* out_values, std::size_t capacity,
@@ -277,6 +424,7 @@ extern "C" std::uint64_t {function}(
 
 
 def _state_delta(contract: BoundedDataflowContract, realization: str, function: str) -> str:
+    value_type = _generic_value_type(contract)
     mask = realization == "mask-transactional-delta"
     emit_loop = """
     for (std::size_t base = 0; base < n; base += 64) {
@@ -303,18 +451,18 @@ def _state_delta(contract: BoundedDataflowContract, realization: str, function: 
         ++output;
     }
 """
-    initialize = "" if realization == "staged-delta" else "std::memcpy(next, baseline, n * sizeof(std::uint64_t));"
-    finalize = "std::memcpy(next, current, n * sizeof(std::uint64_t));" if realization == "staged-delta" else ""
+    initialize = "" if realization == "staged-delta" else "std::memcpy(next, baseline, n * sizeof(*next));"
+    finalize = "std::memcpy(next, current, n * sizeof(*next));" if realization == "staged-delta" else ""
     next_write = "" if realization == "staged-delta" else "next[i] = current[i];"
     emit_loop = emit_loop.replace("next[i] = current[i];", next_write)
     return f"""
 extern "C" std::size_t {function}(
-    std::uint64_t* next, std::uint32_t* out_indices, std::uint64_t* out_values,
-    std::size_t capacity, const std::uint64_t* current,
-    const std::uint64_t* baseline, std::size_t n) noexcept {{
+    {value_type}* next, std::uint32_t* out_indices, {value_type}* out_values,
+    std::size_t capacity, const {value_type}* current,
+    const {value_type}* baseline, std::size_t n) noexcept {{
     std::size_t selected = 0;
     for (std::size_t i = 0; i < n; ++i) selected += current[i] != baseline[i];
-    if (selected > capacity) return std::numeric_limits<std::size_t>::max();
+    {"if (n > capacity) return std::numeric_limits<std::size_t>::max();" if contract.capacity_policy == "fail-input-extent-unchanged" else "if (selected > capacity) return std::numeric_limits<std::size_t>::max();" if contract.capacity_policy == "fail-unchanged" else ""}
     {initialize}
     std::size_t output = 0;
     {emit_loop}
@@ -435,13 +583,17 @@ def emit_dataflow_cpp(
         raise ValueError("derivation terminal does not match the dataflow contract")
     realization = derivation.target
     if contract.family == "predicate-stable-compaction":
-        body = (
-            _compaction_scalar(contract, function) if realization == "scalar-two-pass"
-            else _compaction_fused(contract, function) if realization == "fused-stable"
-            else _compaction_mask(contract, function) if realization == "mask-prefix-stable"
-            else _compaction_avx2(contract, function) if realization == "guarded-avx2-compaction"
-            else _compaction_avx512(contract, function)
-        )
+        if contract.element_bits == 64:
+            body = (
+                _compaction_scalar(contract, function) if realization == "scalar-two-pass"
+                else _compaction_fused(contract, function) if realization == "fused-stable"
+                else _compaction_mask(contract, function) if realization == "mask-prefix-stable"
+                else _compaction_avx2(contract, function) if realization == "guarded-avx2-compaction"
+                else _compaction_avx512(contract, function)
+            )
+        else:
+            body = _compaction_generic(contract, function, realization)
+        body = _alias_guarded_compaction(contract, function, body)
     elif contract.family == "fixed-width-codec":
         body = _codec(contract, realization, function)
     elif contract.family == "stateful-delta-transducer":
@@ -467,33 +619,72 @@ def emit_dataflow_cpp(
 def _differential_harness(contract: BoundedDataflowContract, candidate: DataflowCandidate) -> str:
     function = candidate.function
     if contract.family == "predicate-stable-compaction":
+        value_type = _generic_value_type(contract)
         check_index = "if (got_indices[i] != expected_indices[i]) return 12;" if contract.output_mode != "value-only" else ""
         check_value = "if (got_values[i] != expected_values[i]) return 13;" if contract.output_mode != "index-only" else ""
         failure = """
             if (got != std::numeric_limits<std::size_t>::max()) return 8;
-            for (std::size_t i = 0; i < n + 1; ++i) if (got_indices[i] != 0xDEADBEEFU || got_values[i] != UINT64_C(0xBAD0BAD0BAD0BAD0)) return 9;
+            for (std::size_t i = 0; i < n + 1; ++i) if (got_indices[i] != 0xDEADBEEFU || got_values[i] != sentinel) return 9;
             continue;
-""" if contract.capacity_policy == "fail-unchanged" else ""
+""" if contract.capacity_policy in {"fail-unchanged", "fail-input-extent-unchanged"} else ""
+        overlap_check = ""
+        if contract.aliasing == "runtime-guarded-disjoint" and contract.output_mode in {"value-only", "index-value"}:
+            overlap_index_check = (
+                "for (std::size_t i = 0; i < expected_count; ++i) "
+                "if (got_overlap_indices[i] != expected_overlap_indices[i]) return 16;"
+                if contract.output_mode == "index-value" else ""
+            )
+            overlap_check = f"""
+    {{
+        constexpr std::size_t n = 32;
+        std::array<value_type, n> candidate_values{{}}, expected_values{{}}, overlap_baseline{{}};
+        std::array<std::uint32_t, n> got_overlap_indices{{}}, expected_overlap_indices{{}};
+        for (std::size_t i = 0; i < n; ++i) {{
+            candidate_values[i] = static_cast<value_type>(i * 13U + 7U);
+            expected_values[i] = candidate_values[i];
+            overlap_baseline[i] = (i % 3U == 0U) ? candidate_values[i]
+                                                  : static_cast<value_type>(candidate_values[i] ^ value_type{{1}});
+        }}
+        std::size_t expected_count = 0;
+        for (std::size_t i = 0; i < n; ++i) {{
+            if (expected_values[i] == overlap_baseline[i]) continue;
+            expected_overlap_indices[expected_count] = static_cast<std::uint32_t>(i);
+            expected_values[expected_count] = expected_values[i];
+            ++expected_count;
+        }}
+        const std::size_t got = {function}(
+            got_overlap_indices.data(), candidate_values.data(), n,
+            candidate_values.data(), overlap_baseline.data(), n);
+        if (got != expected_count) return 14;
+        for (std::size_t i = 0; i < expected_count; ++i)
+            if (candidate_values[i] != expected_values[i]) return 15;
+        {overlap_index_check}
+    }}
+"""
         return f"""
 int main() {{
+    using value_type = {value_type};
+    constexpr value_type sentinel = static_cast<value_type>(~value_type{{0}} - value_type{{7}});
     std::uint64_t seed = UINT64_C(0x9E3779B97F4A7C15);
     for (std::size_t n = 0; n <= 96; ++n) {{
-        std::array<std::uint64_t, 97> current{{}}, baseline{{}};
-        for (std::size_t i = 0; i < n; ++i) {{ seed ^= seed << 7; seed ^= seed >> 9; current[i] = seed; baseline[i] = (i % 3 == 0) ? seed : seed ^ (UINT64_C(1) << (i % 63)); }}
+        std::array<value_type, 97> current{{}}, baseline{{}};
+        for (std::size_t i = 0; i < n; ++i) {{ seed ^= seed << 7; seed ^= seed >> 9; current[i] = static_cast<value_type>(seed); baseline[i] = (i % 3 == 0) ? current[i] : static_cast<value_type>(current[i] ^ value_type{{1}}); }}
         std::array<std::uint32_t, 97> expected_indices{{}};
-        std::array<std::uint64_t, 97> expected_values{{}};
+        std::array<value_type, 97> expected_values{{}};
         std::size_t selected = 0;
         for (std::size_t i = 0; i < n; ++i) if (current[i] != baseline[i]) {{ expected_indices[selected] = static_cast<std::uint32_t>(i); expected_values[selected++] = current[i]; }}
         for (std::size_t capacity = 0; capacity <= n + 1; ++capacity) {{
             std::array<std::uint32_t, 97> got_indices; got_indices.fill(0xDEADBEEFU);
-            std::array<std::uint64_t, 97> got_values; got_values.fill(UINT64_C(0xBAD0BAD0BAD0BAD0));
+            std::array<value_type, 97> got_values; got_values.fill(sentinel);
             const std::size_t got = {function}(got_indices.data(), got_values.data(), capacity, current.data(), baseline.data(), n);
-            if (selected > capacity) {{ {failure} }}
-            const std::size_t expected = std::min(selected, capacity);
+            const bool rejected = {str(contract.capacity_policy == 'fail-input-extent-unchanged').lower()} ? n > capacity : selected > capacity;
+            if (rejected) {{ {failure} }}
+            const std::size_t expected = {"selected" if contract.capacity_policy != "truncate" else "std::min(selected, capacity)"};
             if (got != expected) return 10;
             for (std::size_t i = 0; i < expected; ++i) {{ {check_index} {check_value} }}
         }}
     }}
+    {overlap_check}
     return 0;
 }}
 """

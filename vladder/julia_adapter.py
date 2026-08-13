@@ -20,6 +20,7 @@ from .canonical_regions import (
     classify_canonical_region,
     corroborate_compiler_shape,
 )
+from .canonical_executable import canonical_region_from_dict, synthesize_canonical_region
 from .language_adapter import LANGUAGE_ADAPTER_PROTOCOL_VERSION, LanguageAdapterRegistry, LanguageCapability, LanguageRegionEvidence, file_sha256
 from .paired_benchmark import run_paired_benchmark
 from .closure_bindings import julia_function_summary
@@ -121,6 +122,18 @@ def synthesize_julia_region(request: JuliaRegionRequest) -> dict[str, Any]:
     canonical = evidence.semantic_graph.contracts.get("canonical_region") if evidence.semantic_graph else None
     operation = (canonical or {}).get("operation") or (evidence.semantic_graph.contracts.get("operation") if evidence.semantic_graph else None)
     if operation != "count_equal_u8":
+        if canonical:
+            native = synthesize_canonical_region(
+                canonical_region_from_dict(canonical), "julia", output / "canonical-native",
+            )
+            report = {
+                "schema_version": "vladder-julia-synthesis-v2",
+                "status": native["status"],
+                "support": evidence.to_dict(),
+                **{key: value for key, value in native.items() if key not in {"schema_version", "status"}},
+            }
+            _write_json(output / "julia-synthesis.json", report)
+            return report
         report = {
             "schema_version": "vladder-julia-synthesis-v1", "status": "lowerer_required",
             "support": evidence.to_dict(), "candidate_count": 0,

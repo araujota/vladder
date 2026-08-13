@@ -51,12 +51,27 @@ def extract_named_source_region(source: str, function: str, language: str) -> st
         pattern = re.compile(rf"(?:pub(?:\([^)]*\))?\s+)?(?:unsafe\s+)?fn\s+{re.escape(leaf)}\s*(?:<[^{{;]*>)?\s*\(")
     else:
         pattern = re.compile(rf"\b{re.escape(leaf)}\s*\(")
-    matches = list(pattern.finditer(source))
+    lexical_source = _cpp_lexical_mask(source) if language in {"c", "cpp", "c++"} else source
+    matches = list(pattern.finditer(lexical_source))
+    if language == "rust":
+        owner = function.rsplit("::", 1)[0] if "::" in function else None
+        if owner:
+            matches = [
+                match for match in matches
+                if _rust_impl_contains(source, match.start(), owner)
+            ]
+        if len(matches) > 1:
+            raise ValueError(
+                f"multiple Rust definitions named {leaf}; select one as ImplType::{leaf}"
+            )
     for match in matches:
-        brace = source.find("{", match.end())
-        semicolon = source.find(";", match.end())
+        brace = lexical_source.find("{", match.end())
+        semicolon = lexical_source.find(";", match.end())
         if brace < 0 or (0 <= semicolon < brace):
             continue
+        if language in {"c", "cpp", "c++"}:
+            end = _balanced_brace_end(lexical_source, brace)
+            return source[match.start():end]
         depth = 0
         in_string: str | None = None
         escaped = False
@@ -79,6 +94,101 @@ def extract_named_source_region(source: str, function: str, language: str) -> st
                 if depth == 0:
                     return source[match.start():index + 1]
     raise ValueError(f"could not extract function {function!r} from {language} source")
+
+
+def _cpp_lexical_mask(source: str) -> str:
+    """Blank C/C++ comments and literals while preserving byte offsets and newlines."""
+    result = list(source)
+    index = 0
+    length = len(source)
+
+    def blank(start: int, end: int) -> None:
+        for position in range(start, end):
+            if result[position] not in {"\n", "\r"}:
+                result[position] = " "
+
+    while index < length:
+        if source.startswith("//", index):
+            end = source.find("\n", index + 2)
+            end = length if end < 0 else end
+            blank(index, end)
+            index = end
+            continue
+        if source.startswith("/*", index):
+            end = source.find("*/", index + 2)
+            end = length if end < 0 else end + 2
+            blank(index, end)
+            index = end
+            continue
+        raw = re.match(r'(?:u8|u|U|L)?R"([^ ()\\\t\r\n]{0,16})\(', source[index:])
+        if raw:
+            terminator = ")" + raw.group(1) + '"'
+            end = source.find(terminator, index + raw.end())
+            end = length if end < 0 else end + len(terminator)
+            blank(index, end)
+            index = end
+            continue
+        literal = re.match(r'(?:u8|u|U|L)?(["\'])', source[index:])
+        if literal:
+            quote = literal.group(1)
+            cursor = index + literal.end()
+            escaped = False
+            while cursor < length:
+                char = source[cursor]
+                cursor += 1
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    break
+            blank(index, cursor)
+            index = cursor
+            continue
+        index += 1
+    return "".join(result)
+
+
+def _rust_impl_contains(source: str, position: int, requested_owner: str) -> bool:
+    """Return whether ``position`` is enclosed by the requested Rust impl block."""
+    owner_leaf = requested_owner.rsplit("::", 1)[-1]
+    candidates: list[tuple[int, int, str]] = []
+    for match in re.finditer(r"(?m)^\s*impl(?:\s*<[^{}]*>)?\s+([^{}]+?)\s*\{", source):
+        try:
+            end = _balanced_brace_end(source, match.end() - 1)
+        except ValueError:
+            continue
+        if match.start() <= position < end:
+            candidates.append((match.start(), end, match.group(1)))
+    if not candidates:
+        return False
+    _, _, header = max(candidates, key=lambda item: item[0])
+    return bool(re.search(rf"\b{re.escape(owner_leaf)}\b", header))
+
+
+def _balanced_brace_end(source: str, brace: int) -> int:
+    depth = 0
+    in_string: str | None = None
+    escaped = False
+    for index in range(brace, len(source)):
+        char = source[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == in_string:
+                in_string = None
+            continue
+        if char in {'"', "'"}:
+            in_string = char
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    raise ValueError("unterminated Rust impl block")
 
 
 def _load_region(case: dict[str, Any], side: str, base: Path, language: str) -> tuple[str, Path | None, str]:

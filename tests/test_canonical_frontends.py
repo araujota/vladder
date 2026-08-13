@@ -74,6 +74,7 @@ class CanonicalClassifierTests(unittest.TestCase):
                 region = classify_canonical_region(language, source, signature)
                 self.assertEqual(region.family, FAMILIES[key])
                 self.assertIn(region.family, CANONICAL_FAMILIES)
+                self.assertEqual(region.executable_grammar, "canonical-executable-grammar-v1")
                 hashes[key].add(region.region_hash)
         self.assertTrue(all(len(values) == 1 for values in hashes.values()), hashes)
 
@@ -107,6 +108,25 @@ class CanonicalClassifierTests(unittest.TestCase):
         self.assertEqual(first.family, second.family)
         self.assertNotEqual(first.region_hash, second.region_hash)
         self.assertNotEqual(first.semantic_parameters, second.semantic_parameters)
+
+    def test_stencil_capture_uses_interior_neighborhood_expression(self):
+        source = (RUST / "src" / "lib.rs").read_text()
+        function = extract_rust_function(source, "stencil")
+        region = classify_canonical_region("rust", function.source, function.signature)
+        expression = dict(region.semantic_parameters)["expression"]
+        self.assertIn("x[-1]", expression)
+        self.assertIn("x[1]", expression)
+        self.assertIn("0.5", expression)
+
+    def test_rust_early_termination_is_not_total_count(self):
+        source = """fn leading_bytes(bytes: &[u8], byte: u8) -> usize {
+            bytes.iter().take_while(|&&value| value == byte).count()
+        }"""
+        signature = "fn leading_bytes(bytes: &[u8], byte: u8) -> usize"
+        with self.assertRaises(CanonicalRegionError) as raised:
+            classify_canonical_region("rust", source, signature)
+        self.assertEqual(raised.exception.kind, "early-termination")
+        self.assertIn("ordered-prefix/suffix grammar", raised.exception.required_adapter)
 
     def test_zig_comptime_specialization_closes_shared_byte_reduction(self):
         source = """pub fn countScalar(comptime T: type, list: []const T, element: T) usize {
@@ -169,7 +189,7 @@ class CanonicalNativeCaptureTests(unittest.TestCase):
         shutil.which("cargo") and shutil.which("rustc") and shutil.which("zig") and shutil.which("julia"),
         "native language toolchains unavailable",
     )
-    def test_semantic_capture_does_not_invoke_reduction_only_lowerers(self):
+    def test_semantic_capture_invokes_shared_native_canonical_lowerer(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             rust = synthesize_rust_region(RustRegionRequest(
@@ -183,8 +203,10 @@ class CanonicalNativeCaptureTests(unittest.TestCase):
                 "pointwise!", "Vector{Float32},Vector{Float32}", root / "julia",
             ))
             for report in (rust, zig, julia):
-                self.assertEqual(report["status"], "lowerer_required")
-                self.assertEqual(report["candidate_count"], 0)
+                self.assertEqual(report["status"], "pass", report)
+                self.assertGreaterEqual(report["candidate_count"], 5)
+                self.assertEqual(report["candidate_count"], report["proved_candidate_count"])
+                self.assertGreaterEqual(report["distinct_assembly_count"], 2)
 
 
 if __name__ == "__main__":

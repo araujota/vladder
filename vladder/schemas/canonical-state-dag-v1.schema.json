@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vladder.dev/schemas/canonical-state-dag-v1.schema.json",
+  "title": "vLadder Canonical Semantic State DAG",
+  "type": "object",
+  "required": [
+    "schema_version", "engine_version", "mode", "por_strategy", "complete", "states", "edges",
+    "terminal_state_ids", "terminal_canonical_hashes", "metrics", "independence_evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": "vladder-canonical-state-dag-v1"},
+    "engine_version": {"type": "string"},
+    "mode": {
+      "enum": ["exhaustive_canonical", "exhaustive_reduced", "guided_reduced", "fast"]
+    },
+    "por_strategy": {"enum": ["none", "dynamic", "sleep_set"]},
+    "complete": {"type": "boolean"},
+    "states": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "state_id", "canonical", "family", "stage", "terminal", "semantic_state",
+          "first_discovery_path", "parent_edges", "depth_minimum", "depth_maximum",
+          "enabled_actions", "exploration_status", "summaries"
+        ],
+        "properties": {
+          "state_id": {"type": "string"},
+          "canonical": {
+            "type": "object",
+            "required": [
+              "identity_schema_version",
+              "digest", "raw_digest", "observable_digest", "contract_digest",
+              "component_hashes", "canonical_size_bytes", "alpha_renames", "symmetry_permutations"
+            ],
+            "properties": {
+              "identity_schema_version": {"const": "canonical-semantic-state-v2"},
+              "digest": {"type": "string"},
+              "raw_digest": {"type": "string"},
+              "observable_digest": {"type": "string"},
+              "contract_digest": {"type": "string"},
+              "component_hashes": {"type": "object", "additionalProperties": {"type": "string"}},
+              "canonical_size_bytes": {"type": "integer", "minimum": 0},
+              "alpha_renames": {"type": "integer", "minimum": 0},
+              "symmetry_permutations": {"type": "integer", "minimum": 0}
+            },
+            "additionalProperties": false
+          },
+          "family": {"type": "string"},
+          "stage": {"type": "string"},
+          "terminal": {"type": "boolean"},
+          "semantic_state": {"type": "object"},
+          "first_discovery_path": {"type": "array", "items": {"type": "object"}},
+          "parent_edges": {"type": "array", "items": {"type": "string"}},
+          "depth_minimum": {"type": "integer", "minimum": 0},
+          "depth_maximum": {"type": "integer", "minimum": 0},
+          "enabled_actions": {"type": "array", "items": {"type": "string"}},
+          "proof_status": {"type": "string"},
+          "compiler_status": {"type": "string"},
+          "terminal_status": {"type": "string"},
+          "descendant_status": {"type": "string"},
+          "exploration_status": {"type": "string"},
+          "summaries": {"type": "object"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["edge_id", "parent_state_id", "child_state_id", "action", "depth", "disposition"],
+        "properties": {
+          "edge_id": {"type": "string"},
+          "parent_state_id": {"type": ["string", "null"]},
+          "child_state_id": {"type": "string"},
+          "action": {"type": "object"},
+          "depth": {"type": "integer", "minimum": 0},
+          "disposition": {"type": "string"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "terminal_state_ids": {"type": "array", "items": {"type": "string"}},
+    "terminal_canonical_hashes": {"type": "array", "items": {"type": "string"}},
+    "metrics": {
+      "type": "object",
+      "required": [
+        "raw_generated_states", "unique_canonical_states", "exact_transpositions",
+        "alpha_equivalent_collapses", "symmetry_collapses", "por_avoided_transitions",
+        "dependency_avoided_transitions", "dominance_collapses", "macro_collapses",
+        "egraph_equivalences", "candidate_constructions", "proof_calls", "compiler_calls",
+        "search_wall_ms", "canonicalization_wall_ms", "maximum_frontier_size", "hash_collisions",
+        "peak_memory_bytes", "quotient_dag_edges", "quotient_dag_edge_node_ratio"
+      ],
+      "additionalProperties": {"type": ["integer", "number"]}
+    },
+    "independence_evidence": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": false
+}

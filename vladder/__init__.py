@@ -1,6 +1,6 @@
 """vLadder: verified information-flow superoptimization for systems languages."""
 
-__version__ = "1.0.0rc23"
+__version__ = "1.0.0rc29"
 
 from .api import (
     AgentWorkflowRequest,
@@ -37,6 +37,36 @@ from .deep_grammar import DeepGrammar, load_deep_grammar, search_deep_grammar
 from .deep_ir import DeepKernelContract, DeepRealizationGraph
 from .dataflow_grammar import BoundedDataflowGrammar, load_bounded_dataflow_grammar
 from .dataflow_ir import BoundedDataflowContract, BoundedDataflowGraph, build_bounded_dataflow_graph
+from .canonical_search import (
+    ActionFootprint,
+    CanonicalSearchEngine,
+    CanonicalSearchResult,
+    Canonicalizer,
+    CanonicalizationPolicy,
+    GrammarDependencyGraph,
+    IndependenceVerifier,
+    LayeredStateHash,
+    OptimizationSignature,
+    TranspositionTable,
+    compare_terminal_sets,
+    exhaustive_sequence_search,
+    optimization_equivalence_proposals,
+    reduction_waterfall,
+    typed_wl_labels,
+)
+from .production_smoke import run_production_canonical_smoke, write_production_canonical_smoke
+from .release_artifacts import load_canonical_search_release_artifact
+from .production_search import (
+    AdaptiveReductionPolicy,
+    FootprintCoverageAudit,
+    ProductionCanonicalSearchEngine,
+    ProductionCheckpointStore,
+    ProductionSearchConfig,
+    ProductionSearchResult,
+    ReductionLevel,
+    RollingSearchCostModel,
+    StateAnalysisCache,
+)
 from .region_closure import build_region_closure_graph, describe_c_boundary, prove_region_closure
 from .gpu_ir import GPUArchitecture, GPUExecutionPlan, GPUKernelCapture, capture_gpu_kernel
 from .heterogeneous_plan import (
@@ -94,6 +124,27 @@ __all__ = [
     "BoundedDataflowContract",
     "BoundedDataflowGrammar",
     "BoundedDataflowGraph",
+    "ActionFootprint",
+    "CanonicalSearchEngine",
+    "CanonicalSearchResult",
+    "Canonicalizer",
+    "CanonicalizationPolicy",
+    "GrammarDependencyGraph",
+    "IndependenceVerifier",
+    "LayeredStateHash",
+    "OptimizationSignature",
+    "TranspositionTable",
+    "AdaptiveReductionPolicy",
+    "FootprintCoverageAudit",
+    "ProductionCanonicalSearchEngine",
+    "ProductionCheckpointStore",
+    "ProductionSearchConfig",
+    "ProductionSearchResult",
+    "ReductionLevel",
+    "RollingSearchCostModel",
+    "StateAnalysisCache",
+    "run_production_canonical_smoke",
+    "write_production_canonical_smoke",
     "AutomaticRegionRequest",
     "AutomaticSupport",
     "AdapterRequirement",
@@ -186,4 +237,10 @@ __all__ = [
     "analyze_spirv_semantics",
     "parse_spirv_instructions",
     "classify_structured_dataflow",
+    "compare_terminal_sets",
+    "exhaustive_sequence_search",
+    "optimization_equivalence_proposals",
+    "reduction_waterfall",
+    "typed_wl_labels",
+    "load_canonical_search_release_artifact",
 ]

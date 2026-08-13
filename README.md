@@ -63,14 +63,36 @@ command. Full artifact lineage remains available on demand. `vladder resume --ou
 matching content-addressed stages and restarts at the first invalid input; `vladder optimize
 --portfolio --project ...` inventories, prioritizes, and deduplicates repository regions.
 
+For exhaustive search and training-data work, `vladder source-search run` now defaults to a
+production canonical semantic-state DAG. `fast`, `guided`, and `exhaustive` operate on unique
+states; `exhaustive_canonical` is the no-POR qualification oracle; `exhaustive_reduced` forces the
+qualified exact reduction envelope; and `legacy_path_debug` retains raw path traversal only for
+debugging. Exact legality, canonical identity, qualified dependency/POR/symmetry, and
+verifier-accepted equivalence are the only hard-reduction authorities. A
+contextual oracle may score the complete sibling frontier and change what is explored first, but it
+may not delete a branch. POR is adaptively cost-gated because it regresses cheap shallow regions
+despite large state-count reductions. The generator
+compiles, proves, and deduplicates concrete terminals and emits complete action history, frontier
+snapshots, canonical state hashes, proof/compiler costs, and transposition evidence. It also represents lifetime, cross-TU, and finite protocol
+plans without misreporting them as source-executable. See
+[Lazy Executable Search](docs/lazy-executable-search.md).
+The quotient-DAG identity, collision, action-footprint, POR, and qualification contracts are in
+[Canonical Semantic-State Search](docs/canonical-state-search.md), with production policy,
+checkpoint, resource, and release evidence in
+[Production Canonical-State Search](docs/production-canonical-search.md).
+Before publishing, `vladder release smoke-canonical-search` runs the eight-stage, release-blocking
+identity/POR/incremental/proof/compiler/cost/concurrency/resume/scaling battery in roughly seconds.
+Every wheel bundles the exact release qualification record; inspect it without a source checkout
+with `vladder release canonical-search-evidence`.
+
 Existing specialist commands remain stable and are the delegated expert surface. The historical
 `vladder optimize source.c --function transform` arguments still invoke the same bounded-C search,
 proof, benchmark, and patch engine, with the new disposition layered on top.
 
 ## Release Status
 
-The package version is `1.0.0rc23`, the C++ closure matrix is
-`bounded-cpp-regions-v8`; it retains the
+The package version is `1.0.0rc29`, the C++ closure matrix is
+`bounded-cpp-regions-v11`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
 `bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
 `canonical-bounded-regions-v1`, which compiler-corroborates exact predicate reductions,
@@ -96,6 +118,10 @@ synchronization, and external calls, then emits an authoritative `SemanticFlowGr
 typed obligations, effects, protocol transitions, and claim boundaries. The C frontend attaches
 the same authoritative v2 graph to every admitted legacy `FlowGraph`; legacy classification
 fields remain compatibility views.
+
+Overloaded definitions may be selected by an explicit mangled symbol or by an authoritative source
+line inside exactly one Clang-emitted definition. Source-search fingerprints and capture caches bind
+that selector, so corpus and agent workflows do not have to guess an overload from its spelling.
 
 The v8 C++ `RegionClosureGraph` additionally represents noncanonical first-order C ABIs, ordered
 aggregate-result projections, ordinary multi-exit CFGs, definition-visible helper summaries, and
@@ -140,6 +166,89 @@ and emits Z3 obligations for definition identity, provenance, effect composition
 disposition, and zero added search dimensions. Multiple weak/COMDAT bodies, arbitrary callbacks,
 and external authorities remain explicit boundaries. See
 [Cross-TU Semantic Closure](docs/cross-tu-semantic-closure.md).
+
+The current executable-search layer closes the gap between semantic capture and training lineage.
+Deep representation rules, ordered prefix/suffix reductions, and bounded variable-output dataflow
+are enumerated lazily through native source emission, proof, compilation, and normalized assembly
+identity. Selected-build C++ roots lazily compose proved baseline, unroll, vector-width, and
+interleave choices and generate a complete translation unit only after the expansion policy admits
+the partial path. Region order is not semantic: exact canonical state memoization collapses
+commutative selection orders before learned scoring while preserving transposition evidence. A
+persistent JSON-lines frontier oracle can score sibling actions at every branch;
+timeouts, OOD actions, and malformed responses fall back to stable grammar order. Its scores are
+priority only. Retained-state
+lifetime choices, definition-visible cross-TU composition, and finite
+concurrency/GPU/external protocol projections use the same search tree but stop honestly at owning
+source reconstruction or physical runner boundaries.
+
+`scripts/search_pruner.py` remains the RC24 branch-survival research baseline. Its 1.30% safe work
+reduction is not a viable production pruning policy and it is not enabled. Source checkouts now
+include `scripts/contextual_search_policy.py`, which reconstructs `SearchDecision` frontiers,
+pretrains on all usable RC24 branch evidence, trains listwise and pairwise sibling preferences with
+an explicit action-history encoder, and compares controlled GIN, GIN/GAT, and GPS-style ablations.
+It evaluates anytime recovery at 1, 5, 10, 20, 30, 50, and 100 percent of exhaustive work. The
+model's authority is ordering and equivalence-check proposal only.
+
+The composition-native successor is `scripts/composition_native_policy.py`. It trains only on
+enumerator-native `vladder-composition-native-search-trace-v1` artifacts containing exact state
+hashes, complete sibling sets, structural child deltas, explicit optimization-interaction graphs,
+factor nodes for higher-order transformations, U0-U4 terminal outcomes, transpositions, and actual
+search costs. Cached terminals retain intrinsic cold proof/compiler cost instead of relabeling a
+subtree with cache-read latency. It evaluates dual-GPS, shared heterogeneous, and factor-node Transformer variants,
+plus interaction/history/sibling/delta/cost/retention ablations, by leave-one-project-out online
+replay, including the actual frozen Phase-A GPS checkpoints as a baseline and normalized-topology
+exclusion across held-out projects. `scripts/composition_policy_oracle.py` serves a checkpoint through the priority-only JSONL
+frontier protocol. Its uncertainty raises exploration priority; any proposed equivalence still
+requires the ordinary exact verifier. See
+[Composition-Native Learned Search](docs/composition-native-learned-search.md).
+Native corpora are fail-closed before fitting: `scripts/audit_composition_native_corpus.py` checks
+schema, trace and decisive-artifact hashes, descendant lineage, intrinsic search cost, and canonical
+terminal ownership. `scripts/normalize_composition_native_corpus.py` repairs the one deterministic
+ownership migration supported for older v1 traces without changing formal or physical outcomes.
+Online replay retains mandatory singleton transitions even though only multi-action frontiers train
+the listwise policy.
+
+The RC26 bounded evaluation did not qualify learned composition ordering for production: the best
+full interaction model recovered 62.0% of proof-valid composition terminals at 30% exhaustive cost,
+versus 95.8% for the post-search oracle and an 80% representation gate. Exact canonicalization did
+collapse 38,656 of 66,882 generated states. Consequently vLadder retains composition ML as
+priority-only research infrastructure and does not authorize a larger campaign or hard reduction
+from this checkpoint. See the
+[RC26 evaluation](docs/reports/composition-native-search-rc26-evaluation.md).
+
+RC27 therefore moved reduction authority to a canonical semantic-state DAG. It replayed all 102
+RC26 roots, all 38,656 exact transpositions, and all 1,333 U2 terminals. A 30-root bounded
+qualification preserved 100% of canonical terminals while reducing raw transformation-sequence
+construction by about 95%. This qualifies the exact search architecture, not a production speedup.
+See [RC27 evaluation](docs/reports/canonical-state-search-rc27-evaluation.md).
+
+The historical RC24 trainer is a 3.1M-parameter-per-member relational
+graph/action-lineage shadow trainer with separate grammar, candidate, and composition heads. It
+supports independent-seed ensembles, pre-decision graph summaries, parent context, auxiliary
+subtree targets, staged and hard-mining ablations, stage-specific one-sided calibration, retrieval
+consensus, branch-level OOD rejection, and online lazy-tree replay. It requires the optional
+`vladder[ml]` extra, rejects incomplete campaigns, and keeps every artifact shadow-only until
+project-held-out recall, terminal-survival, positive-path, and independent live-search gates pass.
+Training campaigns exhaust every tractable bounded root plus a stratified set of deeper roots;
+budget-truncated broad roots remain useful for coverage but cannot supply negative labels. Durable
+request fingerprints and atomic terminal-result caches make those shadow searches resumable.
+`scripts/build_cpp_search_manifest.py` produces deterministic family-stratified C++ manifests with
+duplicate source/function exclusion and exact compile-command/source-line provenance. The reference
+trainer accepts repeated `--progress` and `--manifest` pairs, validating each campaign independently
+before deduplicating branch identities. `scripts/discover_cpp_object_roots.py` expands a later
+tranche from strong symbols in the exact built objects, retaining source, build-command, symbol,
+and project provenance while excluding prior source/function roots. Large corpus manifests may use
+`artifact_retention: decisive`: complete search/trace JSON is gzip-compressed after standalone v3
+emission, reproducible object products are removed, compact summaries remain, and compressed roots
+are still resumable. Ordinary optimization and release evidence default to full retention.
+The RC24 C++-primary ensemble remains historical shadow evidence. On 43,153 examples from 770 roots, the
+maximum validated policy avoided 1.30% of replayed search work at 99.969% useful-descendant recall;
+the strict zero-miss policy avoided 1.27%. Grammar and candidate heads had no misses at the selected
+operating point, while one RocksDB composition ancestor was missed. These conservative results
+replace the unsafe 19.51%-reduction operating point; vLadder does not bundle or enable either model
+for live pruning. See the
+[RC24 validation report](docs/reports/executable-source-search-rc24-validation.md). The current
+program does not attempt to tune that hard-pruning classifier further.
 
 rc6 adds a manifest-driven agent workflow and closes several application-promotion gaps:
 
@@ -325,6 +434,8 @@ closed when source mode is requested.
 Run the complete local release decision from one command:
 
 ```bash
+vladder release smoke-canonical-search \
+  --out build/production-canonical-search-smoke.json
 vladder release check --execute --require-target release_candidate \
   --out build/release-readiness.json
 ```
@@ -406,14 +517,28 @@ The v3 training exporter includes bounded normalized graph nodes, edges and topo
 grammar actions; search executions; parent/child branch lineage; grammar/candidate/composition and
 cross-TU stages; exhaustive, sound, partial, and truncated coverage authority; direct and propagated
 descendant utility; search cost; all supported outcome classes; evidence quality; and coarsened
-hardware/workload descriptors. The survival target is conservative: observed useful descendants are
-`KEEP`, exhaustive or soundly closed dead subtrees may be pruned, and every incomplete negative is
-`KEEP_UNCERTAIN`. It excludes source, paths, symbols,
+hardware/workload descriptors. The survival target is conservative: a proof establishes semantic
+validity, but a proved candidate becomes a useful descendant only after physical identity confirms
+a distinct realization or stronger retention evidence exists. Proved compiler-identical leaves are
+negative when exhaustively closed; unresolved distinctness remains `KEEP_UNCERTAIN`. Observed useful
+descendants are `KEEP`, exhaustive or soundly closed dead subtrees may be pruned, and every incomplete
+negative is `KEEP_UNCERTAIN`. It excludes source, paths, symbols,
 user-defined type names, literals, raw artifacts, prompts, personal data, and the unredacted prior
 store. This is pseudonymized structural data, not anonymous data: distinctive topology can
 fingerprint an algorithm. A policy change that broadens disclosure invalidates old training
 consent. Agents must report an eligible form lacking an exporter rather than silently treating it
 as contributed.
+
+Search-policy updates use the stricter enumerator-native
+`vladder-composition-native-search-trace-v1` contract. Every emitted trace is rejected unless its
+canonical-state lineage, collision-checked ownership, sibling-frontier cardinality, action deltas,
+terminal ownership, backward utility labels, summary counts, and trace hash agree. Its embedded
+`vladder-search-policy-training-contract-v1` reports whether exhaustive frontier context and
+terminal evidence make the trace eligible for future policy training and separately reports
+partial search-cost capture. The inference view contains only the current parent state, ordered
+history, sibling actions, interaction graph, and pre-expansion deltas; completed states,
+transpositions, selected actions, terminal outcomes, labels, and measured costs remain supervision.
+ML may order search or propose an exact check. It never receives deletion authority.
 
 The consent ledger is stored outside the package under the user's configuration directory (or
 `VLADDER_CONSENT_FILE`) with owner-only permissions. Use `--validate-only` to test the remote path
@@ -438,11 +563,12 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc23` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc29` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc23'
+python3 -m pip install --pre 'vladder==1.0.0rc29'
 vladder doctor
+vladder release canonical-search-evidence
 ```
 
 PyPI installs Python dependencies, not Clang/LLVM, llvm-mca, Alive2, Linux perf, or native language
@@ -763,12 +889,17 @@ proves predicted local units but still performs no optimization, benchmark, or s
 Inspect `closure.disposition`, each independent `closure.capabilities` entry, categorical
 `protocol_scopes`, `compiled-effects.json`, `typed-abi.json`, `subregions.json`,
 `cpp-information-flow.json`, `region-closure.json`, `region-closure-proof.json`, and
-`proof-envelope.json`. `bounded-cpp-regions-v8` can emit whole
+`proof-envelope.json`. `bounded-cpp-regions-v11` can emit whole
 local-function proof units and source-preserving lambda capsules for eligible loops inside owning
 C++ methods. Ordinary early-return loops use a whole-function CFG boundary so return semantics are
 not changed by lambda extraction. Guarded no-growth trivial vector regions and call-preserving
-local helpers are eligible bounded capsules. Its bounded schedule grammar emits guarded Clang unroll candidates with identity and
-Z3 schedule evidence, but requires an application benchmark adapter before ranking or applying
+local helpers are eligible bounded capsules. Local capsule eligibility is separate from
+effect-preserving scheduling: owning, callback, exception, allocation, and atomic loops may receive
+ordinary guarded Clang unroll/vector/interleave requests while their protocol boundaries remain
+explicit. A complete-module `llvm-function-v1` family also enumerates selected-function pass
+pipelines, validates them with Alive2's two-module interface, and assembly-deduplicates the selected
+symbol; unsupported `invoke` or interprocedural constructs stay unresolved rather than becoming
+negative labels. Both routes require an application benchmark adapter before ranking or applying
 them. RAII, exceptions/destructors, allocation ownership, concurrency, callbacks, Vulkan/OpenUSD,
 and other external protocols remain explicitly outside generic whole-function proof. They do not
 block independently closed local regions or vLadder's attribution, lifetime, placement, and
@@ -945,6 +1076,7 @@ python3 -m venv .venv
 .venv/bin/pip install '.[dev]'
 python3 scripts/audit_release.py --root .
 .venv/bin/python -m pytest -q
+.venv/bin/vladder release smoke-canonical-search
 .venv/bin/vladder release check --execute --require-target release_candidate
 openspec validate release-vladder-library --strict
 openspec validate release-channels-rc4 --strict

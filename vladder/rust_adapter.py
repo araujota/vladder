@@ -28,6 +28,7 @@ from .canonical_regions import (
     classify_canonical_region,
     corroborate_compiler_shape,
 )
+from .canonical_executable import synthesize_canonical_region
 from .paired_benchmark import run_paired_benchmark
 from .closure_bindings import rust_function_summary
 from .rust_semantics import (
@@ -159,6 +160,20 @@ def isolate_rust_region(request: RustRegionRequest) -> dict[str, Any]:
 def synthesize_rust_region(request: RustRegionRequest) -> dict[str, Any]:
     context = _capture_rust_region(request)
     output = request.output_directory.resolve()
+    if (
+        context.canonical_region is not None
+        and context.canonical_region.operation != "count_equal_u8"
+        and not context.effects.blockers
+    ):
+        native = synthesize_canonical_region(context.canonical_region, "rust", output / "canonical-native")
+        report = {
+            "schema_version": "vladder-rust-synthesis-v2",
+            "status": native["status"],
+            "support": context.evidence.to_dict(),
+            **{key: value for key, value in native.items() if key not in {"schema_version", "status"}},
+        }
+        _write_json(output / "rust-synthesis.json", report)
+        return report
     if context.model is None or context.effects.blockers:
         report = {
             "schema_version": "vladder-rust-synthesis-v1",

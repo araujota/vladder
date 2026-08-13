@@ -1,0 +1,445 @@
+{
+  "authority": {
+    "ml_deletion": false,
+    "terminal_identity": "collision-checked canonical bytes",
+    "unknown_conditions": "fail_open"
+  },
+  "release_blocking": true,
+  "schema_version": "vladder-production-canonical-search-smoke-v1",
+  "stage_order": [
+    "canonical_identity",
+    "por_safety",
+    "incremental_canonicalization",
+    "expensive_terminal_reduction",
+    "cheap_region_cost_gate",
+    "concurrent_registration",
+    "checkpoint_resume",
+    "mini_scaling"
+  ],
+  "stages": [
+    {
+      "assertions": {
+        "ab_ba_canonical_bytes_identical": true,
+        "ab_ba_canonical_digest_identical": true,
+        "both_provenance_edges_recorded": true,
+        "exactly_one_recursive_owner": true,
+        "expected_owner_count": true,
+        "forced_collision_did_not_merge": true,
+        "terminal_set_preserved": true
+      },
+      "duration_ms": 12.076064944267273,
+      "error": null,
+      "metrics": {
+        "canonical_owners_actual": 9,
+        "canonical_owners_expected": 9,
+        "converged_owner_parent_edges": 2,
+        "false_merges": 0,
+        "forced_hash_collisions": 1,
+        "terminal_count": 4,
+        "terminal_preservation_percent": 100.0
+      },
+      "stage_id": "canonical_identity",
+      "status": "PASS"
+    },
+    {
+      "assertions": {
+        "alias_orderings_remain_represented": true,
+        "alias_pair_rejected": true,
+        "alias_por_skips_zero": true,
+        "alias_terminal_set_preserved": true,
+        "commuting_orders_verified_equal": true,
+        "commuting_representative_ordering_used": true,
+        "commuting_terminal_set_preserved": true,
+        "incomplete_orderings_remain_represented": true,
+        "incomplete_pair_dependent": true,
+        "incomplete_por_skips_zero": true,
+        "incomplete_terminal_set_preserved": true
+      },
+      "duration_ms": 48.885848838835955,
+      "error": null,
+      "metrics": {
+        "alias_por_skips": 0,
+        "commuting_por_skips": 4,
+        "incomplete_por_skips": 0,
+        "terminal_preservation_percent": 100.0,
+        "unsafe_por_skips": 0
+      },
+      "stage_id": "por_safety",
+      "status": "PASS"
+    },
+    {
+      "assertions": {
+        "canonical_bytes_match": true,
+        "canonical_digest_matches": true,
+        "clean_fallback_returned": true,
+        "corruption_detected": true,
+        "enabled_actions_match": true,
+        "incremental_hash_matches_clean": true,
+        "semantic_summaries_match": true,
+        "valid_update_did_not_fallback": true
+      },
+      "duration_ms": 0.3190299030393362,
+      "error": null,
+      "metrics": {
+        "cache_hits": 1,
+        "cache_misses": 1,
+        "changed_components": [
+          "next_region",
+          "remaining_regions",
+          "selection"
+        ],
+        "fallback_count": 1,
+        "fallback_incident": "incremental state hash differs from clean rematerialization",
+        "silent_divergence": 0
+      },
+      "stage_id": "incremental_canonicalization",
+      "status": "PASS"
+    },
+    {
+      "assertions": {
+        "all_unique_terminals_evaluated": true,
+        "compiler_calls_reduced": true,
+        "measured_wall_time_reduced": true,
+        "proof_calls_reduced": true,
+        "terminal_set_preserved": true
+      },
+      "duration_ms": 950.6581041496247,
+      "error": null,
+      "metrics": {
+        "compiler": "/usr/bin/clang++-20",
+        "compiler_calls_avoided": 40,
+        "measured_wall_ms_saved": 566.606208216399,
+        "proof_calls_avoided": 40,
+        "raw": {
+          "candidate_constructions": 79,
+          "compiler_calls": 48,
+          "compiler_wall_ms": 720.008,
+          "measured_wall_ms": 748.1160401366651,
+          "proof_calls": 48,
+          "proof_wall_ms": 19.561
+        },
+        "reduced": {
+          "candidate_constructions": 43,
+          "compiler_calls": 8,
+          "compiler_wall_ms": 127.753,
+          "measured_wall_ms": 181.50983192026615,
+          "proof_calls": 8,
+          "proof_wall_ms": 3.627
+        },
+        "terminal_preservation_percent": 100.0
+      },
+      "stage_id": "expensive_terminal_reduction",
+      "status": "PASS"
+    },
+    {
+      "assertions": {
+        "adaptive_policy_declined_por": true,
+        "canonical_transposition_remained_enabled": true,
+        "no_por_skip_when_declined": true,
+        "terminal_set_preserved": true
+      },
+      "duration_ms": 66.16746098734438,
+      "error": null,
+      "metrics": {
+        "decisions": [
+          {
+            "depth": 0,
+            "expected_reduction_cost_ms": 0.15,
+            "expected_saved_cost_ms": 0.0025,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 6,
+            "reason": "POR cost gate declined",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 1,
+            "expected_reduction_cost_ms": 0.06,
+            "expected_saved_cost_ms": 0.0015,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 4,
+            "reason": "POR cost gate declined",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 1,
+            "expected_reduction_cost_ms": 0.06,
+            "expected_saved_cost_ms": 0.0015,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 4,
+            "reason": "POR cost gate declined",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 1,
+            "expected_reduction_cost_ms": 0.06,
+            "expected_saved_cost_ms": 0.0015,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 4,
+            "reason": "POR cost gate declined",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 1,
+            "expected_reduction_cost_ms": 0.06,
+            "expected_saved_cost_ms": 0.0015,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 4,
+            "reason": "POR cost gate declined",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 1,
+            "expected_reduction_cost_ms": 0.06,
+            "expected_saved_cost_ms": 0.0015,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 4,
+            "reason": "POR cost gate declined",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 1,
+            "expected_reduction_cost_ms": 0.06,
+            "expected_saved_cost_ms": 0.0015,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 4,
+            "reason": "POR cost gate declined",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "selected-build-cpp"
+          },
+          {
+            "depth": 2,
+            "expected_reduction_cost_ms": 0.01,
+            "expected_saved_cost_ms": 0.0005,
+            "footprint_complete_ratio": 1.0,
+            "frontier_size": 2,
+            "reason": "frontier too small for profitable ordering reduction",
+            "selected_level": "CANONICALIZE_ONLY",
+            "state_family": "loop-unroll-schedule"
+          }
+        ],
+        "por_skips": 0,
+        "selected_levels": [
+          "CANONICALIZE_ONLY"
+        ],
+        "terminal_preservation_percent": 100.0,
+        "transpositions": 28
+      },
+      "stage_id": "cheap_region_cost_gate",
+      "status": "PASS"
+    },
+    {
+      "assertions": {
+        "all_provenance_edges_retained": true,
+        "no_corrupt_records": true,
+        "one_recursive_owner_per_state": true,
+        "unique_count_matches": true
+      },
+      "duration_ms": 97.30611904524267,
+      "error": null,
+      "metrics": {
+        "elapsed_ms": 89.07866198569536,
+        "provenance_edges": 2048,
+        "recursive_owners": 17,
+        "registrations": 2048,
+        "unique_actual": 17,
+        "unique_expected": 17,
+        "workers": 16
+      },
+      "stage_id": "concurrent_registration",
+      "status": "PASS"
+    },
+    {
+      "assertions": {
+        "already_explored_states_not_reexpanded": true,
+        "compatible_resume_completed": true,
+        "incompatible_identity_rejected": true,
+        "partial_run_stopped_incomplete": true,
+        "terminal_set_matches_uninterrupted": true
+      },
+      "duration_ms": 287.06975700333714,
+      "error": null,
+      "metrics": {
+        "checkpoint_loaded": true,
+        "partial_canonical_states": 9,
+        "resumed_candidate_constructions": 217,
+        "terminal_count": 16,
+        "terminal_preservation_percent": 100.0,
+        "uninterrupted_candidate_constructions": 217
+      },
+      "stage_id": "checkpoint_resume",
+      "status": "PASS"
+    },
+    {
+      "assertions": {
+        "canonical_growth_slower_than_raw": true,
+        "reduced_growth_slower_than_raw": true,
+        "terminal_sets_preserved_at_every_width": true
+      },
+      "duration_ms": 484.8744429182261,
+      "error": null,
+      "metrics": {
+        "fixture_origin": {
+          "capture": "RC28 source-anchored selected-build composition root",
+          "project": "llama.cpp",
+          "source_sha256": "f73c8a6794d8085f4a59827f5a90091c36ce6d1b1fcbb0b77398af1bedf21560"
+        },
+        "growth_width_2_to_4": {
+          "canonical": 9.0,
+          "raw": 48.69230769230769,
+          "reduced": 9.923076923076923
+        },
+        "levels": [
+          {
+            "canonical_unique_states": 9,
+            "raw_candidate_constructions": 13,
+            "reduced_candidate_constructions": 13,
+            "terminal_preservation": true,
+            "terminal_proof_compile_work": 4,
+            "width": 2
+          },
+          {
+            "canonical_unique_states": 27,
+            "raw_candidate_constructions": 79,
+            "reduced_candidate_constructions": 43,
+            "terminal_preservation": true,
+            "terminal_proof_compile_work": 8,
+            "width": 3
+          },
+          {
+            "canonical_unique_states": 81,
+            "raw_candidate_constructions": 633,
+            "reduced_candidate_constructions": 129,
+            "terminal_preservation": true,
+            "terminal_proof_compile_work": 16,
+            "width": 4
+          }
+        ]
+      },
+      "stage_id": "mini_scaling",
+      "status": "PASS"
+    }
+  ],
+  "status": "PASS",
+  "summary": {
+    "duration_ms": 1947.4647578317672,
+    "failed": 0,
+    "passed": 8,
+    "stage_count": 8
+  }
+}
