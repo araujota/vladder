@@ -18,8 +18,16 @@ DEFAULT_CONTRIBUTION_BASE = "https://ceaseless-manatee-888.convex.site"
 DEFAULT_REVIEW_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/reviews"
 DEFAULT_MODEL_TRAINING_ENDPOINT = f"{DEFAULT_CONTRIBUTION_BASE}/api/training/v3"
 MAX_CONTRIBUTION_BYTES = 768 * 1024
+CONTRIBUTION_ENDPOINT_CONTRACT_VERSION = "vladder-contribution-endpoint-contract-v2"
 CAPABILITY_SCHEMA_VERSION = "vladder-contributor-capability-v1"
 CAPABILITY_FILE_VERSION = "vladder-contributor-credentials-v1"
+REVIEW_SCHEMA_VERSION = "vladder-agent-review-v1"
+MODEL_TRAINING_SCHEMA_VERSION = "vladder-model-training-bundle-v3"
+CONTRIBUTION_ROUTES = {
+    "capability_registration": "/api/contributors/register",
+    "review_submission": "/api/reviews",
+    "training_submission": "/api/training/v3",
+}
 CAPABILITY_SCOPES = {
     "agent-review": "review:write",
     "training-bundle": "training:write",
@@ -38,6 +46,73 @@ def default_credential_path() -> Path:
 def _credential_key(endpoint: str, scope: str) -> str:
     parsed = urlparse(endpoint)
     return f"{parsed.scheme}://{parsed.netloc}|{scope}"
+
+
+def contribution_contract_errors(payload: Any) -> list[str]:
+    """Return exact client/service compatibility failures from a health descriptor."""
+    if not isinstance(payload, dict):
+        return ["health response is not a JSON object"]
+    expected = {
+        "status": "ok",
+        "endpoint_contract": CONTRIBUTION_ENDPOINT_CONTRACT_VERSION,
+        "review_schema": REVIEW_SCHEMA_VERSION,
+        "training_schema": MODEL_TRAINING_SCHEMA_VERSION,
+        "capability_submission": True,
+        "public_capability_registration": True,
+    }
+    errors = [
+        f"{name} expected {value!r}, observed {payload.get(name)!r}"
+        for name, value in expected.items()
+        if payload.get(name) != value
+    ]
+    routes = payload.get("routes")
+    if not isinstance(routes, dict):
+        errors.append("routes expected an object")
+    else:
+        errors.extend(
+            f"routes.{name} expected {route!r}, observed {routes.get(name)!r}"
+            for name, route in CONTRIBUTION_ROUTES.items()
+            if routes.get(name) != route
+        )
+    return errors
+
+
+def verify_contribution_service_contract(base_url: str, *, timeout_seconds: float) -> dict[str, Any]:
+    """Verify deployed endpoint compatibility without registering or uploading a record."""
+    base_url = base_url.rstrip("/")
+    parsed = urlparse(base_url)
+    if parsed.scheme != "https" and not (
+        parsed.scheme == "http" and parsed.hostname in {"127.0.0.1", "localhost", "::1"}
+    ):
+        raise ValueError("contribution service must use HTTPS or loopback HTTP")
+    request = urllib.request.Request(
+        base_url + "/api/health",
+        method="GET",
+        headers={"Accept": "application/json", "User-Agent": f"vladder/{__version__}"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # nosec B310
+            raw = response.read().decode("utf-8", errors="replace")
+            payload = json.loads(raw)
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"contribution service health check failed ({exc.code}): {body[:1000]}") from exc
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError(f"contribution service health check failed: {exc}") from exc
+    errors = contribution_contract_errors(payload)
+    if errors:
+        raise RuntimeError(
+            "contribution service endpoint contract mismatch; the service must be upgraded before submission: "
+            + "; ".join(errors)
+        )
+    return {
+        "schema_version": CONTRIBUTION_ENDPOINT_CONTRACT_VERSION,
+        "status": "compatible",
+        "base_url": base_url,
+        "service": payload,
+        "network_side_effect": "health_read_only",
+        "records_stored": 0,
+    }
 
 
 def _load_credentials(path: Path) -> dict[str, Any]:
@@ -72,6 +147,9 @@ def _write_credentials(path: Path, value: dict[str, Any]) -> None:
 
 def _register_capability(endpoint: str, scope: str, timeout_seconds: float) -> dict[str, str]:
     parsed = urlparse(endpoint)
+    verify_contribution_service_contract(
+        f"{parsed.scheme}://{parsed.netloc}", timeout_seconds=timeout_seconds,
+    )
     registration_endpoint = f"{parsed.scheme}://{parsed.netloc}/api/contributors/register"
     payload = json.dumps({"scope": scope, "client_version": __version__}, sort_keys=True).encode("utf-8")
     request = urllib.request.Request(
@@ -159,7 +237,8 @@ def probe_contribution_service(
                 value = body
             return exc.code, value
 
-    training_endpoint = base_url + "/api/training/v3"
+    contract = verify_contribution_service_contract(base_url, timeout_seconds=timeout_seconds)
+    training_endpoint = base_url + CONTRIBUTION_ROUTES["training_submission"]
     review_endpoint = base_url + "/api/reviews"
     training_token = load_or_register_capability(
         training_endpoint, "training:write", timeout_seconds=timeout_seconds, credential_path=credential_path,
@@ -223,6 +302,7 @@ def probe_contribution_service(
         "status": "pass" if all(value["pass"] for value in checks.values()) else "fail",
         "base_url": base_url,
         "checks": checks,
+        "endpoint_contract": contract,
         "credential_storage": str((credential_path or default_credential_path()).expanduser().resolve()),
         "records_stored": 0,
         "boundary": "scope-specific append capabilities; no private read, mutation, moderation, or deployment authority",
@@ -246,6 +326,9 @@ def submit_validated_record(
     payload = artifact_path.resolve().read_bytes()
     if len(payload) > MAX_CONTRIBUTION_BYTES:
         raise ValueError(f"{record_name} payload exceeds {MAX_CONTRIBUTION_BYTES // 1024} KiB")
+    verify_contribution_service_contract(
+        f"{parsed.scheme}://{parsed.netloc}", timeout_seconds=timeout_seconds,
+    )
     target = endpoint + ("&" if "?" in endpoint else "?") + "validate_only=true" if validate_only else endpoint
     scope = CAPABILITY_SCOPES.get(record_name)
     managed_credential = token is None and scope is not None

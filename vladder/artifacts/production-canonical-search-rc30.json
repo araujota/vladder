@@ -1,6 +1,6 @@
 {
   "schema_version": "vladder-canonical-search-release-artifact-v1",
-  "release_version": "1.0.0rc29",
+  "release_version": "1.0.0rc30",
   "engine_version": "production-canonical-search-v1",
   "disposition": "PRODUCTION_CANONICAL_SEARCH_APPROVED",
   "production_claim": "vLadder exhaustively searches unique reachable semantic realizations after completeness-preserving state-space reduction, rather than enumerating redundant transformation sequences.",

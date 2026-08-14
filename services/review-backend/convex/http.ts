@@ -350,10 +350,16 @@ http.route({
   method: "GET",
   handler: httpAction(async () => jsonResponse({
     status: "ok",
-    service: "vladder-contributions-v1",
+    service: "vladder-contributions-v2",
+    endpoint_contract: "vladder-contribution-endpoint-contract-v2",
     review_schema: "vladder-agent-review-v1",
     training_schema: "vladder-model-training-bundle-v3",
     model_training_schema: "vladder-model-training-bundle-v3",
+    routes: {
+      capability_registration: "/api/contributors/register",
+      review_submission: "/api/reviews",
+      training_submission: "/api/training/v3",
+    },
     legacy_training_submission: "retired_410",
     public_submission: false,
     capability_submission: true,

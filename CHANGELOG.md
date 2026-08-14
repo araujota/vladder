@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0rc30 - 2026-08-14
+
+### Fixed
+
+- Deploy the production contribution backend with the v3 training route required by current
+  clients, resolving the live `/api/training/v3` contract failure.
+- Publish and enforce `vladder-contribution-endpoint-contract-v2` before capability registration or
+  contribution upload, with exact review/training schema and route compatibility checks.
+- Make online release readiness reject a healthy but stale contribution deployment and make
+  `vladder contribution doctor` report the compatible contract alongside no-storage scope probes.
+
+### Preserved
+
+- Retain the rc29 production canonical-search engine, bundled qualification evidence, composition
+  trace integrity, consent boundaries, and ML ordering-only authority under the rc30 release identity.
+
 ## 1.0.0rc29 - 2026-08-13
 
 ### Added

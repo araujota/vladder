@@ -55,7 +55,7 @@ Each production run emits:
   production-default evidence;
 - existing executable and composition traces as compatibility projections.
 
-Every installed wheel also carries `artifacts/production-canonical-search-rc29.json`, a compact
+Every installed wheel also carries `artifacts/production-canonical-search-rc30.json`, a compact
 schema-validated record of the release's exact authority, defaults, terminal preservation, smoke
 coverage, and measured proof/compiler savings. Inspect the installed artifact with:
 

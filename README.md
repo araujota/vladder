@@ -91,7 +91,7 @@ proof, benchmark, and patch engine, with the new disposition layered on top.
 
 ## Release Status
 
-The package version is `1.0.0rc29`, the C++ closure matrix is
+The package version is `1.0.0rc30`, the C++ closure matrix is
 `bounded-cpp-regions-v11`; it retains the
 `bounded-regions-v1` C frontend and includes `bounded-rust-regions-v2`,
 `bounded-zig-regions-v3`, and `bounded-julia-regions-v3` adapters. These three frontends share
@@ -545,7 +545,10 @@ The consent ledger is stored outside the package under the user's configuration 
 without storage; because it sends the exact payload to the service, it requires opt-in too. Reviews
 and graph-ready v3 search bundles are private pending moderation. Override endpoints with
 `VLADDER_REVIEW_ENDPOINT` or `VLADDER_MODEL_TRAINING_ENDPOINT`; ordinary optimization never uses
-the network. v1 and flat v2 training bundles are historical validation artifacts only: current producers
+the network. Before capability registration or payload transmission, the client validates the
+service's side-effect-free `vladder-contribution-endpoint-contract-v2` health descriptor. Run
+`vladder contribution doctor` to verify schema, route, scope, and moderation boundaries without
+storing a contribution. v1 and flat v2 training bundles are historical validation artifacts only: current producers
 reject them, queued historical records are quarantined locally, and the retired service routes return
 `410 Gone`. The local privacy policy
 is in [`docs/privacy.md`](docs/privacy.md); schema compatibility is in
@@ -563,10 +566,10 @@ Release and contributor guides:
 ## Install
 
 Install the current published GitHub candidate with its release artifacts. PyPI publication is a
-separate channel; when `1.0.0rc29` is published there, install the Python library and CLI with:
+separate channel; when `1.0.0rc30` is published there, install the Python library and CLI with:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc29'
+python3 -m pip install --pre 'vladder==1.0.0rc30'
 vladder doctor
 vladder release canonical-search-evidence
 ```

@@ -17,8 +17,10 @@ from vladder.consent import (
 )
 from vladder.review_workflow import create_review_template, submit_review, validate_review
 from vladder.contribution_transport import (
+    CONTRIBUTION_ENDPOINT_CONTRACT_VERSION, CONTRIBUTION_ROUTES,
     DEFAULT_MODEL_TRAINING_ENDPOINT, DEFAULT_REVIEW_ENDPOINT,
-    load_or_register_capability,
+    MODEL_TRAINING_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION,
+    load_or_register_capability, submit_validated_record, verify_contribution_service_contract,
 )
 from vladder.training_workflow import (
     create_training_bundle_from_prior, create_training_bundle_from_promotion_summary,
@@ -36,6 +38,18 @@ from scripts.validate_release_seeds import validate as validate_release_seeds
 
 
 class PublicReleaseContractTests(unittest.TestCase):
+    def _contribution_health(self) -> dict[str, object]:
+        return {
+            "status": "ok",
+            "service": "vladder-contributions-v2",
+            "endpoint_contract": CONTRIBUTION_ENDPOINT_CONTRACT_VERSION,
+            "review_schema": REVIEW_SCHEMA_VERSION,
+            "training_schema": MODEL_TRAINING_SCHEMA_VERSION,
+            "capability_submission": True,
+            "public_capability_registration": True,
+            "routes": CONTRIBUTION_ROUTES,
+        }
+
     def _summary(self) -> dict[str, object]:
         return {
             "schema_version": "vladder-promotion-summary-v1",
@@ -154,7 +168,7 @@ class PublicReleaseContractTests(unittest.TestCase):
 
     def test_packaged_canonical_search_release_artifact_is_valid(self) -> None:
         artifact = load_canonical_search_release_artifact()
-        self.assertEqual(artifact["release_version"], "1.0.0rc29")
+        self.assertEqual(artifact["release_version"], "1.0.0rc30")
         self.assertEqual(artifact["qualification"]["terminal_preservation_percent"], 100.0)
         self.assertFalse(artifact["authority"]["ml_deletion"])
 
@@ -241,7 +255,9 @@ class PublicReleaseContractTests(unittest.TestCase):
             review["privacy"]["submission_consent"] = True
             review_path.write_text(json.dumps(review))
             set_consent(AGENT_EXPERIENCE_REVIEW, "opt_in", path=consent_path, confirmed_user_choice=True)
-            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_review"):
+            with patch("vladder.contribution_transport.verify_contribution_service_contract"), patch(
+                "vladder.contribution_transport.load_or_register_capability", return_value="vc1_review",
+            ):
                 with patch("urllib.request.urlopen") as urlopen:
                     response = urlopen.return_value.__enter__.return_value
                     response.status = 202
@@ -276,7 +292,9 @@ class PublicReleaseContractTests(unittest.TestCase):
                 )
             bundle["privacy"]["submission_consent"] = True
             bundle_path.write_text(json.dumps(bundle))
-            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+            with patch("vladder.contribution_transport.verify_contribution_service_contract"), patch(
+                "vladder.contribution_transport.load_or_register_capability", return_value="vc1_training",
+            ):
                 with patch("urllib.request.urlopen") as urlopen:
                     response = urlopen.return_value.__enter__.return_value
                     response.status = 200
@@ -348,7 +366,9 @@ class PublicReleaseContractTests(unittest.TestCase):
                         consent_path=root / "unknown-consent.json",
                     )
                 urlopen.assert_not_called()
-            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+            with patch("vladder.contribution_transport.verify_contribution_service_contract"), patch(
+                "vladder.contribution_transport.load_or_register_capability", return_value="vc1_training",
+            ):
                 with patch("urllib.request.urlopen") as urlopen:
                     response = urlopen.return_value.__enter__.return_value
                     response.status = 200
@@ -406,7 +426,9 @@ class PublicReleaseContractTests(unittest.TestCase):
                 maximum_examples=4, identity_path=identity, apply_durable_consent=True,
                 consent_path=consent_path,
             )
-            with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+            with patch("vladder.contribution_transport.verify_contribution_service_contract"), patch(
+                "vladder.contribution_transport.load_or_register_capability", return_value="vc1_training",
+            ):
                 with patch("urllib.request.urlopen") as urlopen:
                     response = urlopen.return_value.__enter__.return_value
                     response.status = 200
@@ -529,7 +551,9 @@ class PublicReleaseContractTests(unittest.TestCase):
             self.assertEqual(validate_training_bundle(root / "bundle.json")["status"], "pass")
             self.assertNotIn("private/project/path.cpp", json.dumps(bundle))
             with patch.dict("os.environ", {"VLADDER_TRAINING_OUTBOX_DIR": str(root / "outbox")}):
-                with patch("vladder.contribution_transport.load_or_register_capability", return_value="vc1_training"):
+                with patch("vladder.contribution_transport.verify_contribution_service_contract"), patch(
+                    "vladder.contribution_transport.load_or_register_capability", return_value="vc1_training",
+                ):
                     with patch("urllib.request.urlopen") as urlopen:
                         response = urlopen.return_value.__enter__.return_value
                         response.status = 202
@@ -624,6 +648,48 @@ class PublicReleaseContractTests(unittest.TestCase):
             serialized = credential_path.read_text()
             self.assertIn("training:write", serialized)
             self.assertNotIn("review:write", serialized)
+
+    def test_contribution_contract_rejects_stale_service_before_payload_upload(self) -> None:
+        with patch("urllib.request.urlopen") as urlopen:
+            response = urlopen.return_value.__enter__.return_value
+            response.read.return_value = json.dumps({
+                "status": "ok",
+                "service": "vladder-contributions-v1",
+                "training_schema": "vladder-model-training-bundle-v2",
+                "capability_submission": True,
+            }).encode()
+            with self.assertRaisesRegex(RuntimeError, "endpoint contract mismatch"):
+                verify_contribution_service_contract(
+                    "https://example.invalid", timeout_seconds=1,
+                )
+
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "record.json"
+            artifact.write_text("{}")
+            with patch(
+                "vladder.contribution_transport.verify_contribution_service_contract",
+                side_effect=RuntimeError("endpoint contract mismatch"),
+            ), patch("vladder.contribution_transport.load_or_register_capability") as register:
+                with self.assertRaisesRegex(RuntimeError, "endpoint contract mismatch"):
+                    submit_validated_record(
+                        artifact,
+                        endpoint=DEFAULT_MODEL_TRAINING_ENDPOINT,
+                        token=None,
+                        timeout_seconds=1,
+                        validate_only=True,
+                        record_name="model-training-bundle",
+                    )
+            register.assert_not_called()
+
+    def test_contribution_contract_accepts_exact_health_descriptor(self) -> None:
+        with patch("urllib.request.urlopen") as urlopen:
+            response = urlopen.return_value.__enter__.return_value
+            response.read.return_value = json.dumps(self._contribution_health()).encode()
+            report = verify_contribution_service_contract(
+                "https://example.invalid", timeout_seconds=1,
+            )
+        self.assertEqual(report["status"], "compatible")
+        self.assertEqual(report["records_stored"], 0)
 
     def test_actual_paired_benchmark_output_matches_stable_schema(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
