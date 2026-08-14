@@ -8,12 +8,27 @@ from unittest.mock import patch
 from vladder.release_readiness import (
     ReadinessCheck, TARGETS, _online_checks, _read_toml, _target_summary, evaluate_release_readiness,
 )
+from vladder.contribution_transport import (
+    CONTRIBUTION_ENDPOINT_CONTRACT_VERSION, CONTRIBUTION_ROUTES,
+    MODEL_TRAINING_SCHEMA_VERSION, REVIEW_SCHEMA_VERSION,
+)
 
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 class ReleaseReadinessTests(unittest.TestCase):
+    def _compatible_contribution_health(self):
+        return {
+            "status": "ok",
+            "endpoint_contract": CONTRIBUTION_ENDPOINT_CONTRACT_VERSION,
+            "review_schema": REVIEW_SCHEMA_VERSION,
+            "training_schema": MODEL_TRAINING_SCHEMA_VERSION,
+            "capability_submission": True,
+            "public_capability_registration": True,
+            "routes": CONTRIBUTION_ROUTES,
+        }
+
     def test_static_report_is_target_aware_and_actionable(self):
         report = evaluate_release_readiness(ROOT)
         self.assertEqual(report["schema_version"], "vladder-release-readiness-v2")
@@ -78,8 +93,8 @@ class ReleaseReadinessTests(unittest.TestCase):
 
         def http_result(url):
             if url.endswith("/api/health"):
-                return 200, {"status": "ok", "capability_submission": True}
-            return 200, {"info": {"version": "1.0.0rc29"}}
+                return 200, self._compatible_contribution_health()
+            return 200, {"info": {"version": "1.0.0rc30"}}
 
         with patch("vladder.release_readiness.shutil.which", return_value="/usr/bin/gh"), patch(
             "vladder.release_readiness._gh_json", side_effect=gh_result
@@ -135,6 +150,37 @@ class ReleaseReadinessTests(unittest.TestCase):
         self.assertEqual(testpypi.status, "warning")
         self.assertIn("waived_by=release-owner", testpypi.detail)
         self.assertTrue(_target_summary(checks)["pypi"]["ready"])
+
+    def test_online_readiness_rejects_healthy_but_stale_contribution_service(self):
+        channels = _read_toml(ROOT / "release" / "channels.toml")
+        channels["homebrew"]["tap_configured"] = False
+
+        def gh_result(_root, arguments):
+            joined = " ".join(arguments)
+            if "repo view araujota/vladder" in joined:
+                return 0, {"visibility": "PUBLIC", "defaultBranchRef": {"name": "main"}}, ""
+            if "branches/main/protection" in joined:
+                return 0, {"required_status_checks": {"contexts": ["CI"]}}, ""
+            if arguments[:2] == ["run", "list"]:
+                return 0, [{"status": "completed", "conclusion": "success"}], ""
+            if arguments[-1] == "repos/araujota/vladder/environments":
+                return 0, {"environments": []}, ""
+            if arguments[:2] in (["variable", "list"], ["secret", "list"]):
+                return 0, [], ""
+            if "repo view araujota/homebrew-tap" in joined:
+                return 1, None, "missing"
+            raise AssertionError(arguments)
+
+        stale = self._compatible_contribution_health()
+        stale["endpoint_contract"] = "vladder-contribution-endpoint-contract-v1"
+        stale["training_schema"] = "vladder-model-training-bundle-v2"
+        with patch("vladder.release_readiness.shutil.which", return_value="/usr/bin/gh"), patch(
+            "vladder.release_readiness._gh_json", side_effect=gh_result
+        ), patch("vladder.release_readiness._http_json", return_value=(200, stale)):
+            checks = _online_checks(ROOT, channels)
+        service = next(check for check in checks if check.check_id == "services.contribution-health")
+        self.assertEqual(service.status, "fail")
+        self.assertIn("vladder-model-training-bundle-v3", service.detail)
 
 
 if __name__ == "__main__":

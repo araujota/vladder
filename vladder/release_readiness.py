@@ -21,6 +21,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10
     import tomli as tomllib
 
 from . import __version__
+from .contribution_transport import contribution_contract_errors
 
 
 REPORT_VERSION = "vladder-release-readiness-v2"
@@ -513,11 +514,19 @@ def _online_checks(root: Path, channels: dict[str, Any]) -> list[ReadinessCheck]
     ))
     health_url = channels["services"]["contribution_health_url"]
     status, health = _http_json(health_url)
-    health_ok = status == 200 and health and health.get("status") == "ok" and health.get("capability_submission") is True
+    contract_errors = contribution_contract_errors(health)
+    health_ok = status == 200 and not contract_errors
+    health_detail = {
+        "http_status": status,
+        "contract_errors": contract_errors,
+        "health": health,
+    }
     checks.append(ReadinessCheck(
-        "services.contribution-health", "services", "Production contribution service is healthy and capability-scoped",
-        "pass" if health_ok else "fail", json.dumps(health, sort_keys=True) if health else f"HTTP {status}", (health_url,),
-        "Deploy and verify the production Convex contribution backend.", ("formal_release",),
+        "services.contribution-health", "services",
+        "Production contribution service implements the package endpoint contract",
+        "pass" if health_ok else "fail", json.dumps(health_detail, sort_keys=True), (health_url,),
+        "Deploy the matching Convex contribution backend and verify its versioned health contract.",
+        ("formal_release",),
     ))
     return checks
 

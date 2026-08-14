@@ -16,14 +16,14 @@ If the command is unavailable or reports another version, tell the user that the
 the PyPI package and obtain permission before installing or upgrading it:
 
 ```bash
-python3 -m pip install --pre 'vladder==1.0.0rc29'
+python3 -m pip install --pre 'vladder==1.0.0rc30'
 vladder doctor --strict
 ```
 Do not imply that installing this skill installs the CLI, LLVM, Alive2, Z3, or target-project
 toolchains. The package installer provides the Python command surface; `vladder doctor --strict`
 reports any remaining host dependencies before optimization begins.
 
-This skill targets vLadder `1.0.0rc29`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
+This skill targets vLadder `1.0.0rc30`, grammar `vladder-v1`, executable deep grammar `deep-v2`,
 lifetime grammar `lifetime-v1`, and automatic support matrices `bounded-regions-v1` and
 `bounded-cpp-regions-v11`, plus `bounded-rust-regions-v2`, `bounded-zig-regions-v3`, and
 `bounded-julia-regions-v3` adapters over `canonical-bounded-regions-v1`, and
@@ -241,10 +241,10 @@ v3 bundles are strict pseudonymized schemas, not upload paths for local stores o
 They include topology and search lineage; distinctive graphs or strategies may fingerprint algorithms.
 Re-request stale consent under the v3 notice. Read
 [release-evidence.md](references/release-evidence.md) and `docs/privacy.md`.
-On first opted-in use, the client obtains an owner-protected, installation-scoped append capability;
-it does not receive a Convex deployment credential. Run `vladder contribution doctor` when release
-service access must be verified. The probe stores no contribution and must show both intended
-append scopes, cross-scope denial, moderation denial, and absence of a private training read path.
+On first opted-in use, the client obtains an owner-protected append capability, not a deployment credential. Run `vladder contribution doctor` to require
+the deployed `vladder-contribution-endpoint-contract-v2` schemas and routes before upload. It stores
+no contribution and must show both intended append scopes, cross-scope
+denial, moderation denial, and absence of a private training read path.
 
 When changing vLadder itself, first run `vladder release smoke-canonical-search`, then use
 `vladder release check`. Require `release_candidate --execute` during development and

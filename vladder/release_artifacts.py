@@ -7,7 +7,7 @@ from typing import Any
 from .schema_registry import validate_payload
 
 
-CANONICAL_SEARCH_ARTIFACT = "artifacts/production-canonical-search-rc29.json"
+CANONICAL_SEARCH_ARTIFACT = "artifacts/production-canonical-search-rc30.json"
 
 
 def load_canonical_search_release_artifact() -> dict[str, Any]:

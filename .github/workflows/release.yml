@@ -45,6 +45,21 @@ jobs:
         run: >-
           python scripts/release_readiness.py --execute
           --require-target release_candidate --out build/release-readiness.json
+      - name: Production contribution endpoint contract
+        run: |
+          python - <<'PY'
+          import json
+          from vladder.contribution_transport import (
+              DEFAULT_CONTRIBUTION_BASE,
+              verify_contribution_service_contract,
+          )
+
+          report = verify_contribution_service_contract(
+              DEFAULT_CONTRIBUTION_BASE,
+              timeout_seconds=20,
+          )
+          print(json.dumps(report, indent=2, sort_keys=True))
+          PY
       - name: Production canonical-search release evidence
         run: |
           python scripts/validate_production_search_qualification.py

@@ -22,6 +22,9 @@ The local vLadder CLI remains fully functional when this service is absent.
 
 The historical `POST /api/training` v1 and `POST /api/training/v2` routes return `410 Gone` without
 storing a payload. All current clients register and submit through `POST /api/training/v3`.
+`GET /api/health` publishes `vladder-contribution-endpoint-contract-v2`, including the accepted
+schemas and canonical routes. Clients and online release readiness fail before credential creation
+or payload upload when this descriptor does not match the installed package.
 
 The client enforces a durable informed-consent policy before this service is contacted. Canonical
 training opt-in continuously submits every registered source-free anonymized record form;
